@@ -1,0 +1,4 @@
+/target
+.env
+*.md
+!README.md

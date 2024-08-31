@@ -1,0 +1,23 @@
+[package]
+name = "sie_generate_config"
+version = "0.4.2"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive", "string"] }
+roxmltree = "0.20.0"
+ssh2 = "0.9.4"
+chrono = "0.4.38"
+dotenv = "0.15.0"
+colored = "2.1.0"
+owo-colors = "4.0.0"
+
+[build-dependencies]
+dotenv = "0.15.0"
+
+[profile.release]
+opt-level = 'z'   # Optimize for size.
+lto = true        # Enable Link Time Optimisation
+codegen-units = 1 # Reduced to increase optimisations.
+panic = 'abort'   # Abort on panic
+strip = "symbols" # Strip symbols from binary
