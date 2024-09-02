@@ -5,21 +5,18 @@ fn main() {
     // Load .env file
     dotenv().ok();
 
-    // List of environment variables to process
+    // List of environment variables to process with default values
     let vars = vec![
-        "DEFAULT_IP",
-        "DEFAULT_USERNAME",
-        "DEFAULT_PASSWORD",
-        "DEFAULT_IOT_IP",
-        "DEFAULT_IOT_PASSWORD",
+        ("DEFAULT_IP", "127.0.0.1"),
+        ("DEFAULT_USERNAME", "admin"),
+        ("DEFAULT_PASSWORD", "password"),
+        ("DEFAULT_IOT_IP", "192.168.1.100"),
+        ("DEFAULT_IOT_PASSWORD", "iotpassword"),
     ];
 
-    for var in vars {
-        if let Ok(value) = env::var(var) {
-            println!("cargo:rustc-env={}={}", var, value);
-        } else {
-            panic!("Environment variable {} not set", var);
-        }
+    for (var, default_value) in vars {
+        let value = env::var(var).unwrap_or_else(|_| default_value.to_string());
+        println!("cargo:rustc-env={}={}", var, value);
     }
 
     // Tell Cargo to re-run this script if .env changes
