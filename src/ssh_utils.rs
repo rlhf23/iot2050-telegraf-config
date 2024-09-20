@@ -120,7 +120,7 @@ pub fn restart_telegraf_over_ssh(
         // Get the last 20 log entries for the Telegraf service
         println!("Fetching recent logs for the Telegraf service ..");
         let mut log_channel = session.channel_session()?;
-        log_channel.exec("journalctl -u telegraf.service -b -n 20")?;
+        log_channel.exec("tail -n 20 /var/log/telegraf/telegraf.log")?;
 
         let mut logs = String::new();
         log_channel.read_to_string(&mut logs)?;
@@ -130,17 +130,14 @@ pub fn restart_telegraf_over_ssh(
 
         // Get the last error entry for the Telegraf service
         let mut error_channel = session.channel_session()?;
-        error_channel.exec("journalctl -u telegraf.service -b -n 20 | grep 'E!'")?;
+        error_channel.exec("tail -n 10 /var/log/telegraf/telegraf.log | grep 'E!'")?;
 
         let mut error_logs = String::new();
         error_channel.read_to_string(&mut error_logs)?;
         error_channel.wait_close()?;
 
         if !error_logs.is_empty() {
-            println!(
-                "Latest Telegraf error log entries:\n( *__*)\n\n{}",
-                error_logs
-            );
+            println!("Latest Telegraf error logs:\n( *__*)\n\n{}", error_logs);
         } else {
             println!("No recent error logs found for Telegraf.");
         }
