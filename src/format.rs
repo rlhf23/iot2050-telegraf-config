@@ -24,7 +24,10 @@ pub fn generate_config_content(influx_token: &str, config_strings: &[String]) ->
   ## Log only error level messages.
   # quiet = false
 
-  logtarget = "stderr"
+  logtarget = "file"
+  logfile = "/var/log/telegraf/telegraf.log"
+  logfile_rotation_max_size = "25MB"
+  logfile_rotation_max_archives = 4
 
   hostname = ""
   omit_hostname = false
@@ -95,9 +98,10 @@ fn format_listener_config(
 [[inputs.opcua_listener]]
 name = "opcua_listener"
 endpoint = "opc.tcp://{}:4840"
-connect_fail_behavior = "retry"
+connect_fail_behavior = "ignore"
 connect_timeout = "30s"
 request_timeout = "10s"
+session_timeout = "20m"
 security_policy = "Basic256Sha256"
 security_mode = "SignAndEncrypt"
 certificate = ""
@@ -131,7 +135,7 @@ pub fn parse_xml(
     let doc = Document::parse(&xml).expect("Unable to parse XML");
 
     // asking for individual namespace numbers
-    println!("Enter the namespace number for {}:", xml_file);
+    println!("----Enter the namespace number for {}:", xml_file);
     let mut namespace_number = String::new();
     std::io::stdin().read_line(&mut namespace_number).unwrap();
     let namespace_number = namespace_number.trim();
@@ -139,11 +143,14 @@ pub fn parse_xml(
     // ask for intervals
     let mut interval = String::new();
     let interval_input = if !is_listener {
-        println!("{}", "Enter the interval in ms (default 1000ms):");
+        println!("{}", "----Enter the interval in ms (default 1000ms):");
         std::io::stdin().read_line(&mut interval).unwrap();
         interval.trim()
     } else {
-        println!("{}", "Enter the sampling_interval in ms (default 200ms):");
+        println!(
+            "{}",
+            "----Enter the sampling_interval in ms (default 1000ms):"
+        );
         std::io::stdin().read_line(&mut interval).unwrap();
         interval.trim()
     };
@@ -152,7 +159,7 @@ pub fn parse_xml(
         if !is_listener {
             "1000ms"
         } else {
-            "200ms"
+            "1000ms"
         }
     } else {
         interval_input
@@ -172,7 +179,7 @@ pub fn parse_xml(
                     .and_then(|n| n.text())
                 {
                     display_name = found_name.to_string();
-                    println!("BrowseName for ns=2;i=1: {}", found_name);
+                    println!("##BrowseName for ns=2;i=1: {}", found_name);
                 }
             }
         }
@@ -196,21 +203,8 @@ pub fn parse_xml(
                     .and_then(|n| n.text())
                 {
                     let var_mapping = var_mapping.replace('"', "");
-                    if var_mapping.contains('.') {
-                        let parts: Vec<&str> = var_mapping.split('.').collect();
-                        if let Some(last_part) = parts.last() {
-                            if *last_part == "Step" {
-                                name = parts[0].to_string();
-                            } else {
-                                name = last_part.to_string();
-                            }
-                        }
-                    } else {
-                        name = var_mapping;
-                    }
+                    name = var_mapping;
                 }
-
-                name = name.to_lowercase();
 
                 nodes.push(format!(
                     "{{name=\"{}\", identifier=\"{}\"}}",
