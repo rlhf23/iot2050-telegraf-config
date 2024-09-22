@@ -6,6 +6,29 @@ use std::{env, path::Path, path::PathBuf};
 mod format;
 mod ssh_utils;
 
+fn print_config(matches: &clap::ArgMatches) {
+    println!("Current configuration:");
+    println!("=====================");
+    println!("Folder: {}", matches.get_one::<String>("folder").unwrap());
+    println!("IP: {}", matches.get_one::<String>("ip").unwrap());
+    println!(
+        "Username: {}",
+        matches.get_one::<String>("username").unwrap()
+    );
+    println!(
+        "IOT Host: {}",
+        matches.get_one::<String>("iot_host").unwrap()
+    );
+    println!(
+        "Token Folder: {}",
+        matches.get_one::<String>("token").unwrap()
+    );
+    println!("Send config: {}", matches.get_flag("send"));
+    println!("Backup InfluxDB: {}", matches.get_flag("backup_influx"));
+    println!("Backup Grafana: {}", matches.get_flag("backup_grafana"));
+    println!("=====================\n");
+}
+
 fn get_default_path() -> PathBuf {
     // Returns the default path by getting the current executable's directory
     let mut path = env::current_exe().unwrap();
@@ -105,6 +128,9 @@ fn main() {
             .help("Backs up the Grafana configuration from the IOT-2050 and copies it to the current working directory"),
         )
         .get_matches();
+
+    // print the current config
+    print_config(&matches);
 
     let folder = matches.get_one::<String>("folder").unwrap();
     let ip = matches.get_one::<String>("ip").unwrap();
@@ -224,6 +250,7 @@ fn main() {
         wrap_up(1);
     }
 
+    println!("");
     println!("{}", "Do you want to use these files? (y/N)");
     let mut confirm = String::new();
     std::io::stdin().read_line(&mut confirm).unwrap();
