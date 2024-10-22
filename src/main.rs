@@ -45,6 +45,45 @@ fn wrap_up(exit_code: i32) {
     std::process::exit(exit_code);
 }
 
+fn read_influx_token(token_folder: &str) -> String {
+    let mut influx_token = String::new();
+    let token_file_path = Path::new(token_folder).join("token.txt");
+    if token_file_path.exists() {
+        match std::fs::read_to_string(&token_file_path) {
+            Ok(content) => {
+                influx_token = content.trim().to_string();
+                println!(
+                    "InfluxDB token read from {}",
+                    token_file_path.to_string_lossy()
+                );
+            }
+            Err(e) => {
+                eprintln!(
+                    "Failed to read InfluxDB token from {}: {}",
+                    token_file_path.to_string_lossy(),
+                    e
+                );
+                wrap_up(1);
+            }
+        }
+    } else {
+        println!(
+            "{}",
+            "No 'token.txt' found, enter the InfluxDB token manually:"
+        );
+        match std::io::stdin().read_line(&mut influx_token) {
+            Ok(_) => {
+                influx_token = influx_token.trim().to_string();
+            }
+            Err(e) => {
+                eprintln!("Failed to read InfluxDB token from stdin: {}", e);
+                wrap_up(1);
+            }
+        }
+    }
+    influx_token
+}
+
 fn main() {
     // Main function: Parses command-line arguments and either sends a config file or generates one based on XML files
     let matches = Command::new("IOT2050 config handler")
@@ -200,7 +239,11 @@ fn main() {
 
     // Check if the backup flag is set and perform backup if true
     if matches.get_flag("backup_influx") {
-        if let Err(e) = ssh_utils::backup_influxdb(iot_host, iot_username, iot_password) {
+        let influx_token = read_influx_token(token_folder);
+
+        if let Err(e) =
+            ssh_utils::backup_influxdb(iot_host, iot_username, iot_password, &influx_token)
+        {
             eprintln!("Failed to backup InfluxDB: {}", e);
         }
         wrap_up(0);
@@ -210,7 +253,7 @@ fn main() {
     if matches.get_flag("backup_grafana") {
         let iot_host = matches.get_one::<String>("iot_host").unwrap();
         let iot_password = matches.get_one::<String>("iot_password").unwrap();
-        match ssh_utils::backup_grafana_config(iot_host, "root", iot_password) {
+        match ssh_utils::backup_grafana_config(iot_host, iot_username, iot_password) {
             Ok(_) => println!("Grafana configuration backup completed successfully."),
             Err(e) => eprintln!("Failed to backup Grafana configuration: {}", e),
         }
@@ -276,53 +319,28 @@ fn main() {
         .map(|&index| xml_files[index].clone())
         .collect();
 
-    let mut influx_token = String::new();
-    // Attempt to read the InfluxDB token from a file, or ask the user to input it
-    let token_file_path = Path::new(token_folder).join("token.txt");
-    if token_file_path.exists() {
-        match std::fs::read_to_string(&token_file_path) {
-            Ok(content) => {
-                influx_token = content.trim().to_string();
-                println!(
-                    "InfluxDB token read from {}",
-                    token_file_path.to_string_lossy()
-                );
-            }
-            Err(e) => {
-                eprintln!(
-                    "Failed to read InfluxDB token from {}: {}",
-                    token_file_path.to_string_lossy(),
-                    e
-                );
-                wrap_up(1);
-            }
-        }
-    } else {
-        println!(
-            "{}",
-            "No 'token.txt' found, enter the InfluxDB token manually:"
-        );
-        match std::io::stdin().read_line(&mut influx_token) {
-            Ok(_) => {
-                influx_token = influx_token.trim().to_string();
-            }
-            Err(e) => {
-                eprintln!("Failed to read InfluxDB token from stdin: {}", e);
-                wrap_up(1);
-            }
-        }
-    }
+    // Read token before generating files, because it can fail
+    let influx_token = read_influx_token(token_folder);
 
     let mut config_strings = Vec::new();
+    let mut namespace_numbers = Vec::new();
     // Generate configuration strings for each XML file, checking whether it's a listener
     for file in &xml_files {
         let is_listener = listener_files.contains(file);
-        let config_string = format::parse_xml(file, ip, username, password, is_listener);
+        let config_string = format::parse_xml(
+            file,
+            ip,
+            username,
+            password,
+            is_listener,
+            &mut namespace_numbers,
+        );
         config_strings.push(config_string);
     }
 
     // Combine all configuration strings into the final config file content
-    let config_content = format::generate_config_content(&influx_token, &config_strings);
+    let config_content =
+        format::generate_config_content(&influx_token, &config_strings, &namespace_numbers);
 
     // Write the config file to the folder
     let config_path = Path::new(folder).join("telegraf.conf");
