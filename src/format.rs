@@ -1,8 +1,28 @@
 use roxmltree::Document;
 
-pub fn generate_config_content(influx_token: &str, config_strings: &[String]) -> String {
+#[derive(Clone)]
+pub struct NamespaceInfo {
+    number: String,
+    file_name: String,
+}
+
+pub fn generate_config_content(
+    influx_token: &str,
+    config_strings: &[String],
+    namespace_infos: &[NamespaceInfo],
+) -> String {
+    let namespace_comments = namespace_infos
+        .iter()
+        .map(|ns| format!("# Namespace for file {}: {}", ns.file_name, ns.number))
+        .collect::<Vec<String>>()
+        .join("\n");
+
     format!(
-        r#"# Global tags can be specified here in key="value" format.
+        r#"{}
+
+##################################
+
+# Global tags can be specified here in key="value" format.
 [global_tags]
 
 # Configuration for telegraf agent
@@ -24,7 +44,6 @@ pub fn generate_config_content(influx_token: &str, config_strings: &[String]) ->
   ## Log only error level messages.
   # quiet = false
 
-  logtarget = "file"
   logfile = "/var/log/telegraf/telegraf.log"
   logfile_rotation_max_size = "25MB"
   logfile_rotation_max_archives = 4
@@ -41,6 +60,7 @@ pub fn generate_config_content(influx_token: &str, config_strings: &[String]) ->
 
 {}
 "#,
+        namespace_comments,
         influx_token,
         config_strings.join("\n\n")
     )
@@ -61,8 +81,9 @@ fn format_standard_config(
 name = "opcua"
 interval = "{}"
 endpoint = "opc.tcp://{}:4840"
-connect_timeout = "30s"
+connect_timeout = "300s"
 request_timeout = "10s"
+session_timeout = "5m"
 security_policy = "Basic256Sha256"
 security_mode = "SignAndEncrypt"
 certificate = ""
@@ -99,7 +120,7 @@ fn format_listener_config(
 name = "opcua_listener"
 endpoint = "opc.tcp://{}:4840"
 connect_fail_behavior = "ignore"
-connect_timeout = "30s"
+connect_timeout = "300s"
 request_timeout = "10s"
 session_timeout = "20m"
 security_policy = "Basic256Sha256"
@@ -130,6 +151,7 @@ pub fn parse_xml(
     username: &str,
     password: &str,
     is_listener: bool,
+    namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> String {
     let xml = std::fs::read_to_string(xml_file).expect("Unable to read file");
     let doc = Document::parse(&xml).expect("Unable to parse XML");
@@ -139,6 +161,16 @@ pub fn parse_xml(
     let mut namespace_number = String::new();
     std::io::stdin().read_line(&mut namespace_number).unwrap();
     let namespace_number = namespace_number.trim();
+    let file_name = std::path::Path::new(xml_file)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    namespace_infos.push(NamespaceInfo {
+        number: namespace_number.to_string().clone(),
+        file_name,
+    });
 
     // ask for intervals
     let mut interval = String::new();
@@ -157,12 +189,18 @@ pub fn parse_xml(
 
     let interval = if interval_input.is_empty() {
         if !is_listener {
-            "1000ms"
+            "1000ms".to_string()
         } else {
-            "1000ms"
+            "500ms".to_string()
         }
     } else {
-        interval_input
+        // Extract numeric part and append "ms"
+        let numeric_part: String = interval_input
+            .chars()
+            .take_while(|c| c.is_digit(10))
+            .collect();
+
+        format!("{}ms", numeric_part)
     };
 
     let mut nodes = Vec::new();
@@ -233,7 +271,7 @@ pub fn parse_xml(
             password,
             &group_name,
             namespace_number,
-            interval,
+            &interval,
             &nodes_str,
         )
     } else {
@@ -243,7 +281,7 @@ pub fn parse_xml(
             password,
             &group_name,
             namespace_number,
-            interval,
+            &interval,
             &nodes_str,
         )
     }

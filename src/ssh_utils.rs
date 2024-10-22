@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub fn send_and_restart_telegraf(
     config_path: &Path,
@@ -68,6 +68,7 @@ pub fn restart_telegraf_over_ssh(
     password: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("Restarting telegraf service on the remote host ..");
+    let start_time = Instant::now();
     let tcp = TcpStream::connect(remote_host)?;
     let mut session = Session::new()?;
     session.set_tcp_stream(tcp);
@@ -76,7 +77,7 @@ pub fn restart_telegraf_over_ssh(
 
     // Restart the service
     let mut channel = session.channel_session()?;
-    channel.exec("sudo systemctl restart telegraf")?;
+    channel.exec("sudo service telegraf restart")?;
     channel.send_eof()?;
     channel.wait_eof()?;
     channel.wait_close()?;
@@ -109,7 +110,7 @@ pub fn restart_telegraf_over_ssh(
 
         // Get more detailed status information
         let mut detailed_status_channel = session.channel_session()?;
-        detailed_status_channel.exec("sudo systemctl status telegraf")?;
+        detailed_status_channel.exec("sudo service telegraf status")?;
 
         let mut detailed_status = String::new();
         detailed_status_channel.read_to_string(&mut detailed_status)?;
@@ -141,6 +142,8 @@ pub fn restart_telegraf_over_ssh(
         } else {
             println!("No recent error logs found for Telegraf.");
         }
+        let elapsed_time = start_time.elapsed();
+        println!("Time taken to restart Telegraf: {:.2?}", elapsed_time);
     }
 
     Ok(())
@@ -150,10 +153,11 @@ pub fn backup_influxdb(
     iot_host: &str,
     iot_username: &str,
     iot_password: &str,
+    token: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let date = chrono::Utc::now().format("%Y-%m-%d-%H-%M").to_string();
     let backup_folder = format!("/tmp/influx_backup_{}", date);
-    let backup_command = format!("influx backup -p /var/lib/influxdb2 {}", backup_folder);
+    let backup_command = format!("influx backup -t {} {}", token, backup_folder);
 
     println!("Backing up InfluxDB to {}", backup_folder);
     execute_command_over_ssh(iot_host, iot_username, iot_password, &backup_command)?;
