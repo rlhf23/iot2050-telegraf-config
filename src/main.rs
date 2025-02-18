@@ -87,7 +87,7 @@ fn read_influx_token(token_folder: &str) -> String {
 fn main() {
     // Main function: Parses command-line arguments and either sends a config file or generates one based on XML files
     let matches = Command::new("IOT2050 config handler")
-        .version("0.4")
+        .version("0.5")
         .about("Generates a config file for Telegraf from XML files in the folder")
         .arg(
             Arg::new("folder")
@@ -330,6 +330,17 @@ fn main() {
     // Read token before generating files, because it can fail
     let influx_token = read_influx_token(token_folder);
 
+    // Prompt for bucket name
+    println!("Enter the bucket name (press Enter for default 'line'):");
+    let mut bucket_name = String::new();
+    std::io::stdin().read_line(&mut bucket_name).unwrap();
+    let bucket_name = bucket_name.trim();
+    let bucket_name = if bucket_name.is_empty() {
+        "line"
+    } else {
+        bucket_name
+    };
+
     let mut config_strings = Vec::new();
     let mut namespace_numbers = Vec::new();
     // Generate configuration strings for each XML file, checking whether it's a listener
@@ -347,8 +358,12 @@ fn main() {
     }
 
     // Combine all configuration strings into the final config file content
-    let config_content =
-        format::generate_config_content(&influx_token, &config_strings, &namespace_numbers);
+    let config_content = format::generate_config_content(
+        &influx_token,
+        bucket_name,
+        &config_strings,
+        &namespace_numbers,
+    );
 
     // Write the config file to the folder
     let config_path = Path::new(folder).join("telegraf.conf");
