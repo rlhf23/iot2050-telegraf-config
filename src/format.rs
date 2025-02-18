@@ -8,6 +8,7 @@ pub struct NamespaceInfo {
 
 pub fn generate_config_content(
     influx_token: &str,
+    bucket_name: &str,
     config_strings: &[String],
     namespace_infos: &[NamespaceInfo],
 ) -> String {
@@ -56,17 +57,18 @@ pub fn generate_config_content(
   urls = ["http://127.0.0.1:8086"]
   token = "{}"
   organization = "org"
-  bucket = "line"
+  bucket = "{}"
 
 {}
 "#,
         namespace_comments,
         influx_token,
+        bucket_name,
         config_strings.join("\n\n")
     )
 }
 
-fn format_standard_config(
+fn format_config(
     ip: &str,
     username: &str,
     password: &str,
@@ -74,67 +76,50 @@ fn format_standard_config(
     namespace_number: &str,
     interval: &str,
     nodes_str: &str,
+    is_listener: bool,
 ) -> String {
-    format!(
-        r#"
-[[inputs.opcua]]
-name = "opcua"
-interval = "{}"
-endpoint = "opc.tcp://{}:4840"
-connect_timeout = "300s"
-request_timeout = "10s"
-session_timeout = "5m"
-security_policy = "Basic256Sha256"
-security_mode = "SignAndEncrypt"
-certificate = ""
-private_key = ""
-auth_method = "UserName"
-username = "{}"
-password = "{}"
-timestamp = "source"
-client_trace = false
-    [[inputs.opcua.group]]
-      name = "{}"
-      namespace = "{}"
-      identifier_type = "i"
-      nodes = [
-        {}
-      ]
-    "#,
-        interval, ip, username, password, group_name, namespace_number, nodes_str
-    )
-}
+    let input_type = if is_listener {
+        "opcua_listener"
+    } else {
+        "opcua"
+    };
+    let name = if is_listener {
+        "opcua_listener"
+    } else {
+        "opcua"
+    };
+    let session_timeout = if is_listener { "20m" } else { "5m" };
+    let interval_key = if is_listener {
+        "sampling_interval"
+    } else {
+        "interval"
+    };
+    let extra_config = if is_listener {
+        "connect_fail_behavior = \"ignore\"\n  "
+    } else {
+        ""
+    };
 
-fn format_listener_config(
-    ip: &str,
-    username: &str,
-    password: &str,
-    group_name: &str,
-    namespace_number: &str,
-    interval: &str,
-    nodes_str: &str,
-) -> String {
     format!(
         r#"
-[[inputs.opcua_listener]]
-name = "opcua_listener"
-endpoint = "opc.tcp://{}:4840"
-connect_fail_behavior = "ignore"
-connect_timeout = "300s"
-request_timeout = "10s"
-session_timeout = "20m"
-security_policy = "Basic256Sha256"
-security_mode = "SignAndEncrypt"
-certificate = ""
-private_key = ""
-auth_method = "UserName"
-username = "{}"
-password = "{}"
-timestamp = "source"
-client_trace = false
-    [[inputs.opcua_listener.group]]
+[[inputs.{input_type}]]
+  name = "{name}"
+  endpoint = "opc.tcp://{}:4840"
+  {extra_config}connect_timeout = "300s"
+  request_timeout = "10s"
+  session_timeout = "{session_timeout}"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "source"
+  client_trace = false
+    [[inputs.{input_type}.group]]
       name = "{}"
-      sampling_interval = "{}"
+      {interval_key} = "{}"
       namespace = "{}"
       identifier_type = "i"
       nodes = [
@@ -264,25 +249,14 @@ pub fn parse_xml(
             .to_string()
     };
 
-    if is_listener {
-        format_listener_config(
-            ip,
-            username,
-            password,
-            &group_name,
-            namespace_number,
-            &interval,
-            &nodes_str,
-        )
-    } else {
-        format_standard_config(
-            ip,
-            username,
-            password,
-            &group_name,
-            namespace_number,
-            &interval,
-            &nodes_str,
-        )
-    }
+    format_config(
+        ip,
+        username,
+        password,
+        &group_name,
+        namespace_number,
+        &interval,
+        &nodes_str,
+        is_listener,
+    )
 }
