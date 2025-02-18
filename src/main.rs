@@ -91,66 +91,74 @@ fn main() {
         .about("Generates a config file for Telegraf from XML files in the folder")
         .arg(
             Arg::new("folder")
-                .short('f')
-                .long("folder")
-                .value_name("FOLDER")
-                .help("Sets the folder containing the XML files")
-                .default_value(get_default_path().into_os_string()),
+            .short('f')
+            .long("folder")
+            .value_name("FOLDER")
+            .help("Sets the folder containing the XML files")
+            .default_value(get_default_path().into_os_string()),
         )
         .arg(
             Arg::new("ip")
-                .short('i')
-                .long("ip")
-                .value_name("IP")
-                .help("Sets the OPC IP address")
-                .default_value(env!("DEFAULT_IP")),
+            .short('i')
+            .long("ip")
+            .value_name("IP")
+            .help("Sets the OPC IP address")
+            .default_value(env!("DEFAULT_IP")),
         )
         .arg(
             Arg::new("username")
-                .short('u')
-                .long("username")
-                .value_name("USERNAME")
-                .help("Sets the OPC username")
-                .default_value(env!("DEFAULT_USERNAME")),
+            .short('u')
+            .long("username")
+            .value_name("USERNAME")
+            .help("Sets the OPC username")
+            .default_value(env!("DEFAULT_USERNAME")),
         )
         .arg(
             Arg::new("password")
-                .short('p')
-                .long("password")
-                .value_name("PASSWORD")
-                .help("Sets the OPC password")
-                .default_value(env!("DEFAULT_PASSWORD")),
+            .short('p')
+            .long("password")
+            .value_name("PASSWORD")
+            .help("Sets the OPC password")
+            .default_value(env!("DEFAULT_PASSWORD")),
+        )
+        .arg(
+            Arg::new("iot_username")
+            .short('e')
+            .long("iot-username")
+            .value_name("IOT_USERNAME")
+            .help("Sets the IOT-2050 user name")
+            .default_value(env!("DEFAULT_IOT_USERNAME")),
         )
         .arg(
             Arg::new("iot_password")
-                .short('w')
-                .long("iot-password")
-                .value_name("IOT_PASSWORD")
-                .help("Sets the IOT-2050 password")
-                .default_value(env!("DEFAULT_IOT_PASSWORD")),
+            .short('w')
+            .long("iot-password")
+            .value_name("IOT_PASSWORD")
+            .help("Sets the IOT-2050 password")
+            .default_value(env!("DEFAULT_IOT_PASSWORD")),
         )
         .arg(
             Arg::new("iot_host")
-                .short('a')
-                .long("iot-host")
-                .value_name("IOT_HOST")
-                .help("Sets the IOT-2050 host address and port")
-                .default_value(env!("DEFAULT_IOT_IP")),
+            .short('a')
+            .long("iot-host")
+            .value_name("IOT_HOST")
+            .help("Sets the IOT-2050 host address and port")
+            .default_value(env!("DEFAULT_IOT_IP")),
         )
         .arg(
             Arg::new("token")
-                .short('t')
-                .long("token")
-                .value_name("TOKEN_FOLDER")
-                .help("Sets the location of the InfluxDB token.txt")
-                .default_value(get_default_path().into_os_string()),
+            .short('t')
+            .long("token")
+            .value_name("TOKEN_FOLDER")
+            .help("Sets the location of the InfluxDB token.txt")
+            .default_value(get_default_path().into_os_string()),
         )
         .arg(
             Arg::new("send")
-                .short('s')
-                .long("send")
-                .action(ArgAction::SetTrue)
-                .help("Sends the existing telegraf.conf file to the IOT-2050 and quits"),
+            .short('s')
+            .long("send")
+            .action(ArgAction::SetTrue)
+            .help("Sends the existing telegraf.conf file to the IOT-2050 and quits"),
         )
         .arg(
             Arg::new("backup_influx")
@@ -175,6 +183,7 @@ fn main() {
     let ip = matches.get_one::<String>("ip").unwrap();
     let username = matches.get_one::<String>("username").unwrap();
     let password = matches.get_one::<String>("password").unwrap();
+    let iot_username = matches.get_one::<String>("iot_username").unwrap();
     let iot_password = matches.get_one::<String>("iot_password").unwrap();
     let iot_host = matches.get_one::<String>("iot_host").unwrap();
     let token_folder = matches.get_one::<String>("token").unwrap();
@@ -212,7 +221,6 @@ fn main() {
     }
 
     let remote_path = "/etc/telegraf/telegraf.conf";
-    let iot_username = "root";
 
     // If the --send flag is set, attempt to only send the telegraf.conf file over SSH and restart Telegraf
     if matches.get_flag("send") {

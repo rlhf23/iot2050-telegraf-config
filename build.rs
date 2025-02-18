@@ -10,6 +10,7 @@ fn main() {
         ("DEFAULT_IP", "127.0.0.1"),
         ("DEFAULT_USERNAME", "admin"),
         ("DEFAULT_PASSWORD", "password"),
+        ("DEFAULT_IOT_USERNAME", "root"),
         ("DEFAULT_IOT_IP", "192.168.1.100"),
         ("DEFAULT_IOT_PASSWORD", "iotpassword"),
     ];
