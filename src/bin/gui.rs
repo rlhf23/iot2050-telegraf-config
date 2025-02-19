@@ -10,12 +10,29 @@ struct TelegrafApp {
     status_message: String,
 }
 
+impl TelegrafApp {
+    fn load_xml_files(&mut self) {
+        self.xml_files = std::fs::read_dir(&self.config.folder)
+            .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
+                    Some(path.to_str()?.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        self.selected_listener_files = vec![false; self.xml_files.len()];
+    }
+}
+
 impl Default for TelegrafApp {
     fn default() -> Self {
         let mut path = std::env::current_exe().unwrap();
         path.pop();
 
-        Self {
+        let mut app = Self {
             config: TelegrafConfig {
                 folder: path.clone(),
                 ip: env!("DEFAULT_IP").to_string(),
@@ -33,7 +50,9 @@ impl Default for TelegrafApp {
             selected_listener_files: Vec::new(),
             bucket_name: "line".to_string(),
             status_message: String::new(),
-        }
+        };
+        app.load_xml_files();
+        app
     }
 }
 
@@ -137,10 +156,11 @@ impl eframe::App for TelegrafApp {
             });
 
             // XML Files Section
-            if !self.xml_files.is_empty() {
-                ui.heading("XML Files");
+            ui.heading("XML Files");
+            if self.xml_files.is_empty() {
+                ui.label("No XML files found in the selected folder");
+            } else {
                 ui.label("Select files to be listeners (subscribers):");
-
                 for (i, file) in self.xml_files.iter().enumerate() {
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut self.selected_listener_files[i], "");
