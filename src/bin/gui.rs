@@ -1,6 +1,5 @@
 use eframe::egui;
 use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
-use std::path::PathBuf;
 
 struct TelegrafApp {
     config: TelegrafConfig,
@@ -16,7 +15,7 @@ impl TelegrafApp {
             .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
             .filter_map(|entry| {
                 let path = entry.ok()?.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
                     Some(path.to_str()?.to_string())
                 } else {
                     None
@@ -75,7 +74,7 @@ impl eframe::App for TelegrafApp {
                                 .filter_map(|entry| {
                                     let path = entry.ok()?.path();
                                     if path.is_file()
-                                        && path.extension().map_or(false, |ext| ext == "xml")
+                                        && path.extension().is_some_and(|ext| ext == "xml")
                                     {
                                         Some(path.to_str()?.to_string())
                                     } else {
