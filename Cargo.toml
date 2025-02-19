@@ -1,7 +1,15 @@
 [package]
 name = "sie_generate_config"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
+
+[[bin]]
+name = "sie_generate_config"
+path = "src/bin/cli.rs"
+
+[lib]
+name = "sie_generate_config"
+path = "src/lib.rs"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive", "string"] }
