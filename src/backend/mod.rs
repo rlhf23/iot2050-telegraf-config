@@ -1,5 +1,4 @@
 use crate::{error::TelegrafError, TelegrafConfig};
-use std::path::Path;
 
 use std::fs::{self, File};
 use std::io::Write;

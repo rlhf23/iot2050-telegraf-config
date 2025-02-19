@@ -1,6 +1,6 @@
 use clap::{Arg, ArgAction, Command};
 use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
-use std::fs::{self, File};
+use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -321,7 +321,7 @@ fn main() {
     };
 
     // Generate config
-    let config_content = match generator.generate_config(&xml_files, &listener_files) {
+    let _config_content = match generator.generate_config(&xml_files, &listener_files) {
         Ok(content) => content,
         Err(e) => {
             eprintln!("Failed to generate config: {}", e);
