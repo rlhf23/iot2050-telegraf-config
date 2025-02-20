@@ -217,12 +217,16 @@ impl eframe::App for TelegrafApp {
                                 "Interval (ms):"
                             };
                             ui.label(label);
-                            ui.text_edit_singleline(&mut file_config.interval_ms)
-                                .on_hover_text(if is_listener {
-                                    "Default: 500ms for listeners"
-                                } else {
-                                    "Default: 1000ms for regular files"
-                                });
+                            let default_interval = if is_listener { "500" } else { "1000" };
+                            ui.add(
+                                egui::TextEdit::singleline(&mut file_config.interval_ms)
+                                    .hint_text(default_interval),
+                            )
+                            .on_hover_text(if is_listener {
+                                "Default: 500ms for listeners"
+                            } else {
+                                "Default: 1000ms for regular files"
+                            });
                         });
                     });
                     ui.add_space(4.0);
