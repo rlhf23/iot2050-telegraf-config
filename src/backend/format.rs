@@ -136,16 +136,13 @@ pub fn parse_xml(
     username: &str,
     password: &str,
     is_listener: bool,
+    namespace_number: &str,
+    interval_ms: u64,
     namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> String {
     let xml = std::fs::read_to_string(xml_file).expect("Unable to read file");
     let doc = Document::parse(&xml).expect("Unable to parse XML");
 
-    // asking for individual namespace numbers
-    println!("----Enter the namespace number for {}:", xml_file);
-    let mut namespace_number = String::new();
-    std::io::stdin().read_line(&mut namespace_number).unwrap();
-    let namespace_number = namespace_number.trim();
     let file_name = std::path::Path::new(xml_file)
         .file_name()
         .and_then(|s| s.to_str())
@@ -153,40 +150,11 @@ pub fn parse_xml(
         .to_string();
 
     namespace_infos.push(NamespaceInfo {
-        number: namespace_number.to_string().clone(),
+        number: namespace_number.to_string(),
         file_name,
     });
 
-    // ask for intervals
-    let mut interval = String::new();
-    let interval_input = if !is_listener {
-        println!("{}", "----Enter the interval in ms (default 1000ms):");
-        std::io::stdin().read_line(&mut interval).unwrap();
-        interval.trim()
-    } else {
-        println!(
-            "{}",
-            "----Enter the sampling_interval in ms (default 1000ms):"
-        );
-        std::io::stdin().read_line(&mut interval).unwrap();
-        interval.trim()
-    };
-
-    let interval = if interval_input.is_empty() {
-        if !is_listener {
-            "1000ms".to_string()
-        } else {
-            "500ms".to_string()
-        }
-    } else {
-        // Extract numeric part and append "ms"
-        let numeric_part: String = interval_input
-            .chars()
-            .take_while(|c| c.is_digit(10))
-            .collect();
-
-        format!("{}ms", numeric_part)
-    };
+    let interval = format!("{}ms", interval_ms);
 
     let mut nodes = Vec::new();
 
