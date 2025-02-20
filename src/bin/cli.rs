@@ -315,10 +315,38 @@ fn main() {
     };
 
     // Create generator with complete config
-    let generator = match ConfigGenerator::new(config) {
+    let mut generator = match ConfigGenerator::new(config) {
         Ok(gen) => gen,
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
+
+    // Get namespace and interval for each XML file
+    for file in &xml_files {
+        println!("\nConfiguration for file: {}", file);
+
+        // Get namespace
+        println!("Enter the namespace number:");
+        let mut namespace = String::new();
+        std::io::stdin().read_line(&mut namespace).unwrap();
+        let namespace = namespace.trim().to_string();
+
+        // Get interval
+        let is_listener = listener_files.contains(file);
+        let default_interval = if is_listener { 500 } else { 1000 };
+        println!(
+            "Enter the interval in milliseconds (default {}ms):",
+            default_interval
+        );
+        let mut interval = String::new();
+        std::io::stdin().read_line(&mut interval).unwrap();
+        let interval_ms = if interval.trim().is_empty() {
+            default_interval
+        } else {
+            interval.trim().parse().unwrap_or(default_interval)
+        };
+
+        generator.set_file_config(file.clone(), namespace, interval_ms);
+    }
 
     // Generate config
     let _config_content = match generator.generate_config(&xml_files, &listener_files) {

@@ -6,8 +6,15 @@ use std::io::Write;
 mod format;
 mod ssh_utils;
 
+#[derive(Default)]
+pub struct FileConfig {
+    pub namespace: String,
+    pub interval_ms: u64,
+}
+
 pub struct ConfigGenerator {
     config: TelegrafConfig,
+    file_configs: std::collections::HashMap<String, FileConfig>,
 }
 
 impl ConfigGenerator {
@@ -20,7 +27,20 @@ impl ConfigGenerator {
             .validate_iot_host()
             .map_err(TelegrafError::ValidationError)?;
 
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            file_configs: std::collections::HashMap::new(),
+        })
+    }
+
+    pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64) {
+        self.file_configs.insert(
+            file_path,
+            FileConfig {
+                namespace,
+                interval_ms,
+            },
+        );
     }
 
     pub fn get_xml_files(&self) -> Result<Vec<String>, TelegrafError> {
@@ -51,12 +71,18 @@ impl ConfigGenerator {
         // Generate configuration strings for each XML file
         for file in xml_files {
             let is_listener = listener_files.contains(file);
+            let file_config = self.file_configs.get(file).ok_or_else(|| {
+                TelegrafError::ConfigError(format!("No configuration found for file: {}", file))
+            })?;
+
             let config_string = format::parse_xml(
                 file,
                 &self.config.ip,
                 &self.config.username,
                 &self.config.password,
                 is_listener,
+                &file_config.namespace,
+                file_config.interval_ms,
                 &mut namespace_numbers,
             );
             config_strings.push(config_string);
