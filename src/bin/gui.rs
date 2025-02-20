@@ -14,12 +14,12 @@ struct TelegrafApp {
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
     bucket_name: String,
     status_message: String,
+    token_file_path: std::path::PathBuf, // Store the complete token file path
 }
 
 impl TelegrafApp {
     fn load_token(&mut self) {
-        let token_path = self.config.token_folder.join("token.txt");
-        if let Ok(token_content) = std::fs::read_to_string(token_path) {
+        if let Ok(token_content) = std::fs::read_to_string(&self.token_file_path) {
             self.config.influx_token = Some(token_content.trim().to_string());
         }
     }
@@ -52,6 +52,8 @@ impl Default for TelegrafApp {
         let mut path = std::env::current_exe().unwrap();
         path.pop();
 
+        let token_file_path = path.join("token.txt");
+
         let mut app = Self {
             config: TelegrafConfig {
                 folder: path.clone(),
@@ -71,6 +73,7 @@ impl Default for TelegrafApp {
             file_configs: std::collections::HashMap::new(),
             bucket_name: "line".to_string(),
             status_message: String::new(),
+            token_file_path, // Default to token.txt in the current directory
         };
         app.load_xml_files();
         app.load_token();
@@ -91,7 +94,8 @@ impl eframe::App for TelegrafApp {
                     if ui.button("Browse").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.config.folder = path.clone();
-                            self.config.token_folder = path; // Update token folder as well
+                            self.config.token_folder = path.clone(); // Update token folder as well
+                            self.token_file_path = path.join("token.txt"); // Update
                             self.load_token(); // Read token from new folder
                                                // Update XML files list
                             self.xml_files = std::fs::read_dir(&self.config.folder)
@@ -164,14 +168,16 @@ impl eframe::App for TelegrafApp {
                         if ui.button("Browse").clicked() {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Text files", &["txt"])
+                                .set_file_name("token.txt") // Default filename suggestion
                                 .pick_file()
                             {
+                                self.token_file_path = path.clone();
                                 self.config.token_folder =
                                     path.parent().unwrap_or(&path).to_path_buf();
                                 self.load_token();
                             }
                         }
-                        ui.label(self.config.token_folder.to_string_lossy().to_string());
+                        ui.label(self.token_file_path.to_string_lossy().to_string());
                     });
                 });
             });
@@ -232,6 +238,33 @@ impl eframe::App for TelegrafApp {
             // Main Action Buttons
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
+                    // Validate that all namespace numbers are unique and provided
+                    let mut namespace_map: std::collections::HashMap<&str, Vec<&str>> =
+                        std::collections::HashMap::new();
+
+                    // Collect namespaces and their corresponding files
+                    for (file, config) in &self.file_configs {
+                        let namespace = config.namespace.trim();
+                        if namespace.is_empty() {
+                            self.status_message =
+                                format!("Error: No namespace provided for file: {}", file);
+                            return;
+                        }
+                        namespace_map.entry(namespace).or_default().push(file);
+                    }
+
+                    // Check for duplicate namespaces
+                    for (namespace, files) in &namespace_map {
+                        if files.len() > 1 {
+                            self.status_message = format!(
+                                "Error: Namespace {} is used by multiple files: {}",
+                                namespace,
+                                files.join(", ")
+                            );
+                            return;
+                        }
+                    }
+
                     self.config.bucket_name = self.bucket_name.clone();
                     self.config.listener_files = self
                         .xml_files
