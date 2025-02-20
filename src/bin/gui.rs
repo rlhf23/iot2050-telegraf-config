@@ -229,7 +229,7 @@ impl eframe::App for TelegrafApp {
                 ui.text_edit_singleline(&mut self.bucket_name);
             });
 
-            // Action Buttons
+            // Main Action Buttons
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
                     self.config.bucket_name = self.bucket_name.clone();
@@ -290,32 +290,39 @@ impl eframe::App for TelegrafApp {
                         }
                     }
                 }
+            });
 
-                if ui.button("Backup InfluxDB").clicked() {
-                    if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                        match generator.backup_influx() {
-                            Ok(_) => {
-                                self.status_message = "InfluxDB backup completed!".to_string();
-                            }
-                            Err(e) => {
-                                self.status_message = format!("Error backing up InfluxDB: {}", e);
+            // Other Commands Section
+            ui.collapsing("Other Commands", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Backup InfluxDB").clicked() {
+                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
+                            match generator.backup_influx() {
+                                Ok(_) => {
+                                    self.status_message = "InfluxDB backup completed!".to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        format!("Error backing up InfluxDB: {}", e);
+                                }
                             }
                         }
                     }
-                }
 
-                if ui.button("Backup Grafana").clicked() {
-                    if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                        match generator.backup_grafana() {
-                            Ok(_) => {
-                                self.status_message = "Grafana backup completed!".to_string();
-                            }
-                            Err(e) => {
-                                self.status_message = format!("Error backing up Grafana: {}", e);
+                    if ui.button("Backup Grafana").clicked() {
+                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
+                            match generator.backup_grafana() {
+                                Ok(_) => {
+                                    self.status_message = "Grafana backup completed!".to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        format!("Error backing up Grafana: {}", e);
+                                }
                             }
                         }
                     }
-                }
+                });
             });
 
             // Status Message
