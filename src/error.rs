@@ -6,6 +6,7 @@ pub enum TelegrafError {
     SshError(String),
     ValidationError(String),
     ConfigError(String),
+    DuplicateNodeError(String), // Add this variant
 }
 
 impl fmt::Display for TelegrafError {
@@ -15,6 +16,7 @@ impl fmt::Display for TelegrafError {
             TelegrafError::SshError(e) => write!(f, "SSH error: {}", e),
             TelegrafError::ValidationError(e) => write!(f, "Validation error: {}", e),
             TelegrafError::ConfigError(e) => write!(f, "Configuration error: {}", e),
+            TelegrafError::DuplicateNodeError(e) => write!(f, "Duplicate node error: {}", e),
         }
     }
 }

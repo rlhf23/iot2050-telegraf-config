@@ -1,3 +1,4 @@
+use crate::error::TelegrafError;
 use roxmltree::Document;
 
 #[derive(Clone)]
@@ -152,7 +153,7 @@ pub fn parse_xml(
     config: &OpcuaConfig,
     xml_file: &str,
     namespace_infos: &mut Vec<NamespaceInfo>,
-) -> String {
+) -> Result<String, TelegrafError> {
     let xml = std::fs::read_to_string(xml_file).expect("Unable to read file");
     let doc = Document::parse(&xml).expect("Unable to parse XML");
 
@@ -164,10 +165,11 @@ pub fn parse_xml(
 
     namespace_infos.push(NamespaceInfo {
         number: config.namespace_number.to_string(),
-        file_name,
+        file_name: file_name.clone(),
     });
 
     let mut nodes = Vec::new();
+    let mut node_names = std::collections::HashSet::new();
 
     let mut display_name = String::new();
     for variable in doc.descendants().filter(|n| n.has_tag_name("UAObject")) {
@@ -181,7 +183,7 @@ pub fn parse_xml(
                     .and_then(|n| n.text())
                 {
                     display_name = found_name.to_string();
-                    println!("##BrowseName for ns=2;i=1: {}", found_name);
+                    println!("# BrowseName for {}: {}", file_name, found_name);
                 }
             }
         }
@@ -206,6 +208,14 @@ pub fn parse_xml(
                 {
                     let var_mapping = var_mapping.replace('"', "");
                     name = var_mapping;
+                }
+
+                // Check for duplicate names
+                if !node_names.insert(name.clone()) {
+                    return Err(TelegrafError::DuplicateNodeError(format!(
+                        "Duplicate node name '{}' found in {}",
+                        name, xml_file
+                    )));
                 }
 
                 nodes.push(format!(
@@ -234,5 +244,5 @@ pub fn parse_xml(
         ..config.clone()
     };
 
-    format_config(&config_with_group, &nodes_str)
+    Ok(format_config(&config_with_group, &nodes_str))
 }
