@@ -12,11 +12,11 @@ pub enum TelegrafError {
 impl fmt::Display for TelegrafError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TelegrafError::IoError(e) => write!(f, "IO error: {}", e),
-            TelegrafError::SshError(e) => write!(f, "SSH error: {}", e),
-            TelegrafError::ValidationError(e) => write!(f, "Validation error: {}", e),
-            TelegrafError::ConfigError(e) => write!(f, "Configuration error: {}", e),
-            TelegrafError::DuplicateNodeError(e) => write!(f, "Duplicate node error: {}", e),
+            TelegrafError::IoError(e) => writeln!(f, "IO error:\n    {}", e),
+            TelegrafError::SshError(e) => writeln!(f, "SSH error:\n    {}", e),
+            TelegrafError::ValidationError(e) => writeln!(f, "Validation error:\n    {}", e),
+            TelegrafError::ConfigError(e) => writeln!(f, "Configuration error:\n    {}", e),
+            TelegrafError::DuplicateNodeError(e) => writeln!(f, "Duplicate node error:\n    {}", e),
         }
     }
 }

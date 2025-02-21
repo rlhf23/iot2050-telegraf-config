@@ -40,9 +40,7 @@ impl TelegrafApp {
 
         // Initialize configs for new files
         for file in &self.xml_files {
-            self.file_configs
-                .entry(file.clone())
-                .or_insert_with(XmlFileConfig::default);
+            self.file_configs.entry(file.clone()).or_default();
         }
     }
 }
@@ -191,10 +189,7 @@ impl eframe::App for TelegrafApp {
                 for (i, file) in self.xml_files.iter().enumerate() {
                     ui.group(|ui| {
                         // Get or create config for this file
-                        let file_config = self
-                            .file_configs
-                            .entry(file.clone())
-                            .or_insert_with(XmlFileConfig::default);
+                        let file_config = self.file_configs.entry(file.clone()).or_default();
 
                         // File name and listener checkbox
                         ui.horizontal(|ui| {
