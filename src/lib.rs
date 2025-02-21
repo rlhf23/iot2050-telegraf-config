@@ -36,9 +36,7 @@ impl TelegrafConfig {
     pub fn validate_iot_host(&self) -> Result<(), String> {
         let iot_host_parts: Vec<&str> = self.iot_host.split(':').collect();
         let iot_host_valid = iot_host_parts.len() == 2
-            && iot_host_parts[1]
-                .parse::<u16>()
-                .map_or(false, |port| port > 0);
+            && iot_host_parts[1].parse::<u16>().is_ok_and(|port| port > 0);
 
         if !iot_host_valid {
             return Err(format!(

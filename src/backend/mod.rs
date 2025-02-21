@@ -85,7 +85,8 @@ impl ConfigGenerator {
                 interval_ms: file_config.interval_ms,
             };
 
-            let config_string = format::parse_xml(&config, file, &mut namespace_numbers);
+            let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
             config_strings.push(config_string);
         }
 
