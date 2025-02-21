@@ -48,7 +48,7 @@ impl ConfigGenerator {
             .map_err(TelegrafError::IoError)?
             .filter_map(|entry| {
                 let path = entry.ok()?.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
                     Some(path.to_str()?.to_string())
                 } else {
                     None
@@ -75,16 +75,17 @@ impl ConfigGenerator {
                 TelegrafError::ConfigError(format!("No configuration found for file: {}", file))
             })?;
 
-            let config_string = format::parse_xml(
-                file,
-                &self.config.ip,
-                &self.config.username,
-                &self.config.password,
+            let config = format::OpcuaConfig {
+                ip: &self.config.ip,
+                username: &self.config.username,
+                password: &self.config.password,
                 is_listener,
-                &file_config.namespace,
-                file_config.interval_ms,
-                &mut namespace_numbers,
-            );
+                group_name: "", // This will be determined in parse_xml
+                namespace_number: &file_config.namespace,
+                interval_ms: file_config.interval_ms,
+            };
+
+            let config_string = format::parse_xml(&config, file, &mut namespace_numbers);
             config_strings.push(config_string);
         }
 
@@ -96,7 +97,7 @@ impl ConfigGenerator {
             .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?;
 
         // Generate the final config content
-        let config_content = format::generate_config_content(
+        let config_content = format::format_config_header(
             influx_token,
             &self.config.bucket_name,
             &config_strings,
@@ -105,11 +106,11 @@ impl ConfigGenerator {
 
         // Write to file
         let config_path = self.config.folder.join("telegraf.conf");
-        let mut config_file = File::create(&config_path).map_err(|e| TelegrafError::IoError(e))?;
+        let mut config_file = File::create(&config_path).map_err(TelegrafError::IoError)?;
 
         config_file
             .write_all(config_content.as_bytes())
-            .map_err(|e| TelegrafError::IoError(e))?;
+            .map_err(TelegrafError::IoError)?;
 
         Ok(config_content)
     }

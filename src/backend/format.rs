@@ -6,7 +6,27 @@ pub struct NamespaceInfo {
     file_name: String,
 }
 
-pub fn generate_config_content(
+#[derive(Clone)]
+pub struct OpcuaConfig<'a> {
+    // Connection settings
+    pub ip: &'a str,
+    pub username: &'a str,
+    pub password: &'a str,
+    pub is_listener: bool,
+
+    // Group settings
+    pub group_name: &'a str,
+    pub namespace_number: &'a str,
+    pub interval_ms: u64, // Store as u64 and format when needed
+}
+
+impl OpcuaConfig<'_> {
+    fn get_interval_string(&self) -> String {
+        format!("{}ms", self.interval_ms)
+    }
+}
+
+pub fn format_config_header(
     influx_token: &str,
     bucket_name: &str,
     config_strings: &[String],
@@ -68,37 +88,29 @@ pub fn generate_config_content(
     )
 }
 
-fn format_config(
-    ip: &str,
-    username: &str,
-    password: &str,
-    group_name: &str,
-    namespace_number: &str,
-    interval: &str,
-    nodes_str: &str,
-    is_listener: bool,
-) -> String {
-    let input_type = if is_listener {
+fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+    let input_type = if config.is_listener {
         "opcua_listener"
     } else {
         "opcua"
     };
-    let name = if is_listener {
+    let name = if config.is_listener {
         "opcua_listener"
     } else {
         "opcua"
-    };
-    let session_timeout = if is_listener { "20m" } else { "5m" };
-    let interval_key = if is_listener {
+    }; // #TODO: find out if this is necessary
+    let session_timeout = if config.is_listener { "20m" } else { "5m" };
+    let interval_key = if config.is_listener {
         "sampling_interval"
     } else {
         "interval"
     };
-    let extra_config = if is_listener {
+    let extra_config = if config.is_listener {
         "connect_fail_behavior = \"ignore\"\n  "
     } else {
         ""
     };
+    let interval = config.get_interval_string();
 
     format!(
         r#"
@@ -126,18 +138,19 @@ fn format_config(
         {}
       ]
     "#,
-        ip, username, password, group_name, interval, namespace_number, nodes_str
+        config.ip,
+        config.username,
+        config.password,
+        config.group_name,
+        interval,
+        config.namespace_number,
+        nodes_str
     )
 }
 
 pub fn parse_xml(
+    config: &OpcuaConfig,
     xml_file: &str,
-    ip: &str,
-    username: &str,
-    password: &str,
-    is_listener: bool,
-    namespace_number: &str,
-    interval_ms: u64,
     namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> String {
     let xml = std::fs::read_to_string(xml_file).expect("Unable to read file");
@@ -150,11 +163,9 @@ pub fn parse_xml(
         .to_string();
 
     namespace_infos.push(NamespaceInfo {
-        number: namespace_number.to_string(),
+        number: config.namespace_number.to_string(),
         file_name,
     });
-
-    let interval = format!("{}ms", interval_ms);
 
     let mut nodes = Vec::new();
 
@@ -208,8 +219,9 @@ pub fn parse_xml(
     let nodes_str = nodes.join(",\n        ");
 
     let group_name = if !display_name.is_empty() {
-        display_name.to_string()
+        display_name
     } else {
+        //TODO: should always find one tbh
         std::path::Path::new(xml_file)
             .file_stem()
             .and_then(|s| s.to_str())
@@ -217,14 +229,10 @@ pub fn parse_xml(
             .to_string()
     };
 
-    format_config(
-        ip,
-        username,
-        password,
-        &group_name,
-        namespace_number,
-        &interval,
-        &nodes_str,
-        is_listener,
-    )
+    let config_with_group = OpcuaConfig {
+        group_name: &group_name,
+        ..config.clone()
+    };
+
+    format_config(&config_with_group, &nodes_str)
 }
