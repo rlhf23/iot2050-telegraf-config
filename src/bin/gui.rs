@@ -12,9 +12,9 @@ struct TelegrafApp {
     xml_files: Vec<String>,
     selected_listener_files: Vec<bool>, // Checkboxes for listener selection
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
-    bucket_name: String,
     status_message: String,
     token_file_path: std::path::PathBuf, // Store the complete token file path
+    show_namespace_error: bool,          // Track if we should show namespace errors
 }
 
 impl TelegrafApp {
@@ -62,16 +62,16 @@ impl Default for TelegrafApp {
                 iot_username: env!("DEFAULT_IOT_USERNAME").to_string(),
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
                 token_folder: path,
-                bucket_name: "line".to_string(),
+                bucket_name: String::new(),
                 influx_token: None,
                 listener_files: Vec::new(),
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
             file_configs: std::collections::HashMap::new(),
-            bucket_name: "line".to_string(),
             status_message: String::new(),
             token_file_path, // Default to token.txt in the current directory
+            show_namespace_error: false,
         };
         app.load_xml_files();
         app.load_token();
@@ -200,7 +200,17 @@ impl eframe::App for TelegrafApp {
                         // Namespace input
                         ui.horizontal(|ui| {
                             ui.label("Namespace:");
-                            ui.text_edit_singleline(&mut file_config.namespace);
+                            let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
+                            if self.show_namespace_error {
+                                egui::Frame::none()
+                                    .stroke(egui::Stroke::new(
+                                        1.0,
+                                        egui::Color32::from_rgb(255, 0, 0),
+                                    ))
+                                    .show(ui, |ui| ui.add(text_edit));
+                            } else {
+                                ui.add(text_edit);
+                            }
                         });
 
                         // Interval input
@@ -231,12 +241,13 @@ impl eframe::App for TelegrafApp {
             // Bucket Configuration
             ui.horizontal(|ui| {
                 ui.label("Bucket Name:");
-                ui.text_edit_singleline(&mut self.bucket_name);
+                ui.add(egui::TextEdit::singleline(&mut self.config.bucket_name).hint_text("line"));
             });
 
             // Main Action Buttons
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
+                    self.show_namespace_error = false;
                     // Validate that all namespace numbers are unique and provided
                     let mut namespace_map: std::collections::HashMap<&str, Vec<&str>> =
                         std::collections::HashMap::new();
@@ -247,6 +258,7 @@ impl eframe::App for TelegrafApp {
                         if namespace.is_empty() {
                             self.status_message =
                                 format!("Error: No namespace provided for file: {}", file);
+                            self.show_namespace_error = true;
                             return;
                         }
                         namespace_map.entry(namespace).or_default().push(file);
@@ -260,11 +272,16 @@ impl eframe::App for TelegrafApp {
                                 namespace,
                                 files.join(", ")
                             );
+                            self.show_namespace_error = true;
                             return;
                         }
                     }
 
-                    self.config.bucket_name = self.bucket_name.clone();
+                    self.config.bucket_name = if self.config.bucket_name.is_empty() {
+                        "line".to_string()
+                    } else {
+                        self.config.bucket_name.clone()
+                    };
                     self.config.listener_files = self
                         .xml_files
                         .iter()
