@@ -158,4 +158,23 @@ impl ConfigGenerator {
         )
         .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
+
+    pub fn get_telegraf_status(&self) -> Result<String, TelegrafError> {
+        ssh_utils::get_telegraf_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+        )
+        .map_err(|e| TelegrafError::SshError(e.to_string()))
+    }
+
+    pub fn get_telegraf_logs(&self, lines: usize) -> Result<String, TelegrafError> {
+        ssh_utils::get_telegraf_logs(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            lines,
+        )
+        .map_err(|e| TelegrafError::SshError(e.to_string()))
+    }
 }
