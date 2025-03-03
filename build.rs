@@ -7,12 +7,12 @@ fn main() {
 
     // List of environment variables to process with default values
     let vars = vec![
-        ("DEFAULT_IP", "127.0.0.1"),
+        ("DEFAULT_IP", "192.168.1.1"),
         ("DEFAULT_USERNAME", "admin"),
         ("DEFAULT_PASSWORD", "password"),
         ("DEFAULT_IOT_USERNAME", "root"),
-        ("DEFAULT_IOT_IP", "192.168.1.100"),
         ("DEFAULT_IOT_PASSWORD", "iotpassword"),
+        ("DEFAULT_IOT_IP", "192.168.1.100:22"),
     ];
 
     for (var, default_value) in vars {

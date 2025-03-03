@@ -1,3 +1,4 @@
+use crate::error::TelegrafError;
 use roxmltree::Document;
 
 #[derive(Clone)]
@@ -6,7 +7,27 @@ pub struct NamespaceInfo {
     file_name: String,
 }
 
-pub fn generate_config_content(
+#[derive(Clone)]
+pub struct OpcuaConfig<'a> {
+    // Connection settings
+    pub ip: &'a str,
+    pub username: &'a str,
+    pub password: &'a str,
+    pub is_listener: bool,
+
+    // Group settings
+    pub group_name: &'a str,
+    pub namespace_number: &'a str,
+    pub interval_ms: u64, // Store as u64 and format when needed
+}
+
+impl OpcuaConfig<'_> {
+    fn get_interval_string(&self) -> String {
+        format!("{}ms", self.interval_ms)
+    }
+}
+
+pub fn format_config_header(
     influx_token: &str,
     bucket_name: &str,
     config_strings: &[String],
@@ -68,37 +89,29 @@ pub fn generate_config_content(
     )
 }
 
-fn format_config(
-    ip: &str,
-    username: &str,
-    password: &str,
-    group_name: &str,
-    namespace_number: &str,
-    interval: &str,
-    nodes_str: &str,
-    is_listener: bool,
-) -> String {
-    let input_type = if is_listener {
+fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+    let input_type = if config.is_listener {
         "opcua_listener"
     } else {
         "opcua"
     };
-    let name = if is_listener {
+    let name = if config.is_listener {
         "opcua_listener"
     } else {
         "opcua"
-    };
-    let session_timeout = if is_listener { "20m" } else { "5m" };
-    let interval_key = if is_listener {
+    }; // #TODO: find out if this is necessary
+    let session_timeout = if config.is_listener { "20m" } else { "5m" };
+    let interval_key = if config.is_listener {
         "sampling_interval"
     } else {
         "interval"
     };
-    let extra_config = if is_listener {
+    let extra_config = if config.is_listener {
         "connect_fail_behavior = \"ignore\"\n  "
     } else {
         ""
     };
+    let interval = config.get_interval_string();
 
     format!(
         r#"
@@ -126,26 +139,24 @@ fn format_config(
         {}
       ]
     "#,
-        ip, username, password, group_name, interval, namespace_number, nodes_str
+        config.ip,
+        config.username,
+        config.password,
+        config.group_name,
+        interval,
+        config.namespace_number,
+        nodes_str
     )
 }
 
 pub fn parse_xml(
+    config: &OpcuaConfig,
     xml_file: &str,
-    ip: &str,
-    username: &str,
-    password: &str,
-    is_listener: bool,
     namespace_infos: &mut Vec<NamespaceInfo>,
-) -> String {
+) -> Result<String, TelegrafError> {
     let xml = std::fs::read_to_string(xml_file).expect("Unable to read file");
     let doc = Document::parse(&xml).expect("Unable to parse XML");
 
-    // asking for individual namespace numbers
-    println!("----Enter the namespace number for {}:", xml_file);
-    let mut namespace_number = String::new();
-    std::io::stdin().read_line(&mut namespace_number).unwrap();
-    let namespace_number = namespace_number.trim();
     let file_name = std::path::Path::new(xml_file)
         .file_name()
         .and_then(|s| s.to_str())
@@ -153,42 +164,12 @@ pub fn parse_xml(
         .to_string();
 
     namespace_infos.push(NamespaceInfo {
-        number: namespace_number.to_string().clone(),
-        file_name,
+        number: config.namespace_number.to_string(),
+        file_name: file_name.clone(),
     });
 
-    // ask for intervals
-    let mut interval = String::new();
-    let interval_input = if !is_listener {
-        println!("{}", "----Enter the interval in ms (default 1000ms):");
-        std::io::stdin().read_line(&mut interval).unwrap();
-        interval.trim()
-    } else {
-        println!(
-            "{}",
-            "----Enter the sampling_interval in ms (default 1000ms):"
-        );
-        std::io::stdin().read_line(&mut interval).unwrap();
-        interval.trim()
-    };
-
-    let interval = if interval_input.is_empty() {
-        if !is_listener {
-            "1000ms".to_string()
-        } else {
-            "500ms".to_string()
-        }
-    } else {
-        // Extract numeric part and append "ms"
-        let numeric_part: String = interval_input
-            .chars()
-            .take_while(|c| c.is_digit(10))
-            .collect();
-
-        format!("{}ms", numeric_part)
-    };
-
     let mut nodes = Vec::new();
+    let mut node_names = std::collections::HashSet::new();
 
     let mut display_name = String::new();
     for variable in doc.descendants().filter(|n| n.has_tag_name("UAObject")) {
@@ -202,7 +183,7 @@ pub fn parse_xml(
                     .and_then(|n| n.text())
                 {
                     display_name = found_name.to_string();
-                    println!("##BrowseName for ns=2;i=1: {}", found_name);
+                    println!("# BrowseName for {}: {}", file_name, found_name);
                 }
             }
         }
@@ -229,6 +210,14 @@ pub fn parse_xml(
                     name = var_mapping;
                 }
 
+                // Check for duplicate names
+                if !node_names.insert(name.clone()) {
+                    return Err(TelegrafError::DuplicateNodeError(format!(
+                        "Duplicate node name '{}' found in {}",
+                        name, xml_file
+                    )));
+                }
+
                 nodes.push(format!(
                     "{{name=\"{}\", identifier=\"{}\"}}",
                     name, identifier
@@ -240,8 +229,9 @@ pub fn parse_xml(
     let nodes_str = nodes.join(",\n        ");
 
     let group_name = if !display_name.is_empty() {
-        display_name.to_string()
+        display_name
     } else {
+        //TODO: should always find one tbh
         std::path::Path::new(xml_file)
             .file_stem()
             .and_then(|s| s.to_str())
@@ -249,14 +239,10 @@ pub fn parse_xml(
             .to_string()
     };
 
-    format_config(
-        ip,
-        username,
-        password,
-        &group_name,
-        namespace_number,
-        &interval,
-        &nodes_str,
-        is_listener,
-    )
+    let config_with_group = OpcuaConfig {
+        group_name: &group_name,
+        ..config.clone()
+    };
+
+    Ok(format_config(&config_with_group, &nodes_str))
 }
