@@ -1,10 +1,14 @@
 use clap::{Arg, ArgAction, Command};
-use std::fs::{self, File};
+use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
+use std::fs;
 use std::io::{self, Read, Write};
-use std::{env, path::Path, path::PathBuf};
+use std::path::{Path, PathBuf};
 
-mod format;
-mod ssh_utils;
+fn get_default_path() -> PathBuf {
+    let mut path = std::env::current_exe().unwrap();
+    path.pop();
+    path
+}
 
 fn print_config(matches: &clap::ArgMatches) {
     println!("Current configuration:");
@@ -29,20 +33,18 @@ fn print_config(matches: &clap::ArgMatches) {
     println!("=====================\n");
 }
 
-fn get_default_path() -> PathBuf {
-    // Returns the default path by getting the current executable's directory
-    let mut path = env::current_exe().unwrap();
-    path.pop();
-    path
-}
-
-fn wrap_up(exit_code: i32) {
+fn wrap_up(exit_code: i32) -> ! {
     if cfg!(target_os = "windows") {
         println!("Press enter to exit");
         io::stdout().flush().unwrap();
         let _ = io::stdin().read(&mut [0]).unwrap();
     }
-    std::process::exit(exit_code);
+    std::process::exit(exit_code)
+}
+
+fn exit_with_error(error: impl std::fmt::Display) -> ! {
+    eprintln!("Error: {}", error);
+    wrap_up(1)
 }
 
 fn read_influx_token(token_folder: &str) -> String {
@@ -85,9 +87,8 @@ fn read_influx_token(token_folder: &str) -> String {
 }
 
 fn main() {
-    // Main function: Parses command-line arguments and either sends a config file or generates one based on XML files
     let matches = Command::new("IOT2050 config handler")
-        .version("0.5")
+        .version("0.6")
         .about("Generates a config file for Telegraf from XML files in the folder")
         .arg(
             Arg::new("folder")
@@ -179,110 +180,90 @@ fn main() {
     // print the current config
     print_config(&matches);
 
-    let folder = matches.get_one::<String>("folder").unwrap();
-    let ip = matches.get_one::<String>("ip").unwrap();
-    let username = matches.get_one::<String>("username").unwrap();
-    let password = matches.get_one::<String>("password").unwrap();
-    let iot_username = matches.get_one::<String>("iot_username").unwrap();
-    let iot_password = matches.get_one::<String>("iot_password").unwrap();
-    let iot_host = matches.get_one::<String>("iot_host").unwrap();
-    let token_folder = matches.get_one::<String>("token").unwrap();
-
-    // Check if IP address is valid IPv4 format
-    let ip_valid = ip
-        .split('.')
-        .filter(|part| part.parse::<u8>().is_ok())
-        .count()
-        == 4;
-
-    if !ip_valid {
-        eprintln!(
-            "Error: Invalid IP address format for '{}', expecting something like: 192.168.0.1",
-            ip
-        );
-        wrap_up(1);
-    }
-
-    // Check if IOT host IP address is valid
-    let iot_host_valid = {
-        let iot_host_parts: Vec<&str> = iot_host.split(':').collect();
-        iot_host_parts.len() == 2
-            && iot_host_parts[1]
-                .parse::<u16>()
-                .map_or(false, |port| port > 0)
+    let mut config = TelegrafConfig {
+        folder: matches.get_one::<String>("folder").unwrap().into(),
+        ip: matches.get_one::<String>("ip").unwrap().to_string(),
+        username: matches.get_one::<String>("username").unwrap().to_string(),
+        password: matches.get_one::<String>("password").unwrap().to_string(),
+        iot_host: matches.get_one::<String>("iot_host").unwrap().to_string(),
+        iot_username: matches
+            .get_one::<String>("iot_username")
+            .unwrap()
+            .to_string(),
+        iot_password: matches
+            .get_one::<String>("iot_password")
+            .unwrap()
+            .to_string(),
+        token_folder: matches.get_one::<String>("token").unwrap().into(),
+        bucket_name: String::from("line"),
+        influx_token: None,
+        listener_files: Vec::new(),
     };
 
-    if !iot_host_valid {
-        eprintln!(
-            "Error: Invalid IOT host format for '{}', expecting something like: 192.168.0.1:22",
-            iot_host
-        );
-        wrap_up(1);
-    }
+    // For operations that don't need full config setup
+    if matches.get_flag("send")
+        || matches.get_flag("backup_influx")
+        || matches.get_flag("backup_grafana")
+    {
+        // Create a clone of config for early operations
+        let mut early_config = config.clone();
 
-    let remote_path = "/etc/telegraf/telegraf.conf";
-
-    // If the --send flag is set, attempt to only send the telegraf.conf file over SSH and restart Telegraf
-    if matches.get_flag("send") {
-        let config_path = Path::new(folder).join("telegraf.conf");
-        if !config_path.exists() {
-            eprintln!("Error: telegraf.conf file does not exist in the specified folder.");
-            wrap_up(1);
+        // Set influx token if needed for backup
+        if matches.get_flag("backup_influx") {
+            early_config.influx_token = Some(read_influx_token(
+                &early_config.token_folder.to_string_lossy(),
+            ));
         }
-        if let Err(e) = ssh_utils::send_and_restart_telegraf(
-            &config_path,
-            remote_path,
-            iot_host,
-            iot_username,
-            iot_password,
-        ) {
-            eprintln!(
-                "Failed to send telegraf.conf file and restart Telegraf: {}",
-                e
-            );
-            wrap_up(1);
-        }
-        wrap_up(0);
-    }
 
-    // Check if the backup flag is set and perform backup if true
-    if matches.get_flag("backup_influx") {
-        let influx_token = read_influx_token(token_folder);
+        let generator = match ConfigGenerator::new(early_config) {
+            Ok(gen) => gen,
+            Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+        };
 
-        if let Err(e) =
-            ssh_utils::backup_influxdb(iot_host, iot_username, iot_password, &influx_token)
-        {
-            eprintln!("Failed to backup InfluxDB: {}", e);
-        }
-        wrap_up(0);
-    }
-
-    //check if the -g flag is set and perform backup if true
-    if matches.get_flag("backup_grafana") {
-        let iot_host = matches.get_one::<String>("iot_host").unwrap();
-        let iot_password = matches.get_one::<String>("iot_password").unwrap();
-        match ssh_utils::backup_grafana_config(iot_host, iot_username, iot_password) {
-            Ok(_) => println!("Grafana configuration backup completed successfully."),
-            Err(e) => eprintln!("Failed to backup Grafana configuration: {}", e),
-        }
-        wrap_up(0);
-    }
-
-    let xml_files: Vec<String> = fs::read_dir(folder)
-        // Collect all XML files from the specified folder for processing
-        .unwrap()
-        .filter_map(|entry| {
-            let path = entry.unwrap().path();
-            if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
-                Some(path.to_str().unwrap().to_string())
-            } else {
-                None
+        if matches.get_flag("send") {
+            if let Err(e) = generator.send_config() {
+                eprintln!("Failed to send config: {}", e);
+                wrap_up(1);
             }
-        })
-        .collect();
+            wrap_up(0);
+        }
+
+        if matches.get_flag("backup_influx") {
+            if let Err(e) = generator.backup_influx() {
+                eprintln!("Failed to backup InfluxDB: {}", e);
+                wrap_up(1);
+            }
+            wrap_up(0);
+        }
+
+        if matches.get_flag("backup_grafana") {
+            if let Err(e) = generator.backup_grafana() {
+                eprintln!("Failed to backup Grafana: {}", e);
+                wrap_up(1);
+            }
+            wrap_up(0);
+        }
+    }
+
+    // Get XML files
+    let xml_files = match fs::read_dir(&config.folder) {
+        Ok(entries) => entries
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
+                    Some(path.to_str()?.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<String>>(),
+        Err(e) => {
+            eprintln!("Failed to read XML files: {}", e);
+            wrap_up(1);
+        }
+    };
 
     if !xml_files.is_empty() {
-        // Notify the user about the found XML files and ask for confirmation to proceed
         println!("{}", "Found the following XML files in the folder:");
         for (index, file) in xml_files.iter().enumerate() {
             println!("{}. {}", index + 1, file);
@@ -290,14 +271,6 @@ fn main() {
     } else {
         println!("{}", "No XML files found in the folder.");
         println!("{}", "This is clearly your fault, not mine..");
-
-        if cfg!(target_os = "windows") {
-            println!("Press enter to exit");
-            io::stdout().flush().unwrap();
-            let _ = io::stdin().read(&mut [0]).unwrap();
-        }
-
-        println!("{}", "Aborting.");
         wrap_up(1);
     }
 
@@ -310,9 +283,10 @@ fn main() {
         println!("Aborting.");
         wrap_up(1);
     }
+
     println!("{}","OPC clients can be active (standard), pulling data every interval, or \npassive (subscribers), listening for changes.");
-    //println!("");
     println!("{}","Enter the indexes of the files that should be listeners (subscribers), \nseparated by commas (e.g., 1,3). If none, just press enter:");
+
     let mut listener_numbers = String::new();
     std::io::stdin().read_line(&mut listener_numbers).unwrap();
     let listener_indices: Vec<usize> = listener_numbers
@@ -320,90 +294,90 @@ fn main() {
         .split(',')
         .filter_map(|num| num.trim().parse::<usize>().ok())
         .filter(|&num| num > 0 && num <= xml_files.len())
-        .map(|num| num - 1) // Convert to 0-based index
+        .map(|num| num - 1)
         .collect();
+
     let listener_files: Vec<String> = listener_indices
         .iter()
         .map(|&index| xml_files[index].clone())
         .collect();
 
-    // Read token before generating files, because it can fail
-    let influx_token = read_influx_token(token_folder);
+    // Update config with influx token and bucket name
+    config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
 
-    // Prompt for bucket name
     println!("Enter the bucket name (press Enter for default 'line'):");
     let mut bucket_name = String::new();
     std::io::stdin().read_line(&mut bucket_name).unwrap();
-    let bucket_name = bucket_name.trim();
-    let bucket_name = if bucket_name.is_empty() {
-        "line"
+    config.bucket_name = if bucket_name.trim().is_empty() {
+        "line".to_string()
     } else {
-        bucket_name
+        bucket_name.trim().to_string()
     };
 
-    let mut config_strings = Vec::new();
-    let mut namespace_numbers = Vec::new();
-    // Generate configuration strings for each XML file, checking whether it's a listener
+    // Create generator with complete config
+    let mut generator = match ConfigGenerator::new(config) {
+        Ok(gen) => gen,
+        Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+    };
+
+    // Get namespace and interval for each XML file
     for file in &xml_files {
+        println!("\nConfiguration for file: {}", file);
+
+        // Get namespace
+        println!("Enter the namespace number:");
+        let mut namespace = String::new();
+        std::io::stdin().read_line(&mut namespace).unwrap();
+        let namespace = namespace.trim().to_string();
+
+        // Get interval
         let is_listener = listener_files.contains(file);
-        let config_string = format::parse_xml(
-            file,
-            ip,
-            username,
-            password,
-            is_listener,
-            &mut namespace_numbers,
+        let default_interval = if is_listener { 500 } else { 1000 };
+        println!(
+            "Enter the interval in milliseconds (default {}ms):",
+            default_interval
         );
-        config_strings.push(config_string);
+        let mut interval = String::new();
+        std::io::stdin().read_line(&mut interval).unwrap();
+        let interval_ms = if interval.trim().is_empty() {
+            default_interval
+        } else {
+            interval.trim().parse().unwrap_or(default_interval)
+        };
+
+        generator.set_file_config(file.clone(), namespace, interval_ms);
     }
 
-    // Combine all configuration strings into the final config file content
-    let config_content = format::generate_config_content(
-        &influx_token,
-        bucket_name,
-        &config_strings,
-        &namespace_numbers,
-    );
-
-    // Write the config file to the folder
-    let config_path = Path::new(folder).join("telegraf.conf");
-    let mut config_file = File::create(&config_path).unwrap();
-    config_file.write_all(config_content.as_bytes()).unwrap();
+    // Generate config
+    let _config_content = match generator.generate_config(&xml_files, &listener_files) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Failed to generate config: {}", e);
+            wrap_up(1);
+        }
+    };
 
     println!("{}", "Config file generated successfully!");
 
-    // Ask the user if they want to automatically send the generated config file to the IOT box
     println!(
         "{}",
         "Do you want to send the config file to the IOT box? (y/N)"
     );
-
     let mut user_input = String::new();
     std::io::stdin().read_line(&mut user_input).unwrap();
+
     if user_input.trim().eq_ignore_ascii_case("y") {
-        let config_path = Path::new(folder).join("telegraf.conf");
-        if !config_path.exists() {
-            eprintln!("Error: telegraf.conf file does not exist in the specified folder.");
+        if let Err(e) = generator.send_config() {
+            eprintln!("Failed to send config: {}", e);
             wrap_up(1);
         }
-        if let Err(e) = ssh_utils::send_and_restart_telegraf(
-            &config_path,
-            remote_path,
-            iot_host,
-            iot_username,
-            iot_password,
-        ) {
-            eprintln!(
-                "Failed to send telegraf.conf file and restart Telegraf: {}",
-                e
-            );
-        }
-        wrap_up(1);
+        println!("Config sent successfully!");
     } else {
         println!(
             "{}",
             "Config file generated. Please copy it and run telegraf manually."
         );
-        wrap_up(0);
     }
+
+    wrap_up(0);
 }
