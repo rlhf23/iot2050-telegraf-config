@@ -372,6 +372,36 @@ impl eframe::App for TelegrafApp {
                         }
                     }
                 });
+                
+                ui.horizontal(|ui| {
+                    if ui.button("Get Telegraf Status").clicked() {
+                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
+                            match generator.get_telegraf_status() {
+                                Ok(status) => {
+                                    self.status_message = format!("Telegraf Status:\n{}", status);
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        format!("Error getting Telegraf status: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    
+                    if ui.button("Get Telegraf Logs").clicked() {
+                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
+                            match generator.get_telegraf_logs(30) {
+                                Ok(logs) => {
+                                    self.status_message = format!("Telegraf Logs (Last 30 lines):\n{}", logs);
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        format!("Error getting Telegraf logs: {}", e);
+                                }
+                            }
+                        }
+                    }
+                });
             });
 
             // Status Message
