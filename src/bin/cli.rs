@@ -30,6 +30,7 @@ fn print_config(matches: &clap::ArgMatches) {
     println!("Send config: {}", matches.get_flag("send"));
     println!("Backup InfluxDB: {}", matches.get_flag("backup_influx"));
     println!("Backup Grafana: {}", matches.get_flag("backup_grafana"));
+    println!("Output format: {}", matches.get_one::<String>("output_format").unwrap());
     println!("=====================\n");
 }
 
@@ -175,6 +176,14 @@ fn main() {
             .action(ArgAction::SetTrue)
             .help("Backs up the Grafana configuration from the IOT-2050 and copies it to the current working directory"),
         )
+        .arg(
+            Arg::new("output_format")
+            .short('o')
+            .long("output-format")
+            .value_name("FORMAT")
+            .help("Sets the output format (influxdb or prometheus)")
+            .default_value("influxdb"),
+        )
         .get_matches();
 
     // print the current config
@@ -198,6 +207,7 @@ fn main() {
         bucket_name: String::from("line"),
         influx_token: None,
         listener_files: Vec::new(),
+        output_format: Some(matches.get_one::<String>("output_format").unwrap().to_string()),
     };
 
     // For operations that don't need full config setup

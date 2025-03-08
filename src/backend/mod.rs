@@ -6,6 +6,8 @@ use std::io::Write;
 mod format;
 mod ssh_utils;
 
+pub use format::OutputFormat;
+
 #[derive(Default)]
 pub struct FileConfig {
     pub namespace: String,
@@ -15,6 +17,7 @@ pub struct FileConfig {
 pub struct ConfigGenerator {
     config: TelegrafConfig,
     file_configs: std::collections::HashMap<String, FileConfig>,
+    output_format: OutputFormat,
 }
 
 impl ConfigGenerator {
@@ -27,10 +30,21 @@ impl ConfigGenerator {
             .validate_iot_host()
             .map_err(TelegrafError::ValidationError)?;
 
+        // Determine output format from config or default to InfluxDB
+        let output_format = match config.output_format.as_deref() {
+            Some("prometheus") => OutputFormat::Prometheus,
+            _ => OutputFormat::InfluxDB, // Default to InfluxDB for None or any other value
+        };
+
         Ok(Self {
             config,
             file_configs: std::collections::HashMap::new(),
+            output_format,
         })
+    }
+    
+    pub fn set_output_format(&mut self, output_format: OutputFormat) {
+        self.output_format = output_format;
     }
 
     pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64) {
@@ -103,6 +117,7 @@ impl ConfigGenerator {
             &self.config.bucket_name,
             &config_strings,
             &namespace_numbers,
+            self.output_format,
         );
 
         // Write to file
