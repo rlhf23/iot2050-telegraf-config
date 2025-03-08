@@ -104,12 +104,16 @@ impl ConfigGenerator {
             config_strings.push(config_string);
         }
 
-        // Get the influx token if not already set
-        let influx_token = self
-            .config
-            .influx_token
-            .as_ref()
-            .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?;
+        // Get the influx token if not already set (only needed for InfluxDB output)
+        let influx_token = if self.output_format == OutputFormat::InfluxDB {
+            self.config
+                .influx_token
+                .as_ref()
+                .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?
+        } else {
+            // For Prometheus, we don't need an influx token, so use empty string
+            ""
+        };
 
         // Generate the final config content
         let config_content = format::format_config_header(
@@ -150,6 +154,7 @@ impl ConfigGenerator {
     }
 
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
+        // Ensure we have an InfluxDB token
         let influx_token = self
             .config
             .influx_token

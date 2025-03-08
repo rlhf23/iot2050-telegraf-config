@@ -65,6 +65,7 @@ impl Default for TelegrafApp {
                 bucket_name: String::new(),
                 influx_token: None,
                 listener_files: Vec::new(),
+                output_format: Some("influxdb".to_string()),
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
@@ -150,33 +151,53 @@ impl eframe::App for TelegrafApp {
                         );
                     });
 
-                    // InfluxDB Token
+                    // Calculate is_prometheus value once
+                    let mut is_prometheus = self.config.output_format.clone().unwrap_or_else(|| "influxdb".to_string()) == "prometheus";
+                    
+                    // Output Format Toggle
                     ui.separator();
-                    let mut token = self.config.influx_token.clone().unwrap_or_default();
                     ui.horizontal(|ui| {
-                        ui.label("InfluxDB Token:");
-                        if ui.text_edit_singleline(&mut token).changed() {
-                            self.config.influx_token = Some(token);
+                        ui.label("Output Format:");
+                        
+                        let toggle_text = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+                        if ui.button(toggle_text).clicked() {
+                            is_prometheus = !is_prometheus;
+                            self.config.output_format = Some(if is_prometheus { "prometheus".to_string() } else { "influxdb".to_string() });
                         }
+                        
+                        ui.label(if is_prometheus { "(exposes metrics via HTTP)" } else { "(sends to InfluxDB)" });
                     });
-
-                    // Token file path
-                    ui.horizontal(|ui| {
-                        ui.label("Token File:");
-                        if ui.button("Browse").clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter("Text files", &["txt"])
-                                .set_file_name("token.txt") // Default filename suggestion
-                                .pick_file()
-                            {
-                                self.token_file_path = path.clone();
-                                self.config.token_folder =
-                                    path.parent().unwrap_or(&path).to_path_buf();
-                                self.load_token();
+                    
+                    // Only show InfluxDB token options when using InfluxDB
+                    if !is_prometheus {
+                        // InfluxDB Token
+                        ui.separator();
+                        let mut token = self.config.influx_token.clone().unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("InfluxDB Token:");
+                            if ui.text_edit_singleline(&mut token).changed() {
+                                self.config.influx_token = Some(token);
                             }
-                        }
-                        ui.label(self.token_file_path.to_string_lossy().to_string());
-                    });
+                        });
+
+                        // Token file path
+                        ui.horizontal(|ui| {
+                            ui.label("Token File:");
+                            if ui.button("Browse").clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("Text files", &["txt"])
+                                    .set_file_name("token.txt") // Default filename suggestion
+                                    .pick_file()
+                                {
+                                    self.token_file_path = path.clone();
+                                    self.config.token_folder =
+                                        path.parent().unwrap_or(&path).to_path_buf();
+                                    self.load_token();
+                                }
+                            }
+                            ui.label(self.token_file_path.to_string_lossy().to_string());
+                        });
+                    }
                 });
             });
 
@@ -238,11 +259,16 @@ impl eframe::App for TelegrafApp {
                 }
             }
 
-            // Bucket Configuration
-            ui.horizontal(|ui| {
-                ui.label("Bucket Name:");
-                ui.add(egui::TextEdit::singleline(&mut self.config.bucket_name).hint_text("line"));
-            });
+            // Bucket Configuration - Only show when using InfluxDB
+            // Reuse the already calculated is_prometheus value
+            // Since it might have changed with the toggle, get the current value
+            let is_prometheus = self.config.output_format.clone().unwrap_or_else(|| "influxdb".to_string()) == "prometheus";
+            if !is_prometheus {
+                ui.horizontal(|ui| {
+                    ui.label("Bucket Name:");
+                    ui.add(egui::TextEdit::singleline(&mut self.config.bucket_name).hint_text("line"));
+                });
+            }
 
             // Main Action Buttons
             ui.horizontal(|ui| {
