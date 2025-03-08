@@ -1,4 +1,4 @@
-use sie_generate_config::{TelegrafConfig, backend::ConfigGenerator};
+use crate::{TelegrafConfig, backend::ConfigGenerator};
 use std::path::PathBuf;
 
 #[cfg(test)]

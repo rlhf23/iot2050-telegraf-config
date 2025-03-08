@@ -1,5 +1,4 @@
 use crate::backend::ssh_utils;
-use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 use tempfile::tempdir;
 
