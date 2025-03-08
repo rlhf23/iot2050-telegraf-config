@@ -1,7 +1,7 @@
 use crate::error::TelegrafError;
 use roxmltree::Document;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum OutputFormat {
     InfluxDB,
     Prometheus,

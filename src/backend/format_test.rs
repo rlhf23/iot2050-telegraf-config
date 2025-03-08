@@ -1,4 +1,4 @@
-use crate::backend::format::{format_config_header, OpcuaConfig, OutputFormat, NamespaceInfo};
+use crate::backend::format::{format_config_header, OpcuaConfig, OutputFormat, NamespaceInfo, parse_xml};
 use crate::error::TelegrafError;
 use std::fs::File;
 use std::io::Write;
@@ -7,7 +7,6 @@ use tempfile::tempdir;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
     fn test_format_config_header_influxdb() {
@@ -136,7 +135,7 @@ mod tests {
         };
         
         let mut namespace_infos = Vec::new();
-        let result = super::parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
+        let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
         
         assert!(result.is_ok());
         let config_str = result.unwrap();
@@ -190,7 +189,7 @@ mod tests {
         };
         
         let mut namespace_infos = Vec::new();
-        let result = super::parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
+        let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
         
         assert!(result.is_err());
         if let Err(TelegrafError::DuplicateNodeError(msg)) = result {
@@ -234,7 +233,7 @@ mod tests {
         };
         
         let mut namespace_infos = Vec::new();
-        let result = super::parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
+        let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
         
         assert!(result.is_ok());
         let config_str = result.unwrap();
