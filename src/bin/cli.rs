@@ -220,6 +220,7 @@ fn main() {
 
         // Set influx token if needed for backup
         if matches.get_flag("backup_influx") {
+            // Backup InfluxDB requires the token regardless of output format
             early_config.influx_token = Some(read_influx_token(
                 &early_config.token_folder.to_string_lossy(),
             ));
@@ -312,17 +313,22 @@ fn main() {
         .map(|&index| xml_files[index].clone())
         .collect();
 
-    // Update config with influx token and bucket name
-    config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
+    // Check if we're using InfluxDB or Prometheus
+    let using_influxdb = config.output_format.as_deref() != Some("prometheus");
+    
+    if using_influxdb {
+        // Only need influx token and bucket name for InfluxDB output
+        config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
 
-    println!("Enter the bucket name (press Enter for default 'line'):");
-    let mut bucket_name = String::new();
-    std::io::stdin().read_line(&mut bucket_name).unwrap();
-    config.bucket_name = if bucket_name.trim().is_empty() {
-        "line".to_string()
-    } else {
-        bucket_name.trim().to_string()
-    };
+        println!("Enter the bucket name (press Enter for default 'line'):");
+        let mut bucket_name = String::new();
+        std::io::stdin().read_line(&mut bucket_name).unwrap();
+        config.bucket_name = if bucket_name.trim().is_empty() {
+            "line".to_string()
+        } else {
+            bucket_name.trim().to_string()
+        };
+    }
 
     // Create generator with complete config
     let mut generator = match ConfigGenerator::new(config) {
