@@ -6,6 +6,8 @@ use std::io::Write;
 mod format;
 mod ssh_utils;
 
+pub use format::OutputFormat;
+
 #[derive(Default)]
 pub struct FileConfig {
     pub namespace: String,
@@ -15,6 +17,8 @@ pub struct FileConfig {
 pub struct ConfigGenerator {
     config: TelegrafConfig,
     file_configs: std::collections::HashMap<String, FileConfig>,
+    output_format: OutputFormat,
+    include_test_inputs: bool,
 }
 
 impl ConfigGenerator {
@@ -27,10 +31,26 @@ impl ConfigGenerator {
             .validate_iot_host()
             .map_err(TelegrafError::ValidationError)?;
 
+        // Determine output format from config or default to InfluxDB
+        let output_format = match config.output_format.as_deref() {
+            Some("prometheus") => OutputFormat::Prometheus,
+            _ => OutputFormat::InfluxDB, // Default to InfluxDB for None or any other value
+        };
+
         Ok(Self {
+            include_test_inputs: config.include_test_inputs,
             config,
             file_configs: std::collections::HashMap::new(),
+            output_format,
         })
+    }
+    
+    pub fn set_output_format(&mut self, output_format: OutputFormat) {
+        self.output_format = output_format;
+    }
+    
+    pub fn set_include_test_inputs(&mut self, include_test_inputs: bool) {
+        self.include_test_inputs = include_test_inputs;
     }
 
     pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64) {
@@ -90,12 +110,16 @@ impl ConfigGenerator {
             config_strings.push(config_string);
         }
 
-        // Get the influx token if not already set
-        let influx_token = self
-            .config
-            .influx_token
-            .as_ref()
-            .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?;
+        // Get the influx token if not already set (only needed for InfluxDB output)
+        let influx_token = if self.output_format == OutputFormat::InfluxDB {
+            self.config
+                .influx_token
+                .as_ref()
+                .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?
+        } else {
+            // For Prometheus, we don't need an influx token, so use empty string
+            ""
+        };
 
         // Generate the final config content
         let config_content = format::format_config_header(
@@ -103,6 +127,8 @@ impl ConfigGenerator {
             &self.config.bucket_name,
             &config_strings,
             &namespace_numbers,
+            self.output_format,
+            self.include_test_inputs,
         );
 
         // Write to file
@@ -135,6 +161,7 @@ impl ConfigGenerator {
     }
 
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
+        // Ensure we have an InfluxDB token
         let influx_token = self
             .config
             .influx_token
@@ -155,6 +182,25 @@ impl ConfigGenerator {
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,
+        )
+        .map_err(|e| TelegrafError::SshError(e.to_string()))
+    }
+
+    pub fn get_telegraf_status(&self) -> Result<String, TelegrafError> {
+        ssh_utils::get_telegraf_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+        )
+        .map_err(|e| TelegrafError::SshError(e.to_string()))
+    }
+
+    pub fn get_telegraf_logs(&self, lines: usize) -> Result<String, TelegrafError> {
+        ssh_utils::get_telegraf_logs(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            lines,
         )
         .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
