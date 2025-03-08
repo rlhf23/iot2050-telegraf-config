@@ -30,6 +30,8 @@ fn print_config(matches: &clap::ArgMatches) {
     println!("Send config: {}", matches.get_flag("send"));
     println!("Backup InfluxDB: {}", matches.get_flag("backup_influx"));
     println!("Backup Grafana: {}", matches.get_flag("backup_grafana"));
+    println!("Output format: {}", matches.get_one::<String>("output_format").unwrap());
+    println!("Include test inputs: {}", matches.get_flag("test_inputs"));
     println!("=====================\n");
 }
 
@@ -175,6 +177,21 @@ fn main() {
             .action(ArgAction::SetTrue)
             .help("Backs up the Grafana configuration from the IOT-2050 and copies it to the current working directory"),
         )
+        .arg(
+            Arg::new("output_format")
+            .short('o')
+            .long("output-format")
+            .value_name("FORMAT")
+            .help("Sets the output format (influxdb or prometheus)")
+            .default_value("influxdb"),
+        )
+        .arg(
+            Arg::new("test_inputs")
+            .short('x')
+            .long("test-inputs")
+            .action(ArgAction::SetTrue)
+            .help("Include test inputs (CPU, disk, memory) in the configuration"),
+        )
         .get_matches();
 
     // print the current config
@@ -198,6 +215,8 @@ fn main() {
         bucket_name: String::from("line"),
         influx_token: None,
         listener_files: Vec::new(),
+        output_format: Some(matches.get_one::<String>("output_format").unwrap().to_string()),
+        include_test_inputs: matches.get_flag("test_inputs"),
     };
 
     // For operations that don't need full config setup
@@ -210,6 +229,7 @@ fn main() {
 
         // Set influx token if needed for backup
         if matches.get_flag("backup_influx") {
+            // Backup InfluxDB requires the token regardless of output format
             early_config.influx_token = Some(read_influx_token(
                 &early_config.token_folder.to_string_lossy(),
             ));
@@ -263,25 +283,33 @@ fn main() {
         }
     };
 
+    // Check if we're generating a config with only test inputs
+    let test_inputs_only = matches.get_flag("test_inputs") && xml_files.is_empty();
+    
     if !xml_files.is_empty() {
         println!("{}", "Found the following XML files in the folder:");
         for (index, file) in xml_files.iter().enumerate() {
             println!("{}. {}", index + 1, file);
         }
-    } else {
+    } else if !test_inputs_only {
         println!("{}", "No XML files found in the folder.");
         println!("{}", "This is clearly your fault, not mine..");
         wrap_up(1);
+    } else {
+        println!("{}", "No XML files found, but continuing with test inputs only.");
     }
 
-    println!("");
-    println!("{}", "Do you want to use these files? (y/N)");
-    let mut confirm = String::new();
-    std::io::stdin().read_line(&mut confirm).unwrap();
+    // Only ask for confirmation if there are XML files or we're not in test-only mode
+    if !test_inputs_only {
+        println!("");
+        println!("{}", "Do you want to use these files? (y/N)");
+        let mut confirm = String::new();
+        std::io::stdin().read_line(&mut confirm).unwrap();
 
-    if confirm.trim().to_lowercase() != "y" {
-        println!("Aborting.");
-        wrap_up(1);
+        if confirm.trim().to_lowercase() != "y" {
+            println!("Aborting.");
+            wrap_up(1);
+        }
     }
 
     println!("{}","OPC clients can be active (standard), pulling data every interval, or \npassive (subscribers), listening for changes.");
@@ -302,17 +330,22 @@ fn main() {
         .map(|&index| xml_files[index].clone())
         .collect();
 
-    // Update config with influx token and bucket name
-    config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
+    // Check if we're using InfluxDB or Prometheus
+    let using_influxdb = config.output_format.as_deref() != Some("prometheus");
+    
+    if using_influxdb {
+        // Only need influx token and bucket name for InfluxDB output
+        config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
 
-    println!("Enter the bucket name (press Enter for default 'line'):");
-    let mut bucket_name = String::new();
-    std::io::stdin().read_line(&mut bucket_name).unwrap();
-    config.bucket_name = if bucket_name.trim().is_empty() {
-        "line".to_string()
-    } else {
-        bucket_name.trim().to_string()
-    };
+        println!("Enter the bucket name (press Enter for default 'line'):");
+        let mut bucket_name = String::new();
+        std::io::stdin().read_line(&mut bucket_name).unwrap();
+        config.bucket_name = if bucket_name.trim().is_empty() {
+            "line".to_string()
+        } else {
+            bucket_name.trim().to_string()
+        };
+    }
 
     // Create generator with complete config
     let mut generator = match ConfigGenerator::new(config) {

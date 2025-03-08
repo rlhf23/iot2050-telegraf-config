@@ -13,6 +13,8 @@ pub struct TelegrafConfig {
     pub bucket_name: String,
     pub influx_token: Option<String>,
     pub listener_files: Vec<String>,
+    pub output_format: Option<String>, // "influxdb" or "prometheus"
+    pub include_test_inputs: bool, // Include CPU, disk, mem inputs for testing
 }
 
 impl TelegrafConfig {

@@ -259,3 +259,45 @@ pub fn backup_grafana_config(
 
     Ok(())
 }
+
+pub fn get_telegraf_status(
+    remote_host: &str,
+    username: &str,
+    password: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    // Establish SSH connection
+    let tcp = TcpStream::connect(remote_host)?;
+    let mut session = Session::new()?;
+    session.set_tcp_stream(tcp);
+    session.handshake()?;
+    session.userauth_password(username, password)?;
+
+    // Get full telegraf service status
+    let status = execute_ssh_command(&session, "sudo service telegraf status")?;
+    
+    println!("Telegraf status retrieved successfully");
+    
+    Ok(status)
+}
+
+pub fn get_telegraf_logs(
+    remote_host: &str,
+    username: &str,
+    password: &str,
+    lines: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    // Establish SSH connection
+    let tcp = TcpStream::connect(remote_host)?;
+    let mut session = Session::new()?;
+    session.set_tcp_stream(tcp);
+    session.handshake()?;
+    session.userauth_password(username, password)?;
+
+    // Get last n lines from telegraf log
+    let command = format!("sudo tail -n {} /var/log/telegraf/telegraf.log", lines);
+    let logs = execute_ssh_command(&session, &command)?;
+    
+    println!("Telegraf logs retrieved successfully");
+    
+    Ok(logs)
+}
