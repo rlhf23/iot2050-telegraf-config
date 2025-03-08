@@ -283,25 +283,33 @@ fn main() {
         }
     };
 
+    // Check if we're generating a config with only test inputs
+    let test_inputs_only = matches.get_flag("test_inputs") && xml_files.is_empty();
+    
     if !xml_files.is_empty() {
         println!("{}", "Found the following XML files in the folder:");
         for (index, file) in xml_files.iter().enumerate() {
             println!("{}. {}", index + 1, file);
         }
-    } else {
+    } else if !test_inputs_only {
         println!("{}", "No XML files found in the folder.");
         println!("{}", "This is clearly your fault, not mine..");
         wrap_up(1);
+    } else {
+        println!("{}", "No XML files found, but continuing with test inputs only.");
     }
 
-    println!("");
-    println!("{}", "Do you want to use these files? (y/N)");
-    let mut confirm = String::new();
-    std::io::stdin().read_line(&mut confirm).unwrap();
+    // Only ask for confirmation if there are XML files or we're not in test-only mode
+    if !test_inputs_only {
+        println!("");
+        println!("{}", "Do you want to use these files? (y/N)");
+        let mut confirm = String::new();
+        std::io::stdin().read_line(&mut confirm).unwrap();
 
-    if confirm.trim().to_lowercase() != "y" {
-        println!("Aborting.");
-        wrap_up(1);
+        if confirm.trim().to_lowercase() != "y" {
+            println!("Aborting.");
+            wrap_up(1);
+        }
     }
 
     println!("{}","OPC clients can be active (standard), pulling data every interval, or \npassive (subscribers), listening for changes.");
