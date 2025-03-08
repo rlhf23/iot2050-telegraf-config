@@ -9,8 +9,8 @@ pub enum OutputFormat {
 
 #[derive(Clone)]
 pub struct NamespaceInfo {
-    number: String,
-    file_name: String,
+    pub number: String,
+    pub file_name: String,
 }
 
 #[derive(Clone)]

@@ -1,4 +1,4 @@
-use crate::backend::{ConfigGenerator, FileConfig, OutputFormat};
+use crate::backend::{ConfigGenerator, OutputFormat};
 use crate::TelegrafConfig;
 use crate::error::TelegrafError;
 use std::path::PathBuf;
@@ -159,8 +159,8 @@ mod tests {
         let xml_path = create_test_xml(&dir.path().to_path_buf(), "test.xml");
         let xml_path_str = xml_path.to_string_lossy().to_string();
         
-        let mut config = create_test_config(dir.path().to_path_buf());
-        config.bucket_name = "test_bucket".to_string();
+        let config = create_test_config(dir.path().to_path_buf());
+        // Note: bucket_name is already set to "test_bucket" in create_test_config
         
         let mut generator = ConfigGenerator::new(config).unwrap();
         
