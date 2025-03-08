@@ -1,6 +1,12 @@
 use crate::error::TelegrafError;
 use roxmltree::Document;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum OutputFormat {
+    InfluxDB,
+    Prometheus,
+}
+
 #[derive(Clone)]
 pub struct NamespaceInfo {
     number: String,
@@ -32,12 +38,42 @@ pub fn format_config_header(
     bucket_name: &str,
     config_strings: &[String],
     namespace_infos: &[NamespaceInfo],
+    output_format: OutputFormat,
 ) -> String {
     let namespace_comments = namespace_infos
         .iter()
         .map(|ns| format!("# Namespace for file {}: {}", ns.file_name, ns.number))
         .collect::<Vec<String>>()
         .join("\n");
+
+    let output_config = match output_format {
+        OutputFormat::InfluxDB => format!(
+            r#"# Configuration for sending metrics to InfluxDB 2.0
+[[outputs.influxdb_v2]]
+  urls = ["http://127.0.0.1:8086"]
+  token = "{}"
+  organization = "org"
+  bucket = "{}""#,
+            influx_token,
+            bucket_name
+        ),
+        OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
+[[outputs.prometheus_client]]
+  ## Address to listen on
+  listen = ":9273"
+  
+  ## Metric version controls the mapping from Telegraf metrics to
+  ## Prometheus format.  When using the prometheus input, use the same value in
+  ## both plugins to ensure metrics are round-tripped without modification.
+  ##
+  ##   example: metric_version = 1; deprecated in favor of metric_version = 2
+  ##            metric_version = 2; recommended version
+  # metric_version = 1
+  
+  ## Use HTTP Basic Authentication.
+  # basic_username = "Foo"
+  # basic_password = "Bar""#.to_string(),
+    };
 
     format!(
         r#"{}
@@ -73,18 +109,12 @@ pub fn format_config_header(
   hostname = ""
   omit_hostname = false
 
-# Configuration for sending metrics to InfluxDB 2.0
-[[outputs.influxdb_v2]]
-  urls = ["http://127.0.0.1:8086"]
-  token = "{}"
-  organization = "org"
-  bucket = "{}"
+{}
 
 {}
 "#,
         namespace_comments,
-        influx_token,
-        bucket_name,
+        output_config,
         config_strings.join("\n\n")
     )
 }
