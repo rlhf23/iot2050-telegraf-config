@@ -18,6 +18,7 @@ pub struct ConfigGenerator {
     config: TelegrafConfig,
     file_configs: std::collections::HashMap<String, FileConfig>,
     output_format: OutputFormat,
+    include_test_inputs: bool,
 }
 
 impl ConfigGenerator {
@@ -37,6 +38,7 @@ impl ConfigGenerator {
         };
 
         Ok(Self {
+            include_test_inputs: config.include_test_inputs,
             config,
             file_configs: std::collections::HashMap::new(),
             output_format,
@@ -45,6 +47,10 @@ impl ConfigGenerator {
     
     pub fn set_output_format(&mut self, output_format: OutputFormat) {
         self.output_format = output_format;
+    }
+    
+    pub fn set_include_test_inputs(&mut self, include_test_inputs: bool) {
+        self.include_test_inputs = include_test_inputs;
     }
 
     pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64) {
@@ -122,6 +128,7 @@ impl ConfigGenerator {
             &config_strings,
             &namespace_numbers,
             self.output_format,
+            self.include_test_inputs,
         );
 
         // Write to file
