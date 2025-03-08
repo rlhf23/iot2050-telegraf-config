@@ -31,6 +31,7 @@ fn print_config(matches: &clap::ArgMatches) {
     println!("Backup InfluxDB: {}", matches.get_flag("backup_influx"));
     println!("Backup Grafana: {}", matches.get_flag("backup_grafana"));
     println!("Output format: {}", matches.get_one::<String>("output_format").unwrap());
+    println!("Include test inputs: {}", matches.get_flag("test_inputs"));
     println!("=====================\n");
 }
 
@@ -184,6 +185,13 @@ fn main() {
             .help("Sets the output format (influxdb or prometheus)")
             .default_value("influxdb"),
         )
+        .arg(
+            Arg::new("test_inputs")
+            .short('x')
+            .long("test-inputs")
+            .action(ArgAction::SetTrue)
+            .help("Include test inputs (CPU, disk, memory) in the configuration"),
+        )
         .get_matches();
 
     // print the current config
@@ -208,6 +216,7 @@ fn main() {
         influx_token: None,
         listener_files: Vec::new(),
         output_format: Some(matches.get_one::<String>("output_format").unwrap().to_string()),
+        include_test_inputs: matches.get_flag("test_inputs"),
     };
 
     // For operations that don't need full config setup
