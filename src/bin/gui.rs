@@ -1,5 +1,5 @@
 use eframe::egui;
-use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
+use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig, error::TelegrafError};
 
 #[derive(Default)]
 struct XmlFileConfig {
@@ -15,6 +15,7 @@ struct TelegrafApp {
     status_message: String,
     token_file_path: std::path::PathBuf, // Store the complete token file path
     show_namespace_error: bool,          // Track if we should show namespace errors
+    show_iot_host_error: bool,           // Track if IOT host is invalid
 }
 
 impl TelegrafApp {
@@ -42,6 +43,19 @@ impl TelegrafApp {
         for file in &self.xml_files {
             self.file_configs.entry(file.clone()).or_default();
         }
+    }
+
+    // Helper function to convert a TelegrafError or error string to a user-friendly message
+    fn format_error_message(&self, error: &TelegrafError, context: &str) -> String {
+        error.user_friendly_message(context)
+    }
+    
+    // Overloaded version that takes a string and converts it to a TelegrafError
+    fn format_error_string(&self, error_str: &str, context: &str) -> String {
+        // Parse the error string to determine the most likely error type
+        // This is a fallback for cases where we only have the error string
+        let error = sie_generate_config::error::ssh_error_from_string(error_str.to_string());
+        error.user_friendly_message(context)
     }
 }
 
@@ -74,6 +88,7 @@ impl Default for TelegrafApp {
             status_message: String::new(),
             token_file_path, // Default to token.txt in the current directory
             show_namespace_error: false,
+            show_iot_host_error: false,
         };
         app.load_xml_files();
         app.load_token();
@@ -381,26 +396,32 @@ impl eframe::App for TelegrafApp {
                                         "Configuration generated successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = format!("Error generating config: {}", e);
+                                    self.status_message = self.format_error_message(&e, "generating config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = format!("Error creating generator: {}", e);
+                            self.status_message = self.format_error_message(&e, "generating config");
                         }
                     }
                 }
 
                 if ui.button("Send Config").clicked() {
-                    if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                        match generator.send_config() {
-                            Ok(_) => {
-                                self.status_message =
-                                    "Configuration sent successfully!".to_string();
+                    self.status_message = "Sending configuration...".to_string();
+                    match ConfigGenerator::new(self.config.clone()) {
+                        Ok(generator) => {
+                            match generator.send_config() {
+                                Ok(_) => {
+                                    self.status_message =
+                                        "Configuration sent successfully!".to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message = self.format_error_message(&e, "send config");
+                                }
                             }
-                            Err(e) => {
-                                self.status_message = format!("Error sending config: {}", e);
-                            }
+                        }
+                        Err(e) => {
+                            self.status_message = self.format_error_message(&e, "send config");
                         }
                     }
                 }
@@ -410,29 +431,39 @@ impl eframe::App for TelegrafApp {
             ui.collapsing("Other Commands", |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
-                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                            match generator.backup_influx() {
-                                Ok(_) => {
-                                    self.status_message = "InfluxDB backup completed!".to_string();
+                        self.status_message = "Backing up InfluxDB...".to_string();
+                        match ConfigGenerator::new(self.config.clone()) {
+                            Ok(generator) => {
+                                match generator.backup_influx() {
+                                    Ok(_) => {
+                                        self.status_message = "InfluxDB backup completed!".to_string();
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.format_error_message(&e, "InfluxDB backup");
+                                    }
                                 }
-                                Err(e) => {
-                                    self.status_message =
-                                        format!("Error backing up InfluxDB: {}", e);
-                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.format_error_message(&e, "InfluxDB backup");
                             }
                         }
                     }
 
                     if ui.button("Backup Grafana").clicked() {
-                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                            match generator.backup_grafana() {
-                                Ok(_) => {
-                                    self.status_message = "Grafana backup completed!".to_string();
+                        self.status_message = "Backing up Grafana...".to_string();
+                        match ConfigGenerator::new(self.config.clone()) {
+                            Ok(generator) => {
+                                match generator.backup_grafana() {
+                                    Ok(_) => {
+                                        self.status_message = "Grafana backup completed!".to_string();
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.format_error_message(&e, "Grafana backup");
+                                    }
                                 }
-                                Err(e) => {
-                                    self.status_message =
-                                        format!("Error backing up Grafana: {}", e);
-                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.format_error_message(&e, "Grafana backup");
                             }
                         }
                     }
@@ -440,30 +471,47 @@ impl eframe::App for TelegrafApp {
 
                 ui.horizontal(|ui| {
                     if ui.button("Get Telegraf Status").clicked() {
-                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                            match generator.get_telegraf_status() {
-                                Ok(status) => {
-                                    self.status_message = format!("Telegraf Status:\n{}", status);
+                        self.status_message = "Retrieving Telegraf status...".to_string();
+                        match ConfigGenerator::new(self.config.clone()) {
+                            Ok(generator) => {
+                                match generator.get_telegraf_status() {
+                                    Ok(status) => {
+                                        if status.is_empty() {
+                                            self.status_message = "Error: Telegraf status returned empty. Telegraf may not be running.".to_string();
+                                        } else {
+                                            self.status_message = format!("Telegraf Status:\n{}", status);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.format_error_message(&e, "status");
+                                    }
                                 }
-                                Err(e) => {
-                                    self.status_message =
-                                        format!("Error getting Telegraf status: {}", e);
-                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.format_error_message(&e, "status");
                             }
                         }
                     }
 
                     if ui.button("Get Telegraf Logs").clicked() {
-                        if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
-                            match generator.get_telegraf_logs(30) {
-                                Ok(logs) => {
-                                    self.status_message =
-                                        format!("Telegraf Logs (Last 30 lines):\n{}", logs);
+                        self.status_message = "Retrieving Telegraf logs...".to_string();
+                        match ConfigGenerator::new(self.config.clone()) {
+                            Ok(generator) => {
+                                match generator.get_telegraf_logs(30) {
+                                    Ok(logs) => {
+                                        if logs.is_empty() {
+                                            self.status_message = "Error: Telegraf logs are empty. The log file may exist but is empty.".to_string();
+                                        } else {
+                                            self.status_message = format!("Telegraf Logs (Last 30 lines):\n{}", logs);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.format_error_message(&e, "logs");
+                                    }
                                 }
-                                Err(e) => {
-                                    self.status_message =
-                                        format!("Error getting Telegraf logs: {}", e);
-                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.format_error_message(&e, "logs");
                             }
                         }
                     }
@@ -472,7 +520,36 @@ impl eframe::App for TelegrafApp {
 
             // Status Message
             if !self.status_message.is_empty() {
-                ui.label(&self.status_message);
+                // Add a header to make it more visible
+                ui.separator();
+                ui.heading("Command Output:");
+                
+                // Create a frame with a border to make the output more visible
+                let frame = egui::Frame::dark_canvas(&ui.style())
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE))
+                    .inner_margin(egui::style::Margin::same(8.0))
+                    .outer_margin(egui::style::Margin::same(4.0));
+                
+                frame.show(ui, |ui| {
+                    // Use scrollable area with fixed height for multiline text
+                    egui::ScrollArea::vertical()
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            // Use a selectable label with monospace font for output
+                            ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                            let mut content = self.status_message.clone();
+                            // Split by lines and display each line separately
+                            for line in content.lines() {
+                                ui.label(line);
+                            }
+                        });
+                    // Add debug info only in development builds
+                    #[cfg(debug_assertions)]
+                    {
+                        ui.separator();
+                        ui.label(format!("Output length: {} characters", self.status_message.len()));
+                    }
+                });
             }
         });
     }
