@@ -1,0 +1,128 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v0.6.*'
+      - 'v0.7.*'
+      - 'v1.*'
+      - 'v2.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libssl-dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build for release
+        run: cargo build --release --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Package executables
+        run: |
+          mkdir -p release-artifacts
+          cp target/release/sie_generate_config release-artifacts/
+          cp target/release/sie_generate_config_gui release-artifacts/
+          cd release-artifacts
+          tar -czvf sie_generate_config-ubuntu.tar.gz sie_generate_config
+          tar -czvf sie_generate_config_gui-ubuntu.tar.gz sie_generate_config_gui
+          cd ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ubuntu-artifacts
+          path: release-artifacts/*.tar.gz
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build for release
+        run: cargo build --release --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Package executables
+        run: |
+          mkdir -p release-artifacts
+          copy target\release\sie_generate_config.exe release-artifacts\
+          copy target\release\sie_generate_config_gui.exe release-artifacts\
+          cd release-artifacts
+          7z a sie_generate_config-windows.zip sie_generate_config.exe
+          7z a sie_generate_config_gui-windows.zip sie_generate_config_gui.exe
+          cd ..
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-artifacts
+          path: release-artifacts/*.zip
+
+  create-release:
+    needs: [build-ubuntu, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./artifacts
+          
+      - name: List artifacts
+        run: ls -R ./artifacts
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          files: |
+            ./artifacts/ubuntu-artifacts/*.tar.gz
+            ./artifacts/windows-artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
