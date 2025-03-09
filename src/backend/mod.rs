@@ -157,7 +157,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
@@ -174,7 +173,6 @@ impl ConfigGenerator {
             &self.config.iot_password,
             influx_token,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn backup_grafana(&self) -> Result<(), TelegrafError> {
@@ -183,7 +181,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn get_telegraf_status(&self) -> Result<String, TelegrafError> {
@@ -192,7 +189,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn get_telegraf_logs(&self, lines: usize) -> Result<String, TelegrafError> {
@@ -202,6 +198,5 @@ impl ConfigGenerator {
             &self.config.iot_password,
             lines,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 }
