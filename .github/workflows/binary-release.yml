@@ -72,7 +72,7 @@ jobs:
           tar -czvf sie_generate_config_gui-ubuntu-binary.tar.gz sie_generate_config_gui-ubuntu
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ubuntu-binaries
           path: |
@@ -80,7 +80,7 @@ jobs:
             bin-releases/sie_generate_config_gui-ubuntu
 
       - name: Upload tarballs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ubuntu-tarballs
           path: bin-releases/*.tar.gz
@@ -136,7 +136,7 @@ jobs:
           7z a sie_generate_config_gui-windows-binary.zip sie_generate_config_gui-windows.exe
 
       - name: Upload executables
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-executables
           path: |
@@ -144,7 +144,7 @@ jobs:
             bin-releases/sie_generate_config_gui-windows.exe
 
       - name: Upload zip archives
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-zips
           path: bin-releases/*.zip
@@ -161,7 +161,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ./release-artifacts
           
