@@ -32,7 +32,7 @@ jobs:
     - name: Cache Rust dependencies
       uses: Swatinem/rust-cache@v2
     
-    Formatting check disabled temporarily
+    # Formatting check disabled temporarily
     - name: Check formatting
      run: cargo fmt --all -- --check
     
