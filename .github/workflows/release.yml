@@ -45,18 +45,32 @@ jobs:
       - name: Package executables
         run: |
           mkdir -p release-artifacts
+          
+          # Copy executables
           cp target/release/sie_generate_config release-artifacts/
           cp target/release/sie_generate_config_gui release-artifacts/
+          
+          # Create archives
           cd release-artifacts
           tar -czvf sie_generate_config-ubuntu.tar.gz sie_generate_config
           tar -czvf sie_generate_config_gui-ubuntu.tar.gz sie_generate_config_gui
+          
+          # Rename binaries to include platform info
+          mv sie_generate_config sie_generate_config-ubuntu
+          mv sie_generate_config_gui sie_generate_config_gui-ubuntu
           cd ..
 
-      - name: Upload artifacts
+      - name: Upload archives
         uses: actions/upload-artifact@v4
         with:
-          name: ubuntu-artifacts
+          name: ubuntu-archives
           path: release-artifacts/*.tar.gz
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-binaries
+          path: release-artifacts/sie_generate_config*-ubuntu
 
   build-windows:
     runs-on: windows-latest
@@ -86,18 +100,28 @@ jobs:
       - name: Package executables
         run: |
           mkdir -p release-artifacts
+          
+          # Copy executables
           copy target\release\sie_generate_config.exe release-artifacts\
           copy target\release\sie_generate_config_gui.exe release-artifacts\
+          
+          # Create archives
           cd release-artifacts
           7z a sie_generate_config-windows.zip sie_generate_config.exe
           7z a sie_generate_config_gui-windows.zip sie_generate_config_gui.exe
           cd ..
 
-      - name: Upload artifacts
+      - name: Upload archives
         uses: actions/upload-artifact@v4
         with:
-          name: windows-artifacts
+          name: windows-archives
           path: release-artifacts/*.zip
+
+      - name: Upload executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-executables
+          path: release-artifacts/*.exe
 
   create-release:
     needs: [build-ubuntu, build-windows]
@@ -122,7 +146,9 @@ jobs:
         with:
           name: Release v${{ steps.get_version.outputs.VERSION }}
           files: |
-            ./artifacts/ubuntu-artifacts/*.tar.gz
-            ./artifacts/windows-artifacts/*.zip
+            ./artifacts/ubuntu-archives/*.tar.gz
+            ./artifacts/ubuntu-binaries/*
+            ./artifacts/windows-archives/*.zip
+            ./artifacts/windows-executables/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
