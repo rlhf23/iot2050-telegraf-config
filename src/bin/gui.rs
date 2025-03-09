@@ -43,6 +43,45 @@ impl TelegrafApp {
             self.file_configs.entry(file.clone()).or_default();
         }
     }
+    
+    // Helper function to format error messages based on error type
+    fn format_error_message(&self, error: &str, context: &str) -> String {
+        if error.contains("No route to host") || 
+           error.contains("Connection refused") || 
+           error.contains("Network is unreachable") {
+            // Connection errors
+            format!(
+                "⚠️ Connection Error: {}\n\nPlease check:\n- IOT host IP address is correct ({})\n- IOT device is powered on and connected to the network\n- No firewall is blocking the connection", 
+                error,
+                self.config.iot_host
+            )
+        } else if error.contains("Authentication") || 
+                  error.contains("Permission denied") {
+            // Authentication errors
+            format!(
+                "⚠️ Authentication Error: {}\n\nPlease check:\n- SSH username and password are correct\n- SSH user has proper permissions", 
+                error
+            )
+        } else if error.contains("not found") && context == "logs" {
+            // Log file issues
+            format!(
+                "⚠️ Log File Error: {}\n\nPlease check:\n- Telegraf is installed and has been run at least once\n- Logs are stored in the expected location", 
+                error
+            )
+        } else {
+            // Other errors
+            let additional_info = if context == "status" {
+                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Telegraf service is not running"
+            } else {
+                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Log file doesn't exist or has incorrect permissions"
+            };
+            
+            format!(
+                "⚠️ Error getting Telegraf {}: {}\n\nPossible issues:\n{}", 
+                context, error, additional_info
+            )
+        }
+    }
 }
 
 impl Default for TelegrafApp {
@@ -440,29 +479,36 @@ impl eframe::App for TelegrafApp {
 
                 ui.horizontal(|ui| {
                     if ui.button("Get Telegraf Status").clicked() {
+                        self.status_message = "Retrieving Telegraf status...".to_string();
                         if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
                             match generator.get_telegraf_status() {
                                 Ok(status) => {
-                                    self.status_message = format!("Telegraf Status:\n{}", status);
+                                    if status.is_empty() {
+                                        self.status_message = "Error: Telegraf status returned empty. Telegraf may not be running.".to_string();
+                                    } else {
+                                        self.status_message = format!("Telegraf Status:\n{}", status);
+                                    }
                                 }
                                 Err(e) => {
-                                    self.status_message =
-                                        format!("Error getting Telegraf status: {}", e);
+                                    self.status_message = self.format_error_message(&e.to_string(), "status");
                                 }
                             }
                         }
                     }
 
                     if ui.button("Get Telegraf Logs").clicked() {
+                        self.status_message = "Retrieving Telegraf logs...".to_string();
                         if let Ok(generator) = ConfigGenerator::new(self.config.clone()) {
                             match generator.get_telegraf_logs(30) {
                                 Ok(logs) => {
-                                    self.status_message =
-                                        format!("Telegraf Logs (Last 30 lines):\n{}", logs);
+                                    if logs.is_empty() {
+                                        self.status_message = "Error: Telegraf logs are empty. The log file may exist but is empty.".to_string();
+                                    } else {
+                                        self.status_message = format!("Telegraf Logs (Last 30 lines):\n{}", logs);
+                                    }
                                 }
                                 Err(e) => {
-                                    self.status_message =
-                                        format!("Error getting Telegraf logs: {}", e);
+                                    self.status_message = self.format_error_message(&e.to_string(), "logs");
                                 }
                             }
                         }
@@ -472,7 +518,34 @@ impl eframe::App for TelegrafApp {
 
             // Status Message
             if !self.status_message.is_empty() {
-                ui.label(&self.status_message);
+                // Add a header to make it more visible
+                ui.separator();
+                ui.heading("Command Output:");
+                
+                // Create a frame with a border to make the output more visible
+                let frame = egui::Frame::dark_canvas(&ui.style())
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE))
+                    .inner_margin(egui::style::Margin::same(8.0))
+                    .outer_margin(egui::style::Margin::same(4.0));
+                
+                frame.show(ui, |ui| {
+                    // Use scrollable area with fixed height for multiline text
+                    egui::ScrollArea::vertical()
+                        .max_height(400.0)
+                        .show(ui, |ui| {
+                            // Use a selectable label with monospace font for output
+                            ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                            let mut content = self.status_message.clone();
+                            // Split by lines and display each line separately
+                            for line in content.lines() {
+                                ui.label(line);
+                            }
+                        });
+                    
+                    // Add status message length for debugging
+                    ui.separator();
+                    ui.label(format!("Output length: {} characters", self.status_message.len()));
+                });
             }
         });
     }
