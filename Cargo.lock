@@ -2678,6 +2678,7 @@ dependencies = [
  "rfd",
  "roxmltree",
  "ssh2",
+ "tempfile",
  "winapi",
 ]
 

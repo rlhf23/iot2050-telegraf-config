@@ -235,7 +235,7 @@ pub fn restart_telegraf_over_ssh(
     println!("Stopping telegraf service gracefully...");
 
     // First check if telegraf is actually running
-    let check_cmd = format!("pgrep telegraf || echo 'not_running'");
+    let check_cmd = "pgrep telegraf || echo 'not_running'".to_string();
     let check_result = execute_ssh_command(&session, &check_cmd)?;
 
     if check_result.trim() == "not_running" {
@@ -253,7 +253,7 @@ pub fn restart_telegraf_over_ssh(
         let mut stopped = false;
         for i in 0..10 {
             thread::sleep(Duration::from_secs(1));
-            let check_cmd = format!("pgrep telegraf || echo 'stopped'");
+            let check_cmd = "pgrep telegraf || echo 'stopped'".to_string();
             let check_result = execute_ssh_command(&session, &check_cmd)?;
 
             if check_result.trim() == "stopped" {
