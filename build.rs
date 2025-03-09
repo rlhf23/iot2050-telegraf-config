@@ -2,17 +2,17 @@ use dotenv::dotenv;
 use std::env;
 
 fn main() {
-    // Load .env file
+    // Load .env file - don't fail if it doesn't exist (using ok())
     dotenv().ok();
 
     // List of environment variables to process with default values
     let vars = vec![
         ("DEFAULT_IP", "192.168.1.1"),
-        ("DEFAULT_USERNAME", "admin"),
-        ("DEFAULT_PASSWORD", "password"),
-        ("DEFAULT_IOT_USERNAME", "root"),
-        ("DEFAULT_IOT_PASSWORD", "iotpassword"),
-        ("DEFAULT_IOT_IP", "192.168.1.100:22"),
+        ("DEFAULT_USERNAME", "user"),
+        ("DEFAULT_PASSWORD", "pass"),
+        ("DEFAULT_IOT_USERNAME", "iotuser"),
+        ("DEFAULT_IOT_PASSWORD", "iotpass"),
+        ("DEFAULT_IOT_IP", "192.168.1.2:22"),
     ];
 
     for (var, default_value) in vars {
@@ -20,6 +20,6 @@ fn main() {
         println!("cargo:rustc-env={}={}", var, value);
     }
 
-    // Tell Cargo to re-run this script if .env changes
+    // Tell Cargo to re-run this script if .env changes, but don't fail if it doesn't exist
     println!("cargo:rerun-if-changed=.env");
 }

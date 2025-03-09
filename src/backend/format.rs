@@ -1,7 +1,7 @@
 use crate::error::TelegrafError;
 use roxmltree::Document;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum OutputFormat {
     InfluxDB,
     Prometheus,
@@ -9,8 +9,8 @@ pub enum OutputFormat {
 
 #[derive(Clone)]
 pub struct NamespaceInfo {
-    number: String,
-    file_name: String,
+    pub number: String,
+    pub file_name: String,
 }
 
 #[derive(Clone)]

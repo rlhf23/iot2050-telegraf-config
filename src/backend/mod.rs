@@ -5,6 +5,12 @@ use std::io::Write;
 
 mod format;
 mod ssh_utils;
+#[cfg(test)]
+mod format_test;
+#[cfg(test)]
+mod ssh_utils_test;
+#[cfg(test)]
+mod config_generator_test;
 
 pub use format::OutputFormat;
 
