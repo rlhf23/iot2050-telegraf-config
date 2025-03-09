@@ -1,0 +1,192 @@
+name: Build and Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v0.6.*'
+      - 'v0.7.*'
+      - 'v1.*'
+      - 'v2.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-ubuntu-binary:
+    name: Build Ubuntu Binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libssl-dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI binary
+        run: cargo build --release --bin sie_generate_config
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build GUI binary
+        run: cargo build --release --bin sie_generate_config_gui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Create output directory
+        run: mkdir -p bin-releases
+
+      - name: Copy and rename binaries
+        run: |
+          cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
+          cp target/release/sie_generate_config_gui bin-releases/sie_generate_config_gui-ubuntu
+          chmod +x bin-releases/*
+
+      - name: Create tarball
+        run: |
+          cd bin-releases
+          tar -czvf sie_generate_config-ubuntu-binary.tar.gz sie_generate_config-ubuntu
+          tar -czvf sie_generate_config_gui-ubuntu-binary.tar.gz sie_generate_config_gui-ubuntu
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: ubuntu-binaries
+          path: |
+            bin-releases/sie_generate_config-ubuntu
+            bin-releases/sie_generate_config_gui-ubuntu
+
+      - name: Upload tarballs
+        uses: actions/upload-artifact@v3
+        with:
+          name: ubuntu-tarballs
+          path: bin-releases/*.tar.gz
+
+  build-windows-binary:
+    name: Build Windows Binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI executable
+        run: cargo build --release --bin sie_generate_config
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build GUI executable
+        run: cargo build --release --bin sie_generate_config_gui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Create output directory
+        run: mkdir -p bin-releases
+
+      - name: Copy executables
+        run: |
+          copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
+          copy target\release\sie_generate_config_gui.exe bin-releases\sie_generate_config_gui-windows.exe
+
+      - name: Create zip archives
+        run: |
+          cd bin-releases
+          7z a sie_generate_config-windows-binary.zip sie_generate_config-windows.exe
+          7z a sie_generate_config_gui-windows-binary.zip sie_generate_config_gui-windows.exe
+
+      - name: Upload executables
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-executables
+          path: |
+            bin-releases/sie_generate_config-windows.exe
+            bin-releases/sie_generate_config_gui-windows.exe
+
+      - name: Upload zip archives
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-zips
+          path: bin-releases/*.zip
+
+  create-binary-release:
+    name: Create Binary Release
+    needs: [build-ubuntu-binary, build-windows-binary]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./release-artifacts
+          
+      - name: Display structure of downloaded files
+        run: ls -R ./release-artifacts
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Binary Release v${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Binary Release v${{ steps.get_version.outputs.VERSION }}
+            
+            This release contains the following binary executables:
+            
+            ### Ubuntu Binaries
+            - `sie_generate_config-ubuntu`: Command-line interface version for Ubuntu
+            - `sie_generate_config_gui-ubuntu`: Graphical interface version for Ubuntu
+            
+            ### Windows Executables
+            - `sie_generate_config-windows.exe`: Command-line interface version for Windows
+            - `sie_generate_config_gui-windows.exe`: Graphical interface version for Windows
+            
+            Each executable is also available in compressed format (.tar.gz for Ubuntu, .zip for Windows).
+          files: |
+            ./release-artifacts/ubuntu-binaries/*
+            ./release-artifacts/ubuntu-tarballs/*
+            ./release-artifacts/windows-executables/*
+            ./release-artifacts/windows-zips/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
