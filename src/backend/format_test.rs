@@ -1,4 +1,6 @@
-use crate::backend::format::{format_config_header, OpcuaConfig, OutputFormat, NamespaceInfo, parse_xml};
+use crate::backend::format::{
+    format_config_header, parse_xml, NamespaceInfo, OpcuaConfig, OutputFormat,
+};
 use crate::error::TelegrafError;
 use std::fs::File;
 use std::io::Write;
@@ -47,15 +49,13 @@ mod tests {
 
     #[test]
     fn test_format_config_header_prometheus() {
-        let influx_token = "";  // Not needed for Prometheus
-        let bucket_name = "";   // Not needed for Prometheus
+        let influx_token = ""; // Not needed for Prometheus
+        let bucket_name = ""; // Not needed for Prometheus
         let config_strings = vec!["config1".to_string()];
-        let namespace_infos = vec![
-            NamespaceInfo {
-                number: "1".to_string(),
-                file_name: "test1.xml".to_string(),
-            },
-        ];
+        let namespace_infos = vec![NamespaceInfo {
+            number: "1".to_string(),
+            file_name: "test1.xml".to_string(),
+        }];
         let output_format = OutputFormat::Prometheus;
         let include_test_inputs = false;
 
@@ -77,12 +77,10 @@ mod tests {
     #[test]
     fn test_format_config_header_with_test_inputs() {
         let config_strings = vec!["config1".to_string()];
-        let namespace_infos = vec![
-            NamespaceInfo {
-                number: "1".to_string(),
-                file_name: "test1.xml".to_string(),
-            },
-        ];
+        let namespace_infos = vec![NamespaceInfo {
+            number: "1".to_string(),
+            file_name: "test1.xml".to_string(),
+        }];
         let output_format = OutputFormat::InfluxDB;
         let include_test_inputs = true;
 

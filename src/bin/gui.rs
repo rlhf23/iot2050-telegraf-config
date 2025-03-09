@@ -579,13 +579,11 @@ impl eframe::App for TelegrafApp {
                 // Add a header to make it more visible
                 ui.separator();
                 ui.heading("Command Output:");
-                
                 // Create a frame with a border to make the output more visible
                 let frame = egui::Frame::dark_canvas(ui.style())
                     .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE))
                     .inner_margin(egui::style::Margin::same(8.0))
                     .outer_margin(egui::style::Margin::same(4.0));
-                
                 frame.show(ui, |ui| {
                     // Use scrollable area with fixed height for multiline text
                     egui::ScrollArea::vertical()
@@ -599,7 +597,6 @@ impl eframe::App for TelegrafApp {
                                 ui.label(line);
                             }
                         });
-                    
                     // Add status message length for debugging
                     ui.separator();
                     ui.label(format!("Output length: {} characters", self.status_message.len()));
