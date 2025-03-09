@@ -24,12 +24,8 @@ pub struct ConfigGenerator {
 impl ConfigGenerator {
     pub fn new(config: TelegrafConfig) -> Result<Self, TelegrafError> {
         // Validate configuration
-        config
-            .validate_ip()
-            .map_err(TelegrafError::ValidationError)?;
-        config
-            .validate_iot_host()
-            .map_err(TelegrafError::ValidationError)?;
+        config.validate_ip()?;
+        config.validate_iot_host()?;
 
         // Determine output format from config or default to InfluxDB
         let output_format = match config.output_format.as_deref() {
