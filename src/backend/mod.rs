@@ -30,12 +30,8 @@ pub struct ConfigGenerator {
 impl ConfigGenerator {
     pub fn new(config: TelegrafConfig) -> Result<Self, TelegrafError> {
         // Validate configuration
-        config
-            .validate_ip()
-            .map_err(TelegrafError::ValidationError)?;
-        config
-            .validate_iot_host()
-            .map_err(TelegrafError::ValidationError)?;
+        config.validate_ip()?;
+        config.validate_iot_host()?;
 
         // Determine output format from config or default to InfluxDB
         let output_format = match config.output_format.as_deref() {
@@ -163,7 +159,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
@@ -180,7 +175,6 @@ impl ConfigGenerator {
             &self.config.iot_password,
             influx_token,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn backup_grafana(&self) -> Result<(), TelegrafError> {
@@ -189,7 +183,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn get_telegraf_status(&self) -> Result<String, TelegrafError> {
@@ -198,7 +191,6 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 
     pub fn get_telegraf_logs(&self, lines: usize) -> Result<String, TelegrafError> {
@@ -208,6 +200,5 @@ impl ConfigGenerator {
             &self.config.iot_password,
             lines,
         )
-        .map_err(|e| TelegrafError::SshError(e.to_string()))
     }
 }

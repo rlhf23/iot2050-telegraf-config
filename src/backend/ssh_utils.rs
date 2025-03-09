@@ -1,10 +1,134 @@
+use crate::error::TelegrafError;
 use ssh2::Session;
 use std::fs::File;
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::io::{Error as IoError, ErrorKind, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
+
+// Helper function to validate host format (hostname:port)
+fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
+    // Check if the host string contains a colon (required for host:port format)
+    if !host.contains(':') {
+        return Err(TelegrafError::HostFormatError(format!(
+            "Missing port specification in host '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
+            host
+        )));
+    }
+
+    // Split by colon and validate format
+    let host_parts: Vec<&str> = host.split(':').collect();
+
+    // Check that we have exactly two parts (host and port)
+    if host_parts.len() != 2 {
+        return Err(TelegrafError::HostFormatError(format!(
+            "Invalid host format: '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
+            host
+        )));
+    }
+
+    // Validate that the port is a valid number
+    match host_parts[1].parse::<u16>() {
+        Ok(port) if port > 0 => Ok(()),
+        _ => Err(TelegrafError::HostFormatError(format!(
+            "Invalid port in host: '{}'. Port must be a number between 1-65535",
+            host
+        ))),
+    }
+}
+
+// Helper function to establish SSH connection with timeout
+fn connect_ssh_with_timeout(
+    host: &str,
+    username: &str,
+    password: &str,
+    timeout_seconds: u64,
+) -> Result<Session, TelegrafError> {
+    // First validate host format before attempting connection
+    // Use the dedicated validation helper
+    validate_host_format(host)?;
+
+    // Use the provided host (already has port)
+    let host_with_port = host.to_string();
+
+    println!(
+        "Connecting to {} with timeout of {} seconds",
+        host_with_port, timeout_seconds
+    );
+
+    // Set up TCP connection with timeout
+    let socket_addrs = match host_with_port.to_socket_addrs() {
+        Ok(addrs) => addrs,
+        Err(e) => {
+            return Err(TelegrafError::HostFormatError(format!(
+                "Failed to resolve hostname '{}': {}",
+                host, e
+            )))
+        }
+    };
+
+    let mut last_error = IoError::new(ErrorKind::Other, "Failed to connect to any address");
+
+    for socket_addr in socket_addrs {
+        match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(timeout_seconds)) {
+            Ok(tcp) => {
+                // Configure TCP stream
+                if let Err(e) = tcp.set_read_timeout(Some(Duration::from_secs(timeout_seconds))) {
+                    println!("Failed to set read timeout: {}", e);
+                    continue;
+                }
+
+                if let Err(e) = tcp.set_write_timeout(Some(Duration::from_secs(timeout_seconds))) {
+                    println!("Failed to set write timeout: {}", e);
+                    continue;
+                }
+
+                // Create and configure SSH session
+                let mut session = match Session::new() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Failed to create SSH session: {}", e);
+                        continue;
+                    }
+                };
+
+                session.set_tcp_stream(tcp);
+                session.set_timeout((timeout_seconds * 1000).try_into().unwrap()); // Convert to milliseconds
+
+                // Perform handshake and authentication
+                match session.handshake() {
+                    Ok(_) => match session.userauth_password(username, password) {
+                        Ok(_) => return Ok(session),
+                        Err(e) => {
+                            println!("Authentication failed: {}", e);
+                            return Err(TelegrafError::SshError(format!(
+                                "Authentication failed: {}",
+                                e
+                            )));
+                        }
+                    },
+                    Err(e) => {
+                        println!("Handshake failed: {}", e);
+                        last_error =
+                            IoError::new(ErrorKind::Other, format!("Handshake failed: {}", e));
+                        continue;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Connection timeout: {}", e);
+                last_error = e;
+            }
+        }
+    }
+
+    // If we get here, all connection attempts failed
+    Err(TelegrafError::SshError(format!(
+        "Connection failed: {}",
+        last_error
+    )))
+}
 
 pub fn send_and_restart_telegraf(
     config_path: &Path,
@@ -12,7 +136,7 @@ pub fn send_and_restart_telegraf(
     iot_host: &str,
     iot_username: &str,
     iot_password: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), TelegrafError> {
     // Send the telegraf.conf file to the IOT box
     send_file_over_ssh(
         config_path,
@@ -35,16 +159,11 @@ pub fn send_file_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Sending file ..");
-    // Establish a TCP connection to the remote host
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
+) -> Result<(), TelegrafError> {
+    println!("Sending file over SSH to {}", remote_host);
 
-    // Authenticate with the remote server
-    session.userauth_password(username, password)?;
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
 
     // Open a new SCP session and send the file
     let mut remote_file = session.scp_send(
@@ -55,48 +174,113 @@ pub fn send_file_over_ssh(
     )?;
     let mut local_file = std::fs::File::open(local_path)?;
 
+    // Read local file content
     let mut contents = Vec::new();
     local_file.read_to_end(&mut contents)?;
+
+    // Write content to remote file
+    println!("Uploading file ({} bytes)...", contents.len());
     remote_file.write_all(&contents)?;
 
+    println!("File upload completed successfully");
     Ok(())
 }
 
-fn execute_ssh_command(
-    session: &Session,
-    command: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn execute_ssh_command(session: &Session, command: &str) -> Result<String, TelegrafError> {
     let mut channel = session.channel_session()?;
     channel.exec(command)?;
+
+    // Read stdout
     let mut output = String::new();
     channel.read_to_string(&mut output)?;
+
+    // Check exit status
     channel.wait_close()?;
-    Ok(output.trim().to_string())
+    let exit_status = channel.exit_status()?;
+
+    // If command failed, return error with exit status
+    if exit_status != 0 {
+        return Err(crate::error::ssh_error_from_string(format!(
+            "Command failed with exit status {}: {}",
+            exit_status, output
+        )));
+    }
+
+    // Print for debugging
+    println!("SSH command output length: {}", output.len());
+    println!(
+        "First 100 chars: {}",
+        if output.len() > 100 {
+            &output[..100]
+        } else {
+            &output
+        }
+    );
+
+    Ok(output)
 }
 
 pub fn restart_telegraf_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), TelegrafError> {
     println!("Restarting telegraf service on the remote host...");
     let start_time = Instant::now();
 
-    // Establish SSH connection
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
 
-    // Step 1: Restart the service
-    println!("Stopping telegraf service...");
-    execute_ssh_command(&session, "sudo service telegraf stop")?;
+    // Step 1: Try graceful stop first with timeout
+    println!("Stopping telegraf service gracefully...");
 
-    // Step 2: Wait a moment and start the service
-    thread::sleep(Duration::from_secs(2));
+    // First check if telegraf is actually running
+    let check_cmd = format!("pgrep telegraf || echo 'not_running'");
+    let check_result = execute_ssh_command(&session, &check_cmd)?;
+
+    if check_result.trim() == "not_running" {
+        println!("Telegraf is not currently running. Proceeding to start.");
+    } else {
+        // Attempt graceful stop
+        let stop_cmd = format!("echo '{}' | sudo -S service telegraf stop", password);
+        match execute_ssh_command(&session, &stop_cmd) {
+            Ok(_) => println!("Service stop command issued"),
+            Err(e) => println!("Warning: Error issuing stop command: {}", e),
+        }
+
+        // Wait up to 10 seconds for telegraf to stop gracefully
+        println!("Waiting up to 10 seconds for telegraf to stop...");
+        let mut stopped = false;
+        for i in 0..10 {
+            thread::sleep(Duration::from_secs(1));
+            let check_cmd = format!("pgrep telegraf || echo 'stopped'");
+            let check_result = execute_ssh_command(&session, &check_cmd)?;
+
+            if check_result.trim() == "stopped" {
+                println!("Telegraf stopped gracefully after {} seconds", i + 1);
+                stopped = true;
+                break;
+            }
+        }
+
+        // If still running after 10 seconds, forcefully kill it
+        if !stopped {
+            println!("Telegraf didn't stop gracefully within 10 seconds. Killing process...");
+            let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
+            match execute_ssh_command(&session, &kill_cmd) {
+                Ok(_) => println!("Telegraf process killed forcefully"),
+                Err(e) => println!("Warning: Error killing telegraf: {}", e),
+            }
+
+            // Give a moment for the kill to take effect
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
+
+    // Step 2: Start the service
     println!("Starting telegraf service...");
-    execute_ssh_command(&session, "sudo service telegraf start")?;
+    let start_cmd = format!("echo '{}' | sudo -S service telegraf start", password);
+    execute_ssh_command(&session, &start_cmd)?;
 
     // Step 3: Wait for service to initialize
     println!("Waiting for service to initialize...");
@@ -104,29 +288,50 @@ pub fn restart_telegraf_over_ssh(
 
     // Step 4: Check service status
     println!("Checking service status...");
-    let status = execute_ssh_command(&session, "sudo service telegraf status | head -n3")?;
+    let status_cmd = format!(
+        "echo '{}' | sudo -S service telegraf status | head -n15",
+        password
+    );
+    let status = execute_ssh_command(&session, &status_cmd)?;
 
     let elapsed_time = start_time.elapsed();
 
-    if status.contains("Active: active") {
+    // Also check if the process is actually running
+    let process_check = execute_ssh_command(&session, "pgrep telegraf || echo 'not_running'")?;
+    let is_running = process_check.trim() != "not_running";
+
+    if status.contains("Active: active") && is_running {
         println!("✓ Telegraf restart successful ({:.2?})", elapsed_time);
         println!("Status:\n{}", status);
     } else {
         println!("✗ Telegraf restart failed ({:.2?})", elapsed_time);
         println!("Status:\n{}", status);
 
+        if !is_running {
+            println!("WARNING: The telegraf process is not running!");
+        }
+
         // Get recent logs if service failed
         println!("\nRecent logs:");
-        let logs = execute_ssh_command(&session, "sudo tail -n 10 /var/log/telegraf/telegraf.log")?;
-        println!("{}", logs);
+        let logs_cmd = format!(
+            "echo '{}' | sudo -S tail -n 10 /var/log/telegraf/telegraf.log 2>/dev/null || echo 'No logs found'", 
+            password
+        );
+        match execute_ssh_command(&session, &logs_cmd) {
+            Ok(logs) => println!("{}", logs),
+            Err(e) => println!("Could not retrieve logs: {}", e),
+        }
 
         // Get error logs if any
         println!("\nRecent errors:");
-        let errors = execute_ssh_command(
-            &session,
-            "sudo tail -n 20 /var/log/telegraf/telegraf.log | grep 'E!' || echo 'No recent errors'",
-        )?;
-        println!("{}", errors);
+        let errors_cmd = format!(
+            "echo '{}' | sudo -S grep -E 'E!' /var/log/telegraf/telegraf.log 2>/dev/null | tail -n 10 || echo 'No error logs found'",
+            password
+        );
+        match execute_ssh_command(&session, &errors_cmd) {
+            Ok(errors) => println!("{}", errors),
+            Err(e) => println!("Could not retrieve error logs: {}", e),
+        }
     }
 
     Ok(())
@@ -137,7 +342,7 @@ pub fn backup_influxdb(
     iot_username: &str,
     iot_password: &str,
     token: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), TelegrafError> {
     let date = chrono::Utc::now().format("%Y-%m-%d-%H-%M").to_string();
     let backup_folder = format!("/tmp/influx_backup_{}", date);
     let backup_command = format!("influx backup -t {} {}", token, backup_folder);
@@ -167,12 +372,9 @@ pub fn execute_command_over_ssh(
     username: &str,
     password: &str,
     command: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+) -> Result<(), TelegrafError> {
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
 
     let mut channel = session.channel_session()?;
     channel.exec(command)?;
@@ -192,13 +394,9 @@ pub fn copy_directory_over_ssh(
     password: &str,
     remote_directory: &str,
     local_directory: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Establish an SSH session
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+) -> Result<(), TelegrafError> {
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
 
     // Execute a command to list files in the remote directory
     let mut channel = session.channel_session()?;
@@ -231,29 +429,47 @@ pub fn backup_grafana_config(
     host: &str,
     username: &str,
     password: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Establish SSH connection
-    let tcp = TcpStream::connect(host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+) -> Result<(), TelegrafError> {
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(host, username, password, 10)?;
 
-    // Assuming Grafana config is stored in /etc/grafana/grafana.ini
-    let remote_path = Path::new("/etc/grafana/grafana.ini");
+    // Since /etc/grafana/grafana.ini might require sudo access,
+    // first copy it to a temp location with sudo, then download it
+    println!("Copying Grafana config to a temporary location...");
+    let temp_path = "/tmp/grafana_backup.ini";
+    let copy_cmd = format!(
+        "echo '{}' | sudo -S cp /etc/grafana/grafana.ini {}",
+        password, temp_path
+    );
+
+    // Execute the copy command
+    execute_ssh_command(&session, &copy_cmd)?;
+
+    // Fix permissions on the temp file so we can read it
+    let chmod_cmd = format!("echo '{}' | sudo -S chmod 644 {}", password, temp_path);
+    execute_ssh_command(&session, &chmod_cmd)?;
+
+    // Now use SFTP to download the accessible temp file
     let local_path = "grafana_backup.ini";
 
     // Create an SFTP session
     let sftp = session.sftp()?;
 
-    // Download the file
-    let mut remote_file = sftp.open(remote_path)?;
+    // Download the file from temp location
+    let mut remote_file = sftp.open(Path::new(temp_path))?;
     let mut contents = Vec::new();
     remote_file.read_to_end(&mut contents)?;
 
     // Write to local file
     let mut local_file = File::create(local_path)?;
     local_file.write_all(&contents)?;
+
+    // Clean up the temp file
+    let cleanup_cmd = format!("echo '{}' | sudo -S rm {}", password, temp_path);
+    match execute_ssh_command(&session, &cleanup_cmd) {
+        Ok(_) => println!("Temporary file cleaned up"),
+        Err(e) => println!("Warning: Could not clean up temporary file: {}", e),
+    }
 
     println!("Grafana configuration backed up to {}", local_path);
 
@@ -264,19 +480,28 @@ pub fn get_telegraf_status(
     remote_host: &str,
     username: &str,
     password: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
-    // Establish SSH connection
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+) -> Result<String, TelegrafError> {
+    println!("Starting telegraf status retrieval from {}", remote_host);
 
-    // Get full telegraf service status
-    let status = execute_ssh_command(&session, "sudo service telegraf status")?;
-    
-    println!("Telegraf status retrieved successfully");
-    
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+
+    println!("SSH connection established, running status command");
+
+    // Use service command with non-interactive sudo
+    let command = format!("echo '{}' | sudo -S service telegraf status", password);
+    println!("Executing command with non-interactive sudo");
+
+    let status = execute_ssh_command(&session, &command)?;
+    println!(
+        "Telegraf status retrieved successfully, length: {}",
+        status.len()
+    );
+
+    if status.is_empty() {
+        println!("Warning: Empty status returned!");
+    }
+
     Ok(status)
 }
 
@@ -285,19 +510,64 @@ pub fn get_telegraf_logs(
     username: &str,
     password: &str,
     lines: usize,
-) -> Result<String, Box<dyn std::error::Error>> {
-    // Establish SSH connection
-    let tcp = TcpStream::connect(remote_host)?;
-    let mut session = Session::new()?;
-    session.set_tcp_stream(tcp);
-    session.handshake()?;
-    session.userauth_password(username, password)?;
+) -> Result<String, TelegrafError> {
+    println!("Starting telegraf logs retrieval from {}", remote_host);
 
-    // Get last n lines from telegraf log
-    let command = format!("sudo tail -n {} /var/log/telegraf/telegraf.log", lines);
+    // Connect to SSH with timeout (10 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+
+    println!("SSH connection established, retrieving logs");
+
+    // Try to check if the log file exists first with non-interactive sudo
+    println!("Checking if log file exists");
+    let check_cmd = format!("echo '{}' | sudo -S test -f /var/log/telegraf/telegraf.log && echo 'exists' || echo 'missing'", password);
+    let check_result = execute_ssh_command(&session, &check_cmd)?;
+
+    if check_result.trim() == "missing" {
+        // Try an alternative location
+        let alt_check = format!(
+            "echo '{}' | sudo -S test -f /var/log/telegraf.log && echo 'exists' || echo 'missing'",
+            password
+        );
+        let alt_result = execute_ssh_command(&session, &alt_check)?;
+
+        if alt_result.trim() == "exists" {
+            println!("Found log file in alternative location");
+            // Get last n lines from alternative log location
+            let alt_command = format!(
+                "echo '{}' | sudo -S tail -n {} /var/log/telegraf.log",
+                password, lines
+            );
+            let logs = execute_ssh_command(&session, &alt_command)?;
+
+            println!(
+                "Telegraf logs retrieved from alternative location, length: {}",
+                logs.len()
+            );
+            return Ok(logs);
+        }
+
+        println!("Log file not found in standard locations!");
+        return Err(TelegrafError::SshError(
+            "Telegraf log file not found at expected locations".to_string(),
+        ));
+    }
+
+    // Get last n lines from telegraf log with non-interactive sudo
+    let command = format!(
+        "echo '{}' | sudo -S tail -n {} /var/log/telegraf/telegraf.log",
+        password, lines
+    );
+    println!("Executing command to retrieve logs");
     let logs = execute_ssh_command(&session, &command)?;
-    
-    println!("Telegraf logs retrieved successfully");
-    
+
+    println!(
+        "Telegraf logs retrieved successfully, length: {}",
+        logs.len()
+    );
+    if logs.is_empty() {
+        println!("Warning: Empty logs returned!");
+    }
+
     Ok(logs)
 }
