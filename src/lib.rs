@@ -52,3 +52,6 @@ impl TelegrafConfig {
 
 pub mod backend;
 pub mod error;
+
+#[cfg(test)]
+mod lib_test;

@@ -1,0 +1,3 @@
+# This file signals to the integration tests that they're running in a CI environment
+# The tests will check for the existence of this file and skip problematic tests that
+# require interactive input or might fail due to platform-specific issues

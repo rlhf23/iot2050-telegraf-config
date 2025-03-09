@@ -1,0 +1,2 @@
+# This file is a workaround to allow CI to run without a .env file
+# GitHub Actions should be configured to use the environment variables in the workflow file
