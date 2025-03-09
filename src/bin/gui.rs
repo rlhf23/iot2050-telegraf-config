@@ -1,5 +1,5 @@
 use eframe::egui;
-use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig, error::TelegrafError};
+use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
 
 #[derive(Default)]
 struct XmlFileConfig {
@@ -45,17 +45,63 @@ impl TelegrafApp {
         }
     }
 
-    // Helper function to convert a TelegrafError or error string to a user-friendly message
-    fn format_error_message(&self, error: &TelegrafError, context: &str) -> String {
-        error.user_friendly_message(context)
-    }
-    
-    // Overloaded version that takes a string and converts it to a TelegrafError
-    fn format_error_string(&self, error_str: &str, context: &str) -> String {
-        // Parse the error string to determine the most likely error type
-        // This is a fallback for cases where we only have the error string
-        let error = sie_generate_config::error::ssh_error_from_string(error_str.to_string());
-        error.user_friendly_message(context)
+    // Helper function to format error messages based on error type
+    fn format_error_message(&mut self, error: &str, context: &str) -> String {
+        // Look for specific patterns in the error message to categorize
+        if error.contains("Host format error")
+            || error.contains("Invalid host format")
+            || error.contains("Invalid port in host")
+        {
+            // Set show_iot_host_error to true
+            self.show_iot_host_error = true;
+            // Host format validation errors
+            format!(
+                "⚠️ Host Format Error: {}\n\nPlease correct the IOT host field to use format: hostname:port\nExample: 192.168.0.1:22", 
+                error
+            )
+        } else if error.contains("Failed to resolve hostname") {
+            // Hostname resolution errors
+            format!(
+                "⚠️ Hostname Error: {}\n\nPlease check:\n- IOT host address is correct\n- Your network can reach the host\n- DNS settings are correct (if using hostname)", 
+                error
+            )
+        } else if error.contains("No route to host")
+            || error.contains("Connection refused")
+            || error.contains("Network is unreachable")
+            || error.contains("Connection failed")
+            || error.contains("timed out")
+        {
+            // Connection errors
+            format!(
+                "⚠️ Connection Error: {}\n\nPlease check:\n- IOT host IP address is correct ({})\n- IOT device is powered on and connected to the network\n- No firewall is blocking the connection", 
+                error,
+                self.config.iot_host
+            )
+        } else if error.contains("Authentication") || error.contains("Permission denied") {
+            // Authentication errors
+            format!(
+                "⚠️ Authentication Error: {}\n\nPlease check:\n- SSH username and password are correct\n- SSH user has proper permissions", 
+                error
+            )
+        } else if error.contains("not found") && context == "logs" {
+            // Log file issues
+            format!(
+                "⚠️ Log File Error: {}\n\nPlease check:\n- Telegraf is installed and has been run at least once\n- Logs are stored in the expected location", 
+                error
+            )
+        } else {
+            // Other errors
+            let additional_info = if context == "status" {
+                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Telegraf service is not running"
+            } else {
+                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Log file doesn't exist or has incorrect permissions"
+            };
+
+            format!(
+                "⚠️ Error getting Telegraf {}: {}\n\nPossible issues:\n{}",
+                context, error, additional_info
+            )
+        }
     }
 }
 
@@ -100,7 +146,6 @@ impl eframe::App for TelegrafApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Telegraf Configuration Generator");
-
             // Configuration Section
             ui.collapsing("Configuration", |ui| {
                 // Folder selection
@@ -140,7 +185,18 @@ impl eframe::App for TelegrafApp {
 
                 ui.horizontal(|ui| {
                     ui.label("IOT Host:");
-                    ui.text_edit_singleline(&mut self.config.iot_host);
+
+                    let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
+                    if self.show_iot_host_error {
+                        egui::Frame::none()
+                            .stroke(egui::Stroke::new(
+                                1.0,
+                                egui::Color32::from_rgb(255, 0, 0),
+                            ))
+                            .show(ui, |ui| ui.add(text_edit));
+                    } else {
+                        ui.add(text_edit);
+                    }
                 });
 
                 // Test Inputs Toggle
@@ -396,12 +452,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration generated successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e, "generating config");
+                                    self.status_message = self.format_error_message(&e.to_string(), "generating config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e, "generating config");
+                            self.status_message = self.format_error_message(&e.to_string(), "generating config");
                         }
                     }
                 }
@@ -416,12 +472,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration sent successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e, "send config");
+                                    self.status_message = self.format_error_message(&e.to_string(), "send config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e, "send config");
+                            self.status_message = self.format_error_message(&e.to_string(), "send config");
                         }
                     }
                 }
@@ -439,12 +495,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "InfluxDB backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e, "InfluxDB backup");
+                                        self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e, "InfluxDB backup");
+                                self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
                             }
                         }
                     }
@@ -458,12 +514,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "Grafana backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e, "Grafana backup");
+                                        self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e, "Grafana backup");
+                                self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
                             }
                         }
                     }
@@ -483,12 +539,12 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e, "status");
+                                        self.status_message = self.format_error_message(&e.to_string(), "status");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e, "status");
+                                self.status_message = self.format_error_message(&e.to_string(), "status");
                             }
                         }
                     }
@@ -506,12 +562,12 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e, "logs");
+                                        self.status_message = self.format_error_message(&e.to_string(), "logs");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e, "logs");
+                                self.status_message = self.format_error_message(&e.to_string(), "logs");
                             }
                         }
                     }
@@ -523,13 +579,11 @@ impl eframe::App for TelegrafApp {
                 // Add a header to make it more visible
                 ui.separator();
                 ui.heading("Command Output:");
-                
                 // Create a frame with a border to make the output more visible
-                let frame = egui::Frame::dark_canvas(&ui.style())
+                let frame = egui::Frame::dark_canvas(ui.style())
                     .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE))
                     .inner_margin(egui::style::Margin::same(8.0))
                     .outer_margin(egui::style::Margin::same(4.0));
-                
                 frame.show(ui, |ui| {
                     // Use scrollable area with fixed height for multiline text
                     egui::ScrollArea::vertical()
@@ -537,18 +591,15 @@ impl eframe::App for TelegrafApp {
                         .show(ui, |ui| {
                             // Use a selectable label with monospace font for output
                             ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                            let mut content = self.status_message.clone();
+                            let content = self.status_message.clone();
                             // Split by lines and display each line separately
                             for line in content.lines() {
                                 ui.label(line);
                             }
                         });
-                    // Add debug info only in development builds
-                    #[cfg(debug_assertions)]
-                    {
-                        ui.separator();
-                        ui.label(format!("Output length: {} characters", self.status_message.len()));
-                    }
+                    // Add status message length for debugging
+                    ui.separator();
+                    ui.label(format!("Output length: {} characters", self.status_message.len()));
                 });
             }
         });

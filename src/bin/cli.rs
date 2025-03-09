@@ -30,7 +30,10 @@ fn print_config(matches: &clap::ArgMatches) {
     println!("Send config: {}", matches.get_flag("send"));
     println!("Backup InfluxDB: {}", matches.get_flag("backup_influx"));
     println!("Backup Grafana: {}", matches.get_flag("backup_grafana"));
-    println!("Output format: {}", matches.get_one::<String>("output_format").unwrap());
+    println!(
+        "Output format: {}",
+        matches.get_one::<String>("output_format").unwrap()
+    );
     println!("Include test inputs: {}", matches.get_flag("test_inputs"));
     println!("=====================\n");
 }
@@ -71,10 +74,7 @@ fn read_influx_token(token_folder: &str) -> String {
             }
         }
     } else {
-        println!(
-            "{}",
-            "No 'token.txt' found, enter the InfluxDB token manually:"
-        );
+        println!("No 'token.txt' found, enter the InfluxDB token manually:");
         match std::io::stdin().read_line(&mut influx_token) {
             Ok(_) => {
                 influx_token = influx_token.trim().to_string();
@@ -215,7 +215,12 @@ fn main() {
         bucket_name: String::from("line"),
         influx_token: None,
         listener_files: Vec::new(),
-        output_format: Some(matches.get_one::<String>("output_format").unwrap().to_string()),
+        output_format: Some(
+            matches
+                .get_one::<String>("output_format")
+                .unwrap()
+                .to_string(),
+        ),
         include_test_inputs: matches.get_flag("test_inputs"),
     };
 
@@ -270,7 +275,7 @@ fn main() {
         Ok(entries) => entries
             .filter_map(|entry| {
                 let path = entry.ok()?.path();
-                if path.is_file() && path.extension().map_or(false, |ext| ext == "xml") {
+                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
                     Some(path.to_str()?.to_string())
                 } else {
                     None
@@ -285,24 +290,24 @@ fn main() {
 
     // Check if we're generating a config with only test inputs
     let test_inputs_only = matches.get_flag("test_inputs") && xml_files.is_empty();
-    
+
     if !xml_files.is_empty() {
-        println!("{}", "Found the following XML files in the folder:");
+        println!("Found the following XML files in the folder:");
         for (index, file) in xml_files.iter().enumerate() {
             println!("{}. {}", index + 1, file);
         }
     } else if !test_inputs_only {
-        println!("{}", "No XML files found in the folder.");
-        println!("{}", "This is clearly your fault, not mine..");
+        println!("No XML files found in the folder.");
+        println!("This is clearly your fault, not mine..");
         wrap_up(1);
     } else {
-        println!("{}", "No XML files found, but continuing with test inputs only.");
+        println!("No XML files found, but continuing with test inputs only.");
     }
 
     // Only ask for confirmation if there are XML files or we're not in test-only mode
     if !test_inputs_only {
-        println!("");
-        println!("{}", "Do you want to use these files? (y/N)");
+        println!(" ");
+        println!("Do you want to use these files? (y/N)");
         let mut confirm = String::new();
         std::io::stdin().read_line(&mut confirm).unwrap();
 
@@ -312,8 +317,8 @@ fn main() {
         }
     }
 
-    println!("{}","OPC clients can be active (standard), pulling data every interval, or \npassive (subscribers), listening for changes.");
-    println!("{}","Enter the indexes of the files that should be listeners (subscribers), \nseparated by commas (e.g., 1,3). If none, just press enter:");
+    println!("OPC clients can be active (standard), pulling data every interval, or \npassive (subscribers), listening for changes.");
+    println!("Enter the indexes of the files that should be listeners (subscribers), \nseparated by commas (e.g., 1,3). If none, just press enter:");
 
     let mut listener_numbers = String::new();
     std::io::stdin().read_line(&mut listener_numbers).unwrap();
@@ -332,7 +337,7 @@ fn main() {
 
     // Check if we're using InfluxDB or Prometheus
     let using_influxdb = config.output_format.as_deref() != Some("prometheus");
-    
+
     if using_influxdb {
         // Only need influx token and bucket name for InfluxDB output
         config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
@@ -390,12 +395,9 @@ fn main() {
         }
     };
 
-    println!("{}", "Config file generated successfully!");
+    println!("Config file generated successfully!");
 
-    println!(
-        "{}",
-        "Do you want to send the config file to the IOT box? (y/N)"
-    );
+    println!("Do you want to send the config file to the IOT box? (y/N)");
     let mut user_input = String::new();
     std::io::stdin().read_line(&mut user_input).unwrap();
 
@@ -406,10 +408,7 @@ fn main() {
         }
         println!("Config sent successfully!");
     } else {
-        println!(
-            "{}",
-            "Config file generated. Please copy it and run telegraf manually."
-        );
+        println!("Config file generated. Please copy it and run telegraf manually.");
     }
 
     wrap_up(0);
