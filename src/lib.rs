@@ -18,7 +18,7 @@ pub struct TelegrafConfig {
 }
 
 impl TelegrafConfig {
-    pub fn validate_ip(&self) -> Result<(), String> {
+    pub fn validate_ip(&self) -> Result<(), crate::error::TelegrafError> {
         let ip_valid = self
             .ip
             .split('.')
@@ -27,21 +27,21 @@ impl TelegrafConfig {
             == 4;
 
         if !ip_valid {
-            return Err(format!(
+            return Err(crate::error::TelegrafError::ValidationError(format!(
                 "Invalid IP address format for '{}', expecting something like: 192.168.0.1",
                 self.ip
-            ));
+            )));
         }
         Ok(())
     }
 
-    pub fn validate_iot_host(&self) -> Result<(), String> {
+    pub fn validate_iot_host(&self) -> Result<(), crate::error::TelegrafError> {
         // First check if the host string contains a colon (required for host:port format)
         if !self.iot_host.contains(':') {
-            return Err(format!(
+            return Err(crate::error::TelegrafError::HostFormatError(format!(
                 "Missing port specification in IOT host '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
                 self.iot_host
-            ));
+            )));
         }
 
         // Split by colon and validate format
@@ -49,20 +49,20 @@ impl TelegrafConfig {
 
         // Check that we have exactly two parts (host and port)
         if iot_host_parts.len() != 2 {
-            return Err(format!(
+            return Err(crate::error::TelegrafError::HostFormatError(format!(
                 "Invalid IOT host format '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
                 self.iot_host
-            ));
+            )));
         }
 
         // Validate that the port is a valid number greater than 0
         match iot_host_parts[1].parse::<u16>() {
             Ok(port) if port > 0 => {}
             _ => {
-                return Err(format!(
+                return Err(crate::error::TelegrafError::HostFormatError(format!(
                     "Invalid port '{}' in IOT host. Port must be a number between 1-65535",
                     iot_host_parts[1]
-                ));
+                )));
             }
         }
 
