@@ -3,14 +3,14 @@ use crate::{error::TelegrafError, TelegrafConfig};
 use std::fs::{self, File};
 use std::io::Write;
 
-mod format;
-mod ssh_utils;
-#[cfg(test)]
-mod format_test;
-#[cfg(test)]
-mod ssh_utils_test;
 #[cfg(test)]
 mod config_generator_test;
+mod format;
+#[cfg(test)]
+mod format_test;
+mod ssh_utils;
+#[cfg(test)]
+mod ssh_utils_test;
 
 pub use format::OutputFormat;
 
@@ -46,11 +46,11 @@ impl ConfigGenerator {
             output_format,
         })
     }
-    
+
     pub fn set_output_format(&mut self, output_format: OutputFormat) {
         self.output_format = output_format;
     }
-    
+
     pub fn set_include_test_inputs(&mut self, include_test_inputs: bool) {
         self.include_test_inputs = include_test_inputs;
     }
