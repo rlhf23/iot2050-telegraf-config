@@ -6,7 +6,8 @@ pub enum TelegrafError {
     SshError(String),
     ValidationError(String),
     ConfigError(String),
-    DuplicateNodeError(String), // Add this variant
+    DuplicateNodeError(String),
+    HostFormatError(String), // New error type for host format validation
 }
 
 impl fmt::Display for TelegrafError {
@@ -17,6 +18,7 @@ impl fmt::Display for TelegrafError {
             TelegrafError::ValidationError(e) => writeln!(f, "Validation error:\n    {}", e),
             TelegrafError::ConfigError(e) => writeln!(f, "Configuration error:\n    {}", e),
             TelegrafError::DuplicateNodeError(e) => writeln!(f, "Duplicate node error:\n    {}", e),
+            TelegrafError::HostFormatError(e) => writeln!(f, "Host format error:\n    {}", e),
         }
     }
 }
@@ -26,5 +28,29 @@ impl std::error::Error for TelegrafError {}
 impl From<std::io::Error> for TelegrafError {
     fn from(error: std::io::Error) -> Self {
         TelegrafError::IoError(error)
+    }
+}
+
+impl From<ssh2::Error> for TelegrafError {
+    fn from(error: ssh2::Error) -> Self {
+        TelegrafError::SshError(error.to_string())
+    }
+}
+
+impl From<String> for TelegrafError {
+    fn from(error: String) -> Self {
+        TelegrafError::SshError(error)
+    }
+}
+
+impl From<&str> for TelegrafError {
+    fn from(error: &str) -> Self {
+        TelegrafError::SshError(error.to_string())
+    }
+}
+
+impl From<std::num::TryFromIntError> for TelegrafError {
+    fn from(error: std::num::TryFromIntError) -> Self {
+        TelegrafError::SshError(error.to_string())
     }
 }
