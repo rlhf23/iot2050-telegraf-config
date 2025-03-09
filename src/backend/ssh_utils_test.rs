@@ -18,7 +18,7 @@ mod tests {
 
     // We can't easily test actual SSH connections in unit tests
     // So we'll test the error handling for missing files and invalid paths
-    
+
     #[test]
     fn test_send_and_restart_telegraf_missing_file() {
         let non_existent_path = PathBuf::from("/this/file/does/not/exist.conf");
@@ -29,17 +29,17 @@ mod tests {
             "user",
             "pass",
         );
-        
+
         // Just check that we get an error, without being specific about the error message
         // This makes the test more robust across different platforms and environments
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_send_file_over_ssh_invalid_host() {
         let dir = tempdir().unwrap();
         let file_path = create_test_file(&dir.path().to_path_buf(), "test.conf", "test content");
-        
+
         // Use an invalid host that will fail to connect (port 1 is unlikely to have SSH)
         let result = ssh_utils::send_file_over_ssh(
             &file_path,
@@ -48,23 +48,23 @@ mod tests {
             "user",
             "pass",
         );
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_backup_influxdb_invalid_host() {
         // Test with invalid host
         let result = ssh_utils::backup_influxdb(
             "127.0.0.1:1", // Invalid port
-            "user", 
+            "user",
             "pass",
             "token",
         );
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_backup_grafana_invalid_host() {
         // Test with invalid host
@@ -73,10 +73,10 @@ mod tests {
             "user",
             "pass",
         );
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_get_telegraf_status_invalid_host() {
         // Test with invalid host
@@ -85,10 +85,10 @@ mod tests {
             "user",
             "pass",
         );
-        
+
         assert!(result.is_err());
     }
-    
+
     #[test]
     fn test_get_telegraf_logs_invalid_host() {
         // Test with invalid host
@@ -98,7 +98,7 @@ mod tests {
             "pass",
             10,
         );
-        
+
         assert!(result.is_err());
     }
 }
