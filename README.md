@@ -1,54 +1,98 @@
-# Config Generator for Telegraf
+# Telegraf Configuration Generator
 
 ## Introduction
-This tool is designed to simplify the process of generating and deploying Telegraf configuration files, especially for users managing IoT devices. It allows for the automatic generation of configuration files based on XML templates and provides functionalities for sending these configurations to remote IoT devices via SSH.
+Telegraf Configuration Generator is a powerful tool designed to simplify the management of Telegraf deployments for IoT devices, particularly the SIEMENS SIMATIC IOT2050. This application provides an intuitive graphical interface for creating, deploying, and managing Telegraf configurations based on XML templates.
 
-## Features
-- **Generate Configurations:** Automatically generate Telegraf configuration files from XML templates.
-- **Send Configurations:** Directly send the generated configuration files to IoT devices using SSH.
-- **Backup InfluxDB:** Facilitate the backup of InfluxDB databases from remote IoT devices.
+![Telegraf Config Generator GUI](https://example.com/telegraf-config-generator-gui.png)
 
-## Basic Usage
-By default it will use files in the current working directory. Normally you can just run the .exe and follow the prompts to create a new config and send it to the IOT box, if all passwords and IP addresses are the defaults.
+## Key Features
 
-Here are some basic commands for other use cases:
+### Graphical User Interface
+- **User-friendly interface** for all configuration operations
+- **Real-time validation** of configuration parameters
+- **Detailed status feedback** with formatted error messages
 
-### Generating a Config File
-To generate a Telegraf configuration file from XML templates in a specified folder:
-```
+### Configuration Management
+- **XML-based templates** for easy definition of data points
+- **Namespace configuration** to organize data from multiple sources
+- **Custom sampling intervals** for each XML file
+- **Support for listener/subscriber configurations** for event-based monitoring
+- **Include test inputs** option to monitor CPU, disk, and memory of the IoT device
+
+### Output Options
+- **Dual output formats**:
+  - **InfluxDB** for time-series data storage with token authentication
+  - **Prometheus** for exposing metrics via HTTP endpoint
+
+### Remote Device Operations
+- **One-click deployment** of configurations to IoT devices
+- **SSH-based communication** with secure credential management
+- **Telegraf service management** (restart and status monitoring)
+- **Remote log viewing** for troubleshooting
+
+### Backup Capabilities
+- **InfluxDB backup** for preserving time-series data
+- **Grafana backup** for dashboard configurations
+- Convenient storage of backups on your local machine
+
+## Getting Started
+
+### Installation
+1. Download the latest release from the Releases page
+2. Extract the archive to your preferred location
+3. Run the executable file (`telegraf-config-generator.exe` on Windows)
+
+### Basic Configuration
+1. **Launch the application** to access the GUI
+2. **Configure connection details**:
+   - OPC IP address and credentials
+   - IoT host address and credentials
+3. **Select XML folder** containing your configuration templates
+4. **Configure each XML file**:
+   - Assign unique namespaces
+   - Set appropriate sampling intervals
+   - Select listener/subscriber status as needed
+5. **Choose output format** (InfluxDB or Prometheus)
+6. **Generate configuration** with a single click
+7. **Deploy to IoT device** directly from the interface
+
+### Monitoring & Maintenance
+Use the "Other Commands" section to:
+- **Check Telegraf status** on the IoT device
+- **View Telegraf logs** for troubleshooting
+- **Backup InfluxDB** or Grafana as needed
+
+## Command Line Interface
+
+While the GUI provides the most user-friendly experience, a command-line interface is also available for automation and scripting:
+
+```bash
+# Generate configuration
 ./config_generator -f <path_to_folder>
-```
-### Sending Configuration to an IoT Device
-To send a generated `telegraf.conf` file to an IoT device and restart Telegraf:
-```
-./config_generator -s -f <path_to_folder> -a <iot_host> -w <iot_password>
-```
 
-### Backing Up InfluxDB
-To backup an InfluxDB database from an IoT device:
-```
+# Send configuration to IoT device
+./config_generator -s -f <path_to_folder> -a <iot_host> -w <iot_password>
+
+# Backup InfluxDB
 ./config_generator -b -a <iot_host> -w <iot_password>
 ```
 
-## Advanced Usage
-For more advanced usage and options, run the help command:
-```
+For more CLI options, run:
+```bash
 ./config_generator --help
 ```
 
-This will display all the available commands and their descriptions, helping you to make full use of the program's capabilities.
-
-## Building from source
-Before you can build this tool, ensure you have Rust installed on your system. Follow these steps to install Rust: https://www.rust-lang.org/tools/install
-
-Once Rust is installed, you can compile the program by navigating to the program's directory and running:
-```
-cargo build --release
-```
-This command compiles the program in release mode, optimizing for performance. The compiled binary will be located in `target/release/`.
+## Building from Source
+1. Install Rust: https://www.rust-lang.org/tools/install
+2. Clone this repository
+3. Run `cargo build --release`
+4. The executable will be available in `target/release/`
 
 ## Support
-If you encounter any issues or have questions, please refer to the project's documentation or submit an issue on the project's GitHub page.
+If you encounter issues or have questions, please submit an issue on our GitHub page.
 
-Thank you for using Config Generator for Telegraf!
+## License
+This project is licensed under the terms of the included LICENSE file.
+
+Thank you for using Telegraf Configuration Generator!
 
