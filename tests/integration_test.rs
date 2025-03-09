@@ -10,12 +10,12 @@ fn is_ci_environment() -> bool {
     if std::env::var("CI").is_ok() {
         return true;
     }
-    
+
     // Also check for our special marker file
     if std::path::Path::new(".github/workflows/skip-integration-tests").exists() {
         return true;
     }
-    
+
     false
 }
 
@@ -28,17 +28,20 @@ fn test_cli_basics() {
         println!("Skipping CLI tests in CI environment");
         return;
     }
-    
+
     // Also skip on Windows which might have different command prompt behavior
     if cfg!(target_os = "windows") {
         println!("Skipping CLI tests on Windows");
         return;
     }
-    
+
     // Try to find the executable, skip the test if not found
     let binary_path = get_bin_path("sie_generate_config");
     if !binary_path.exists() {
-        println!("Binary not found at {}, skipping test", binary_path.display());
+        println!(
+            "Binary not found at {}, skipping test",
+            binary_path.display()
+        );
         return;
     }
 
@@ -47,7 +50,7 @@ fn test_cli_basics() {
         .arg("--help")
         .output()
         .expect("Failed to execute command");
-    
+
     assert!(help_output.status.success(), "Help command should succeed");
     println!("Verified that the CLI executable can run with --help");
 }
@@ -56,15 +59,15 @@ fn test_cli_basics() {
 fn get_bin_path(bin_name: &str) -> PathBuf {
     let mut path = std::env::current_exe().expect("Failed to get current exe path");
     path.pop(); // Remove the test binary name
-    
+
     // Handle differences between debug/release
     if path.ends_with("deps") {
         path.pop();
     }
-    
+
     #[cfg(target_os = "windows")]
     let bin_name = format!("{}.exe", bin_name);
-    
+
     path.push(bin_name);
     path
 }
