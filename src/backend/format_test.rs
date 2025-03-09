@@ -106,7 +106,7 @@ mod tests {
     fn test_parse_xml_with_simple_file() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let file_path = dir.path().join("test_simple.xml");
-        
+
         // Create a simple XML file for testing
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
         <UANodeSet>
@@ -120,10 +120,10 @@ mod tests {
                 <BrowseName>Pressure</BrowseName>
             </UAVariable>
         </UANodeSet>"#;
-        
+
         let mut file = File::create(&file_path)?;
         file.write_all(xml_content.as_bytes())?;
-        
+
         let config = OpcuaConfig {
             ip: "192.168.1.100",
             username: "user",
@@ -133,13 +133,13 @@ mod tests {
             namespace_number: "2",
             interval_ms: 1000,
         };
-        
+
         let mut namespace_infos = Vec::new();
         let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
-        
+
         assert!(result.is_ok());
         let config_str = result.unwrap();
-        
+
         // Check that the parsed config contains expected elements
         assert!(config_str.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
         assert!(config_str.contains("username = \"user\""));
@@ -149,18 +149,18 @@ mod tests {
         assert!(config_str.contains("interval = \"1000ms\""));
         assert!(config_str.contains("name=\"Temperature\", identifier=\"2\""));
         assert!(config_str.contains("name=\"Pressure\", identifier=\"3\""));
-        
+
         assert_eq!(namespace_infos.len(), 1);
         assert_eq!(namespace_infos[0].number, "2");
-        
+
         Ok(())
     }
-    
+
     #[test]
     fn test_parse_xml_with_duplicate_nodes() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let file_path = dir.path().join("test_duplicates.xml");
-        
+
         // Create an XML file with duplicate node names for testing
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
         <UANodeSet>
@@ -174,10 +174,10 @@ mod tests {
                 <BrowseName>DuplicateName</BrowseName>
             </UAVariable>
         </UANodeSet>"#;
-        
+
         let mut file = File::create(&file_path)?;
         file.write_all(xml_content.as_bytes())?;
-        
+
         let config = OpcuaConfig {
             ip: "192.168.1.100",
             username: "user",
@@ -187,10 +187,10 @@ mod tests {
             namespace_number: "2",
             interval_ms: 1000,
         };
-        
+
         let mut namespace_infos = Vec::new();
         let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
-        
+
         assert!(result.is_err());
         if let Err(TelegrafError::DuplicateNodeError(msg)) = result {
             assert!(msg.contains("Duplicate node name"));
@@ -198,15 +198,15 @@ mod tests {
         } else {
             panic!("Expected DuplicateNodeError but got a different error or success");
         }
-        
+
         Ok(())
     }
-    
+
     #[test]
     fn test_parse_xml_with_variable_mapping() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempdir()?;
         let file_path = dir.path().join("test_variable_mapping.xml");
-        
+
         // Create an XML file with VariableMapping for testing
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
         <UANodeSet>
@@ -218,10 +218,10 @@ mod tests {
                 <VariableMapping>"MappedTemperature"</VariableMapping>
             </UAVariable>
         </UANodeSet>"#;
-        
+
         let mut file = File::create(&file_path)?;
         file.write_all(xml_content.as_bytes())?;
-        
+
         let config = OpcuaConfig {
             ip: "192.168.1.100",
             username: "user",
@@ -231,17 +231,17 @@ mod tests {
             namespace_number: "2",
             interval_ms: 1000,
         };
-        
+
         let mut namespace_infos = Vec::new();
         let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
-        
+
         assert!(result.is_ok());
         let config_str = result.unwrap();
-        
+
         // Check that the variable mapping is used instead of BrowseName
         assert!(config_str.contains("name=\"MappedTemperature\", identifier=\"2\""));
         assert!(!config_str.contains("name=\"Temperature\", identifier=\"2\""));
-        
+
         Ok(())
     }
 }

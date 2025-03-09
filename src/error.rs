@@ -22,7 +22,9 @@ impl fmt::Display for TelegrafError {
             TelegrafError::DuplicateNodeError(e) => writeln!(f, "Duplicate node error:\n    {}", e),
             TelegrafError::HostFormatError(e) => writeln!(f, "Host format error:\n    {}", e),
             TelegrafError::ConnectionError(e) => writeln!(f, "Connection error:\n    {}", e),
-            TelegrafError::AuthenticationError(e) => writeln!(f, "Authentication error:\n    {}", e),
+            TelegrafError::AuthenticationError(e) => {
+                writeln!(f, "Authentication error:\n    {}", e)
+            }
         }
     }
 }
@@ -32,7 +34,10 @@ impl TelegrafError {
     pub fn user_friendly_message(&self, context: &str) -> String {
         match self {
             TelegrafError::IoError(e) => {
-                format!("⚠️ IO Error: {}\n\nPlease check file permissions and disk space.", e)
+                format!(
+                    "⚠️ IO Error: {}\n\nPlease check file permissions and disk space.",
+                    e
+                )
             }
             TelegrafError::HostFormatError(e) => {
                 format!(
@@ -57,7 +62,7 @@ impl TelegrafError {
                     "generating config" => "- Check the XML file format\n- Verify namespace configuration\n- Make sure all required fields are filled",
                     _ => "- Check configuration parameters\n- Verify file paths exist"
                 };
-                
+
                 format!(
                     "⚠️ Configuration Error: {}\n\nPossible issues:\n{}", 
                     e, additional_info
@@ -65,7 +70,7 @@ impl TelegrafError {
             }
             TelegrafError::ValidationError(e) => {
                 format!(
-                    "⚠️ Validation Error: {}\n\nPlease check your input values.", 
+                    "⚠️ Validation Error: {}\n\nPlease check your input values.",
                     e
                 )
             }
@@ -110,14 +115,15 @@ impl From<ssh2::Error> for TelegrafError {
     fn from(error: ssh2::Error) -> Self {
         // Categorize SSH errors based on their content
         let error_str = error.to_string();
-        
+
         if error_str.contains("Authentication") || error_str.contains("Permission denied") {
             TelegrafError::AuthenticationError(error_str)
-        } else if error_str.contains("No route to host") 
-            || error_str.contains("Connection refused") 
+        } else if error_str.contains("No route to host")
+            || error_str.contains("Connection refused")
             || error_str.contains("Network is unreachable")
             || error_str.contains("Connection failed")
-            || error_str.contains("timed out") {
+            || error_str.contains("timed out")
+        {
             TelegrafError::ConnectionError(error_str)
         } else {
             TelegrafError::SshError(error_str)
@@ -133,11 +139,12 @@ impl From<ssh2::Error> for TelegrafError {
 pub fn ssh_error_from_string(error: String) -> TelegrafError {
     if error.contains("Authentication") || error.contains("Permission denied") {
         TelegrafError::AuthenticationError(error)
-    } else if error.contains("No route to host") 
-        || error.contains("Connection refused") 
+    } else if error.contains("No route to host")
+        || error.contains("Connection refused")
         || error.contains("Network is unreachable")
         || error.contains("Connection failed")
-        || error.contains("timed out") {
+        || error.contains("timed out")
+    {
         TelegrafError::ConnectionError(error)
     } else if error.contains("Host format") || error.contains("Invalid host") {
         TelegrafError::HostFormatError(error)
