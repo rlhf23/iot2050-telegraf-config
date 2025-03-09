@@ -64,7 +64,7 @@ impl TelegrafError {
                 };
 
                 format!(
-                    "⚠️ Configuration Error: {}\n\nPossible issues:\n{}", 
+                    "⚠️ Configuration Error: {}\n\nPossible issues:\n{}",
                     e, additional_info
                 )
             }
