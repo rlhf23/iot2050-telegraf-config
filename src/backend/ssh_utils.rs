@@ -200,11 +200,10 @@ fn execute_ssh_command(session: &Session, command: &str) -> Result<String, Teleg
 
     // If command failed, return error with exit status
     if exit_status != 0 {
-        return Err(format!(
+        return Err(crate::error::ssh_error_from_string(format!(
             "Command failed with exit status {}: {}",
             exit_status, output
-        )
-        .into());
+        )));
     }
 
     // Print for debugging
