@@ -83,16 +83,10 @@ pub fn format_config_header(
 #=================================================================================
 
 [[inputs.cpu]]
-  ## Whether to report per-cpu stats or not
-  percpu = true
-  ## Whether to report total system cpu stats or not
+  percpu = false
   totalcpu = true
-  ## If true, collect raw CPU time metrics
-  collect_cpu_time = false
-  ## If true, compute and report the sum of all non-idle CPU states
-  report_active = false
-  ## If true and the info is available then add core_id and physical_id tags
-  core_tags = false
+
+[[inputs.swap]]
 
 [[inputs.disk]]
   ## By default stats will be gathered for all mount points.
