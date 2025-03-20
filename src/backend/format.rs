@@ -159,37 +159,24 @@ pub fn format_config_header(
 }
 
 fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
-    let input_type = if config.is_listener {
-        "opcua_listener"
+    if config.is_listener {
+        format_listener_config(config, nodes_str)
     } else {
-        "opcua"
-    };
-    let name = if config.is_listener {
-        "opcua_listener"
-    } else {
-        "opcua"
-    }; // #TODO: find out if this is necessary
-    let session_timeout = if config.is_listener { "20m" } else { "5m" };
-    let interval_key = if config.is_listener {
-        "sampling_interval"
-    } else {
-        "interval"
-    };
-    let extra_config = if config.is_listener {
-        "connect_fail_behavior = \"ignore\"\n  "
-    } else {
-        ""
-    };
+        format_regular_config(config, nodes_str)
+    }
+}
+
+fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
 
     format!(
         r#"
-[[inputs.{input_type}]]
-  name = "{name}"
+[[inputs.opcua]]
+  name = "opcua"
   endpoint = "opc.tcp://{}:4840"
-  {extra_config}connect_timeout = "300s"
+  connect_timeout = "300s"
   request_timeout = "10s"
-  session_timeout = "{session_timeout}"
+  session_timeout = "5m"
   security_policy = "Basic256Sha256"
   security_mode = "SignAndEncrypt"
   certificate = ""
@@ -199,9 +186,9 @@ fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   password = "{}"
   timestamp = "source"
   client_trace = false
-    [[inputs.{input_type}.group]]
+  interval = "{}"
+    [[inputs.opcua.group]]
       name = "{}"
-      {interval_key} = "{}"
       namespace = "{}"
       identifier_type = "i"
       nodes = [
@@ -211,9 +198,49 @@ fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         config.ip,
         config.username,
         config.password,
-        config.group_name,
         interval,
+        config.group_name,
         config.namespace_number,
+        nodes_str
+    )
+}
+
+fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+    let interval = config.get_interval_string();
+
+    format!(
+        r#"
+[[inputs.opcua_listener]]
+  name = "opcua_listener"
+  endpoint = "opc.tcp://{}:4840"
+  connect_fail_behavior = "ignore"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  session_timeout = "20m"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "source"
+  client_trace = false
+    [[inputs.opcua_listener.group]]
+      name = "{}"
+      namespace = "{}"
+      identifier_type = "i"
+      sampling_interval = "{}"
+      nodes = [
+        {}
+      ]
+    "#,
+        config.ip,
+        config.username,
+        config.password,
+        config.group_name,
+        config.namespace_number,
+        interval,
         nodes_str
     )
 }
