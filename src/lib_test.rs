@@ -7,8 +7,8 @@ mod tests {
 
     #[test]
     fn test_validate_ip() {
-        // Valid IP
-        let config = TelegrafConfig {
+        // Sample config for testing
+        let base_config = TelegrafConfig {
             folder: PathBuf::new(),
             ip: "192.168.1.1".to_string(),
             username: "user".to_string(),
@@ -24,21 +24,57 @@ mod tests {
             include_test_inputs: false,
         };
 
-        assert!(config.validate_ip().is_ok());
+        // Valid IP addresses
+        let valid_ips = vec![
+            "192.168.1.1",
+            "127.0.0.1",
+            "0.0.0.0",
+            "255.255.255.255",
+            "10.0.0.1",
+            "192.168.1.01",  // Leading zeros are valid
+        ];
 
-        // Invalid IP
-        let invalid_config = TelegrafConfig {
-            ip: "invalid.ip".to_string(),
-            ..config.clone()
-        };
+        for valid_ip in valid_ips {
+            let config = TelegrafConfig {
+                ip: valid_ip.to_string(),
+                ..base_config.clone()
+            };
+            assert!(config.validate_ip().is_ok(), "IP {} should be valid", valid_ip);
+        }
 
-        assert!(invalid_config.validate_ip().is_err());
+        // Invalid IP addresses
+        let invalid_ips = vec![
+            "invalid.ip",                // Non-numeric
+            "192.168.1",                 // Too few segments
+            "192.168.1.1.1",             // Too many segments
+            "192.168..1",                // Empty segment
+            "192.168.1.",                // Trailing dot
+            ".192.168.1.1",              // Leading dot
+            "192.168.1.300",             // Segment too large
+            "192.168.1.a",               // Non-numeric segment
+            "192..168.1.1",              // Empty segment
+            "192.168.1.-1",              // Negative number
+            "192.11..19.9",              // Double dot
+            ""                           // Empty string
+        ];
+
+        for invalid_ip in invalid_ips {
+            let config = TelegrafConfig {
+                ip: invalid_ip.to_string(),
+                ..base_config.clone()
+            };
+            assert!(
+                config.validate_ip().is_err(),
+                "IP {} should be invalid",
+                invalid_ip
+            );
+        }
     }
 
     #[test]
     fn test_validate_iot_host() {
-        // Valid host:port
-        let config = TelegrafConfig {
+        // Sample config for testing
+        let base_config = TelegrafConfig {
             folder: PathBuf::new(),
             ip: "192.168.1.1".to_string(),
             username: "user".to_string(),
@@ -54,23 +90,50 @@ mod tests {
             include_test_inputs: false,
         };
 
-        assert!(config.validate_iot_host().is_ok());
+        // Test valid hostname formats
+        let valid_hosts = vec![
+            "192.168.1.2:22",      // Valid IP:Port
+            "10.0.0.1:8080",       // Valid IP:Port
+            "localhost:22",        // Valid hostname:Port
+            "my-server.com:443",   // Valid domain:Port
+            "example.org:80",      // Valid domain:Port
+            "server123.domain456.com:8080",  // Domain with numbers
+            "machine-1.internal:22",        // Domain with hyphen
+        ];
 
-        // Invalid host (no port)
-        let invalid_config = TelegrafConfig {
-            iot_host: "192.168.1.2".to_string(),
-            ..config.clone()
-        };
+        for valid_host in valid_hosts {
+            let config = TelegrafConfig {
+                iot_host: valid_host.to_string(),
+                ..base_config.clone()
+            };
+            assert!(config.validate_iot_host().is_ok(), "Host '{}' should be valid", valid_host);
+        }
 
-        assert!(invalid_config.validate_iot_host().is_err());
+        // Test invalid host:port formats
+        let invalid_hosts = vec![
+            "192.168.1.2",             // Missing port
+            "192.168.1.2:",            // Empty port
+            ":22",                     // Empty hostname
+            "192.168.1.2:0",           // Invalid port (zero)
+            "192.168.1.2:-1",          // Negative port
+            "192.168.1.2:abc",         // Non-numeric port
+            "192.168.1.2:22:33",       // Too many colons
+            "192.168..1:22",           // Invalid IP (double dot)
+            "192.168.1.300:22",        // Invalid IP (segment > 255)
+            "192.11..19.9:22"          // Double dot in IP
+        ];
 
-        // Invalid port (zero)
-        let invalid_port_config = TelegrafConfig {
-            iot_host: "192.168.1.2:0".to_string(),
-            ..config.clone()
-        };
-
-        assert!(invalid_port_config.validate_iot_host().is_err());
+        for invalid_host in invalid_hosts {
+            let config = TelegrafConfig {
+                iot_host: invalid_host.to_string(),
+                ..base_config.clone()
+            };
+            assert!(
+                config.validate_iot_host().is_err(),
+                "Host '{}' should be invalid",
+                invalid_host
+            );
+        }
     }
 
     #[test]
