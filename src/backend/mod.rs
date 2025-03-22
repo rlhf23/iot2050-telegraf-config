@@ -18,6 +18,7 @@ pub use format::OutputFormat;
 pub struct FileConfig {
     pub namespace: String,
     pub interval_ms: u64,
+    pub ip: Option<String>,
 }
 
 pub struct ConfigGenerator {
@@ -55,12 +56,13 @@ impl ConfigGenerator {
         self.include_test_inputs = include_test_inputs;
     }
 
-    pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64) {
+    pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64, ip: Option<String>) {
         self.file_configs.insert(
             file_path,
             FileConfig {
                 namespace,
                 interval_ms,
+                ip,
             },
         );
     }
@@ -97,8 +99,14 @@ impl ConfigGenerator {
                 TelegrafError::ConfigError(format!("No configuration found for file: {}", file))
             })?;
 
+            // Use file-specific IP if available, otherwise use the default IP
+            let ip = match &file_config.ip {
+                Some(ip) if !ip.is_empty() => ip,
+                _ => &self.config.ip,
+            };
+
             let config = format::OpcuaConfig {
-                ip: &self.config.ip,
+                ip,
                 username: &self.config.username,
                 password: &self.config.password,
                 is_listener,
