@@ -56,7 +56,13 @@ impl ConfigGenerator {
         self.include_test_inputs = include_test_inputs;
     }
 
-    pub fn set_file_config(&mut self, file_path: String, namespace: String, interval_ms: u64, ip: Option<String>) {
+    pub fn set_file_config(
+        &mut self,
+        file_path: String,
+        namespace: String,
+        interval_ms: u64,
+        ip: Option<String>,
+    ) {
         self.file_configs.insert(
             file_path,
             FileConfig {
@@ -108,15 +114,16 @@ impl ConfigGenerator {
                         ip: ip.clone(),
                         ..self.config.clone()
                     };
-                    
+
                     temp_config.validate_ip().map_err(|e| {
                         TelegrafError::ValidationError(format!(
-                            "Invalid custom IP for file '{}': {}", file, e
+                            "Invalid custom IP for file '{}': {}",
+                            file, e
                         ))
                     })?;
-                    
+
                     ip
-                },
+                }
                 _ => &self.config.ip,
             };
 

@@ -343,10 +343,10 @@ impl eframe::App for TelegrafApp {
                         // IP Address input (new)
                         ui.horizontal(|ui| {
                             ui.label("OPC IP:");
-                            
+
                             // Check if we have a validation error for this file
                             let has_error = self.ip_errors.get(file).unwrap_or(&false);
-                            
+
                             // Show the field with appropriate styling
                             let response = if *has_error {
                                 // If there's an error, show red border
@@ -360,16 +360,14 @@ impl eframe::App for TelegrafApp {
                                             .hint_text(&self.config.ip))
                                     })
                                     .inner;
-                                
                                 response.on_hover_text("Invalid IP format. Must be four numbers 0-255 separated by dots (e.g., 192.168.1.1)")
                             } else {
                                 // No error, show normal text field
                                 let response = ui.add(egui::TextEdit::singleline(&mut file_config.ip)
                                     .hint_text(&self.config.ip));
-                                    
                                 response.on_hover_text("Override the default OPC IP address for this file")
                             };
-                            
+
                             // Validate IP after user types
                             if response.changed() {
                                 // Only validate non-empty custom IPs
@@ -378,10 +376,10 @@ impl eframe::App for TelegrafApp {
                                         ip: file_config.ip.clone(),
                                         ..self.config.clone()
                                     };
-                                    
+
                                     // Update error state
                                     self.ip_errors.insert(
-                                        file.clone(), 
+                                        file.clone(),
                                         temp_config.validate_ip().is_err()
                                     );
                                 } else {
@@ -438,14 +436,14 @@ impl eframe::App for TelegrafApp {
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
                     self.show_namespace_error = false;
-                    
+
                     // Check for IP validation errors
                     let ip_errors: Vec<String> = self.ip_errors
                         .iter()
                         .filter(|(_, &has_error)| has_error)
                         .map(|(file, _)| file.clone())
                         .collect();
-                        
+
                     if !ip_errors.is_empty() {
                         self.status_message = format!(
                             "Error: Invalid IP format in files: {}. Please correct the IP addresses.",
@@ -453,7 +451,7 @@ impl eframe::App for TelegrafApp {
                         );
                         return;
                     }
-                    
+
                     // Validate that all namespace numbers are unique and provided
                     let mut namespace_map: std::collections::HashMap<&str, Vec<&str>> =
                         std::collections::HashMap::new();
@@ -513,7 +511,7 @@ impl eframe::App for TelegrafApp {
                                     } else {
                                         Some(file_config.ip.clone())
                                     };
-                                    
+
                                     generator.set_file_config(
                                         file.clone(),
                                         file_config.namespace.clone(),

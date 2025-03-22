@@ -31,7 +31,7 @@ mod tests {
             "0.0.0.0",
             "255.255.255.255",
             "10.0.0.1",
-            "192.168.1.01",  // Leading zeros are valid
+            "192.168.1.01", // Leading zeros are valid
         ];
 
         for valid_ip in valid_ips {
@@ -39,23 +39,27 @@ mod tests {
                 ip: valid_ip.to_string(),
                 ..base_config.clone()
             };
-            assert!(config.validate_ip().is_ok(), "IP {} should be valid", valid_ip);
+            assert!(
+                config.validate_ip().is_ok(),
+                "IP {} should be valid",
+                valid_ip
+            );
         }
 
         // Invalid IP addresses
         let invalid_ips = vec![
-            "invalid.ip",                // Non-numeric
-            "192.168.1",                 // Too few segments
-            "192.168.1.1.1",             // Too many segments
-            "192.168..1",                // Empty segment
-            "192.168.1.",                // Trailing dot
-            ".192.168.1.1",              // Leading dot
-            "192.168.1.300",             // Segment too large
-            "192.168.1.a",               // Non-numeric segment
-            "192..168.1.1",              // Empty segment
-            "192.168.1.-1",              // Negative number
-            "192.11..19.9",              // Double dot
-            ""                           // Empty string
+            "invalid.ip",    // Non-numeric
+            "192.168.1",     // Too few segments
+            "192.168.1.1.1", // Too many segments
+            "192.168..1",    // Empty segment
+            "192.168.1.",    // Trailing dot
+            ".192.168.1.1",  // Leading dot
+            "192.168.1.300", // Segment too large
+            "192.168.1.a",   // Non-numeric segment
+            "192..168.1.1",  // Empty segment
+            "192.168.1.-1",  // Negative number
+            "192.11..19.9",  // Double dot
+            "",              // Empty string
         ];
 
         for invalid_ip in invalid_ips {
@@ -92,12 +96,12 @@ mod tests {
 
         // Test valid hostname formats
         let valid_hosts = vec![
-            "192.168.1.2:22",      // Valid IP:Port
-            "10.0.0.1:8080",       // Valid IP:Port
-            "localhost:22",        // Valid hostname:Port
-            "my-server.com:443",   // Valid domain:Port
-            "example.org:80",      // Valid domain:Port
-            "server123.domain456.com:8080",  // Domain with numbers
+            "192.168.1.2:22",               // Valid IP:Port
+            "10.0.0.1:8080",                // Valid IP:Port
+            "localhost:22",                 // Valid hostname:Port
+            "my-server.com:443",            // Valid domain:Port
+            "example.org:80",               // Valid domain:Port
+            "server123.domain456.com:8080", // Domain with numbers
             "machine-1.internal:22",        // Domain with hyphen
         ];
 
@@ -106,21 +110,25 @@ mod tests {
                 iot_host: valid_host.to_string(),
                 ..base_config.clone()
             };
-            assert!(config.validate_iot_host().is_ok(), "Host '{}' should be valid", valid_host);
+            assert!(
+                config.validate_iot_host().is_ok(),
+                "Host '{}' should be valid",
+                valid_host
+            );
         }
 
         // Test invalid host:port formats
         let invalid_hosts = vec![
-            "192.168.1.2",             // Missing port
-            "192.168.1.2:",            // Empty port
-            ":22",                     // Empty hostname
-            "192.168.1.2:0",           // Invalid port (zero)
-            "192.168.1.2:-1",          // Negative port
-            "192.168.1.2:abc",         // Non-numeric port
-            "192.168.1.2:22:33",       // Too many colons
-            "192.168..1:22",           // Invalid IP (double dot)
-            "192.168.1.300:22",        // Invalid IP (segment > 255)
-            "192.11..19.9:22"          // Double dot in IP
+            "192.168.1.2",       // Missing port
+            "192.168.1.2:",      // Empty port
+            ":22",               // Empty hostname
+            "192.168.1.2:0",     // Invalid port (zero)
+            "192.168.1.2:-1",    // Negative port
+            "192.168.1.2:abc",   // Non-numeric port
+            "192.168.1.2:22:33", // Too many colons
+            "192.168..1:22",     // Invalid IP (double dot)
+            "192.168.1.300:22",  // Invalid IP (segment > 255)
+            "192.11..19.9:22",   // Double dot in IP
         ];
 
         for invalid_host in invalid_hosts {
