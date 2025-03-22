@@ -101,7 +101,22 @@ impl ConfigGenerator {
 
             // Use file-specific IP if available, otherwise use the default IP
             let ip = match &file_config.ip {
-                Some(ip) if !ip.is_empty() => ip,
+                Some(ip) if !ip.is_empty() => {
+                    // Validate custom IP using the same validation logic as the main config
+                    // Create a temporary config with this IP for validation
+                    let temp_config = TelegrafConfig {
+                        ip: ip.clone(),
+                        ..self.config.clone()
+                    };
+                    
+                    temp_config.validate_ip().map_err(|e| {
+                        TelegrafError::ValidationError(format!(
+                            "Invalid custom IP for file '{}': {}", file, e
+                        ))
+                    })?;
+                    
+                    ip
+                },
                 _ => &self.config.ip,
             };
 
