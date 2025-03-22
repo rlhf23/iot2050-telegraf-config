@@ -61,10 +61,10 @@ mod tests {
 
         // File 2 with custom IP
         generator.set_file_config(
-            "file2.xml".to_string(), 
-            "2".to_string(), 
-            500, 
-            Some("192.168.5.5".to_string())
+            "file2.xml".to_string(),
+            "2".to_string(),
+            500,
+            Some("192.168.5.5".to_string()),
         );
 
         // Access the internal file_configs to verify
@@ -242,7 +242,7 @@ mod tests {
             xml_path_str.clone(),
             "2".to_string(),
             1000,
-            Some(custom_ip.to_string())
+            Some(custom_ip.to_string()),
         );
 
         // Generate the config

@@ -104,18 +104,19 @@ impl TelegrafConfig {
         // 2. It contains at least one dot (to separate IP segments)
         let only_digits_and_dots = hostname.chars().all(|c| c.is_ascii_digit() || c == '.');
         let has_dots = hostname.contains('.');
-        
+
         if only_digits_and_dots && has_dots {
             // Create a temporary config with this hostname as the IP for validation
             let temp_config = TelegrafConfig {
                 ip: hostname.to_string(),
                 ..self.clone()
             };
-            
+
             // Use our existing IP validation logic
             if let Err(e) = temp_config.validate_ip() {
                 return Err(crate::error::TelegrafError::HostFormatError(format!(
-                    "Invalid IP format in IOT host: {}", e
+                    "Invalid IP format in IOT host: {}",
+                    e
                 )));
             }
         }
