@@ -383,7 +383,8 @@ fn main() {
             interval.trim().parse().unwrap_or(default_interval)
         };
 
-        generator.set_file_config(file.clone(), namespace, interval_ms);
+        // We don't prompt for custom IP in CLI mode, so pass None
+        generator.set_file_config(file.clone(), namespace, interval_ms, None);
     }
 
     // Generate config

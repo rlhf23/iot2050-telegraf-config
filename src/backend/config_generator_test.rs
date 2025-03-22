@@ -56,9 +56,16 @@ mod tests {
         let config = create_test_config(dir.path().to_path_buf());
         let mut generator = ConfigGenerator::new(config).unwrap();
 
-        generator.set_file_config("file1.xml".to_string(), "1".to_string(), 1000);
+        // File 1 with no custom IP
+        generator.set_file_config("file1.xml".to_string(), "1".to_string(), 1000, None);
 
-        generator.set_file_config("file2.xml".to_string(), "2".to_string(), 500);
+        // File 2 with custom IP
+        generator.set_file_config(
+            "file2.xml".to_string(), 
+            "2".to_string(), 
+            500, 
+            Some("192.168.5.5".to_string())
+        );
 
         // Access the internal file_configs to verify
         let file_configs = &generator.file_configs;
@@ -68,10 +75,12 @@ mod tests {
         let file1_config = file_configs.get("file1.xml").unwrap();
         assert_eq!(file1_config.namespace, "1");
         assert_eq!(file1_config.interval_ms, 1000);
+        assert_eq!(file1_config.ip, None);
 
         let file2_config = file_configs.get("file2.xml").unwrap();
         assert_eq!(file2_config.namespace, "2");
         assert_eq!(file2_config.interval_ms, 500);
+        assert_eq!(file2_config.ip, Some("192.168.5.5".to_string()));
     }
 
     #[test]
@@ -157,7 +166,7 @@ mod tests {
         let mut generator = ConfigGenerator::new(config).unwrap();
 
         // Configure the file
-        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000);
+        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000, None);
 
         // Generate the config
         let listener_files: Vec<String> = Vec::new();
@@ -195,9 +204,9 @@ mod tests {
         let mut generator = ConfigGenerator::new(config).unwrap();
 
         // Configure the files
-        generator.set_file_config(xml_path1_str.clone(), "1".to_string(), 1000);
+        generator.set_file_config(xml_path1_str.clone(), "1".to_string(), 1000, None);
 
-        generator.set_file_config(xml_path2_str.clone(), "2".to_string(), 500);
+        generator.set_file_config(xml_path2_str.clone(), "2".to_string(), 500, None);
 
         // Generate config with one file as listener
         let listener_files = vec![xml_path2_str.clone()];
@@ -217,6 +226,38 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_config_with_custom_ip() {
+        let dir = tempdir().unwrap();
+
+        // Create an XML file
+        let xml_path = create_test_xml(dir.path(), "test.xml");
+        let xml_path_str = xml_path.to_string_lossy().to_string();
+
+        let config = create_test_config(dir.path().to_path_buf());
+        let mut generator = ConfigGenerator::new(config).unwrap();
+
+        // Set a custom IP for this file
+        let custom_ip = "10.20.30.40";
+        generator.set_file_config(
+            xml_path_str.clone(),
+            "2".to_string(),
+            1000,
+            Some(custom_ip.to_string())
+        );
+
+        // Generate the config
+        let listener_files: Vec<String> = Vec::new();
+        let result = generator.generate_config(&[xml_path_str.clone()], &listener_files);
+
+        assert!(result.is_ok());
+        let config_content = result.unwrap();
+
+        // Verify the custom IP is used instead of the default
+        assert!(config_content.contains(&format!("endpoint = \"opc.tcp://{}:4840\"", custom_ip)));
+        assert!(!config_content.contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
+    }
+
+    #[test]
     fn test_generate_config_with_test_inputs() {
         let dir = tempdir().unwrap();
 
@@ -230,7 +271,7 @@ mod tests {
         let mut generator = ConfigGenerator::new(config).unwrap();
 
         // Configure the file
-        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000);
+        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000, None);
 
         // Generate the config
         let listener_files: Vec<String> = Vec::new();
@@ -261,7 +302,7 @@ mod tests {
         let mut generator = ConfigGenerator::new(config).unwrap();
 
         // Configure the file
-        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000);
+        generator.set_file_config(xml_path_str.clone(), "2".to_string(), 1000, None);
 
         // Generate the config
         let listener_files: Vec<String> = Vec::new();

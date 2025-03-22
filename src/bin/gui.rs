@@ -5,6 +5,7 @@ use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
 struct XmlFileConfig {
     namespace: String,
     interval_ms: String,
+    ip: String,
 }
 
 struct TelegrafApp {
@@ -337,6 +338,16 @@ impl eframe::App for TelegrafApp {
                             }
                         });
 
+                        // IP Address input (new)
+                        ui.horizontal(|ui| {
+                            ui.label("OPC IP:");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut file_config.ip)
+                                    .hint_text(&self.config.ip),
+                            )
+                            .on_hover_text("Override the default OPC IP address for this file");
+                        });
+
                         // Interval input
                         ui.horizontal(|ui| {
                             let is_listener = self.selected_listener_files[i];
@@ -437,10 +448,18 @@ impl eframe::App for TelegrafApp {
                                     let interval_ms =
                                         file_config.interval_ms.parse().unwrap_or(default_interval);
 
+                                    // Convert empty IP string to None, otherwise Some(ip)
+                                    let ip_option = if file_config.ip.is_empty() {
+                                        None
+                                    } else {
+                                        Some(file_config.ip.clone())
+                                    };
+                                    
                                     generator.set_file_config(
                                         file.clone(),
                                         file_config.namespace.clone(),
                                         interval_ms,
+                                        ip_option,
                                     );
                                 }
                             }
