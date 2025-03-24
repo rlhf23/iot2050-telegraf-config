@@ -453,7 +453,8 @@ impl eframe::App for TelegrafApp {
                     }
 
                     // Validate that all namespace numbers are unique and provided
-                    let mut namespace_map: std::collections::HashMap<&str, Vec<&str>> =
+                    // Use a map of (IP, namespace) -> files to track duplicates
+                    let mut namespace_ip_map: std::collections::HashMap<(String, &str), Vec<&str>> =
                         std::collections::HashMap::new();
 
                     // Collect namespaces and their corresponding files
@@ -465,16 +466,24 @@ impl eframe::App for TelegrafApp {
                             self.show_namespace_error = true;
                             return;
                         }
-                        namespace_map.entry(namespace).or_default().push(file);
+                        
+                        // Use the file's custom IP if provided, otherwise use the default IP
+                        let ip = if config.ip.is_empty() {
+                            self.config.ip.clone()
+                        } else {
+                            config.ip.clone()
+                        };
+                        
+                        // Add to map with combined (IP, namespace) key
+                        namespace_ip_map.entry((ip, namespace)).or_default().push(file);
                     }
 
-                    // Check for duplicate namespaces
-                    for (namespace, files) in &namespace_map {
+                    // Check for duplicate namespaces within the same IP
+                    for ((ip, namespace), files) in &namespace_ip_map {
                         if files.len() > 1 {
                             self.status_message = format!(
-                                "Error: Namespace {} is used by multiple files: {}",
-                                namespace,
-                                files.join(", ")
+                                "Error: Namespace {} is used by multiple files on IP {}: {}",
+                                namespace, ip, files.join(", ")
                             );
                             self.show_namespace_error = true;
                             return;
