@@ -466,14 +466,14 @@ impl eframe::App for TelegrafApp {
                             self.show_namespace_error = true;
                             return;
                         }
-                        
+
                         // Use the file's custom IP if provided, otherwise use the default IP
                         let ip = if config.ip.is_empty() {
                             self.config.ip.clone()
                         } else {
                             config.ip.clone()
                         };
-                        
+
                         // Add to map with combined (IP, namespace) key
                         namespace_ip_map.entry((ip, namespace)).or_default().push(file);
                     }
