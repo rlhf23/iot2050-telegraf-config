@@ -1,5 +1,9 @@
 use eframe::egui;
-use sie_generate_config::{backend::{ConfigGenerator, opcua_poller::OpcUaPoller}, TelegrafConfig, error::TelegrafError};
+use sie_generate_config::{
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    error::TelegrafError,
+    TelegrafConfig,
+};
 
 #[derive(Default)]
 struct XmlFileConfig {
@@ -50,14 +54,14 @@ impl TelegrafApp {
     // Helper function to set UI error flags and get user-friendly error message
     fn handle_error(&mut self, error: &TelegrafError, context: &str) -> String {
         let message = error.user_friendly_message(context);
-        
+
         // Set UI error flags based on the error message
         if message.contains("Host Format Error") {
             self.show_iot_host_error = true;
         }
-        
+
         // Additional flags can be set here as needed
-        
+
         message
     }
 }
@@ -532,7 +536,7 @@ impl eframe::App for TelegrafApp {
                             Ok(poller) => {
                                 // Get the list of XML files
                                 let xml_files: Vec<String> = self.xml_files.clone();
-                                
+
                                 // Call the OPC UA poller to get namespace information
                                 match poller.get_namespace_info(&xml_files) {
                                     Ok(namespace_map) => {
@@ -550,7 +554,7 @@ impl eframe::App for TelegrafApp {
                                                 }
                                             }
                                         }
-                                        
+
                                         if found_count > 0 {
                                             self.status_message = format!("Found namespaces for {} XML files!", found_count);
                                         } else {
@@ -568,7 +572,7 @@ impl eframe::App for TelegrafApp {
                         }
                     }
                 });
-                
+
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
                         self.status_message = "Backing up InfluxDB...".to_string();
