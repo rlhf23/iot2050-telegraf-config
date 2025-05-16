@@ -76,6 +76,7 @@ impl ConfigGenerator {
         );
     }
 
+    //TODO: duplicate function?
     pub fn get_xml_files(&self) -> Result<Vec<String>, TelegrafError> {
         fs::read_dir(&self.config.folder)
             .map_err(TelegrafError::IoError)?

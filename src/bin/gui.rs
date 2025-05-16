@@ -84,7 +84,7 @@ impl Default for TelegrafApp {
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
                 token_folder: path,
                 bucket_name: String::new(),
-                influx_token: None,
+                influx_token: Some("${INFLUX_TOKEN}".to_string()),
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
@@ -532,6 +532,8 @@ impl eframe::App for TelegrafApp {
                 ui.horizontal(|ui| {
                     if ui.button("Get OPC UA Namespaces").clicked() {
                         self.status_message = "Connecting to OPC UA server...".to_string();
+                        // TODO: move to mod.rs
+                        // TODO: check multiple endpoints
                         match OpcUaPoller::new(self.config.clone()) {
                             Ok(poller) => {
                                 // Get the list of XML files
