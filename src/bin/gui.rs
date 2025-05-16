@@ -1,5 +1,5 @@
 use eframe::egui;
-use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
+use sie_generate_config::{backend::{ConfigGenerator, opcua_poller::OpcUaPoller}, TelegrafConfig};
 
 #[derive(Default)]
 struct XmlFileConfig {
@@ -570,6 +570,50 @@ impl eframe::App for TelegrafApp {
 
             // Other Commands Section
             ui.collapsing("Other Commands", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Get OPC UA Namespaces").clicked() {
+                        self.status_message = "Connecting to OPC UA server...".to_string();
+                        match OpcUaPoller::new(self.config.clone()) {
+                            Ok(poller) => {
+                                // Get the list of XML files
+                                let xml_files: Vec<String> = self.xml_files.clone();
+                                
+                                // Call the OPC UA poller to get namespace information
+                                match poller.get_namespace_info(&xml_files) {
+                                    Ok(namespace_map) => {
+                                        // Update the namespace fields in the GUI
+                                        let mut found_count = 0;
+                                        for (file_name, namespace_index) in namespace_map {
+                                            // Find the full path for this file name
+                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
+                                                path.ends_with(&file_name)
+                                            }) {
+                                                // Update the namespace field
+                                                if let Some(config) = self.file_configs.get_mut(full_path) {
+                                                    config.namespace = namespace_index.to_string();
+                                                    found_count += 1;
+                                                }
+                                            }
+                                        }
+                                        
+                                        if found_count > 0 {
+                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                                        } else {
+                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.format_error_message(&e.to_string(), "OPC UA namespace lookup");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.format_error_message(&e.to_string(), "OPC UA connection");
+                            }
+                        }
+                    }
+                });
+                
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
                         self.status_message = "Backing up InfluxDB...".to_string();

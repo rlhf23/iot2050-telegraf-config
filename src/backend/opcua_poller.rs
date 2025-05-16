@@ -21,6 +21,10 @@ impl OpcUaPoller {
     pub fn new(config: TelegrafConfig) -> Result<Self, TelegrafError> {
         // Validate the IP address in the config
         config.validate_ip()?;
+
+    // Initialize logging
+    opcua::console_logging::init();
+
         
         // Create a Tokio runtime for async operations
         let runtime = tokio::runtime::Runtime::new().map_err(|e| {
@@ -90,7 +94,7 @@ impl OpcUaPoller {
             .trust_server_certs(true)
             .session_retry_limit(3)
             .client()
-            .map_err(|e| TelegrafError::ConfigError(format!("Failed to create OPC UA client: {}", e)))?;
+            .ok_or_else(|| TelegrafError::ConfigError("Failed to create OPC UA client".to_string()))?;
 
         let endpoint: EndpointDescription = (
             discovery_url,
@@ -132,7 +136,8 @@ impl OpcUaPoller {
                 if let Some(refs) = &result.references {
                     for reference in refs {
                         let namespace_index = reference.node_id.node_id.namespace;
-                        let name = reference.browse_name.name.clone();
+                        // Convert UAString to String
+                        let name = reference.browse_name.name.to_string();
                         namespace_info.push((namespace_index, name));
                     }
                 }
