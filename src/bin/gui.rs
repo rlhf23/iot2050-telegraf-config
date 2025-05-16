@@ -598,16 +598,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "Grafana backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        let error_message = e.user_friendly_message("Grafana backup");
-                                        self.update_error_flags(&error_message);
-                                        self.status_message = error_message;
+                                self.status_message = self.handle_error(&e, "Grafana backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                let error_message = e.user_friendly_message("Grafana backup");
-                                self.update_error_flags(&error_message);
-                                self.status_message = error_message;
+                                self.status_message = self.handle_error(&e, "Grafana backup");
                             }
                         }
                     }
@@ -632,7 +628,7 @@ impl eframe::App for TelegrafApp {
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "status");
+                                self.status_message = self.handle_error(&e, "status");
                             }
                         }
                     }
@@ -655,7 +651,7 @@ impl eframe::App for TelegrafApp {
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "logs");
+                                self.status_message = self.handle_error(&e, "logs");
                             }
                         }
                     }
