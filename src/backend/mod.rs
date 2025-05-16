@@ -11,6 +11,7 @@ mod format_test;
 mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
+pub mod opcua_poller;
 
 pub use format::OutputFormat;
 
