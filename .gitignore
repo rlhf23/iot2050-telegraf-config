@@ -1,3 +1,4 @@
 /target
 *.env
+/pki
 !README.md

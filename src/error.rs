@@ -1,33 +1,32 @@
-use std::fmt;
-
-#[derive(Debug)]
+// Using thiserror to automatically implement Error and Display traits
+#[derive(Debug, thiserror::Error)]
 pub enum TelegrafError {
+    #[error("IO error: {0}")]
     IoError(std::io::Error),
+    #[error("SSH error: {0}")]
     SshError(String),
+    #[error("Validation error: {0}")]
     ValidationError(String),
+    #[error("Configuration error: {0}")]
     ConfigError(String),
+    #[error("Duplicate node error: {0}")]
     DuplicateNodeError(String),
+    #[error("Host format error: {0}")]
     HostFormatError(String),
+    #[error("Connection error: {0}")]
     ConnectionError(String),
+    #[error("Authentication error: {0}")]
     AuthenticationError(String),
+    #[error("OPC UA connection error: {0}")]
+    OpcUaConnectionError(String),
+    #[error("OPC UA timeout error: {0}")]
+    OpcUaTimeoutError(String),
+    #[error("OPC UA client error: {0}")]
+    OpcUaClientError(String),
 }
 
-impl fmt::Display for TelegrafError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TelegrafError::IoError(e) => writeln!(f, "IO error:\n    {}", e),
-            TelegrafError::SshError(e) => writeln!(f, "SSH error:\n    {}", e),
-            TelegrafError::ValidationError(e) => writeln!(f, "Validation error:\n    {}", e),
-            TelegrafError::ConfigError(e) => writeln!(f, "Configuration error:\n    {}", e),
-            TelegrafError::DuplicateNodeError(e) => writeln!(f, "Duplicate node error:\n    {}", e),
-            TelegrafError::HostFormatError(e) => writeln!(f, "Host format error:\n    {}", e),
-            TelegrafError::ConnectionError(e) => writeln!(f, "Connection error:\n    {}", e),
-            TelegrafError::AuthenticationError(e) => {
-                writeln!(f, "Authentication error:\n    {}", e)
-            }
-        }
-    }
-}
+// We don't need a manual Display implementation since thiserror handles this
+// through the #[error] attributes on each variant
 
 impl TelegrafError {
     /// Converts this error into a user-friendly error message with context-specific guidance
@@ -57,9 +56,28 @@ impl TelegrafError {
                     e
                 )
             }
+            TelegrafError::OpcUaConnectionError(e) => {
+                format!(
+                    "⚠️ OPC UA Connection Error: {}\n\nPlease check:\n- OPC UA IP address is correct\n- OPC UA server is running and accessible\n- No firewall is blocking the connection", 
+                    e
+                )
+            },
+            TelegrafError::OpcUaTimeoutError(e) => {
+                format!(
+                    "⚠️ OPC UA Timeout: {}\n\nThe server did not respond in time. Please check:\n- OPC UA server is running properly\n- Network latency is not too high", 
+                    e
+                )
+            },
+            TelegrafError::OpcUaClientError(e) => {
+                format!(
+                    "⚠️ OPC UA Client Error: {}\n\nThere was a problem with the OPC UA client. Please check:\n- Username and password are correct (if authentication is required)\n- Server security settings", 
+                    e
+                )
+            },
             TelegrafError::ConfigError(e) => {
                 let additional_info = match context {
                     "generating config" => "- Check the XML file format\n- Verify namespace configuration\n- Make sure all required fields are filled",
+                    "OPC UA namespace lookup" => "- Check if the OPC UA server is running\n- Verify OPC UA IP address is correct\n- Make sure XML file names match namespace names",
                     _ => "- Check configuration parameters\n- Verify file paths exist"
                 };
 
@@ -103,7 +121,6 @@ impl TelegrafError {
     }
 }
 
-impl std::error::Error for TelegrafError {}
 
 impl From<std::io::Error> for TelegrafError {
     fn from(error: std::io::Error) -> Self {
