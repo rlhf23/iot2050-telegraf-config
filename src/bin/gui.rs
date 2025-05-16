@@ -84,7 +84,7 @@ impl Default for TelegrafApp {
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
                 token_folder: path,
                 bucket_name: String::new(),
-                influx_token: Some("${INFLUX_TOKEN}".to_string()),
+                influx_token: Some("${INFLUX_TOKEN}".to_string()), // moved to telegraf env var
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
