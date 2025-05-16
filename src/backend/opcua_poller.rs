@@ -28,7 +28,7 @@ impl OpcUaPoller {
         
         // Create a Tokio runtime for async operations
         let runtime = tokio::runtime::Runtime::new().map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to create Tokio runtime: {}", e))
+            TelegrafError::OpcUaClientError(format!("Failed to create Tokio runtime: {}", e))
         })?;
         
         Ok(Self {
@@ -43,6 +43,9 @@ impl OpcUaPoller {
         self.runtime.block_on(async {
             // Connect to the OPC UA server using the configured IP
             let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+            
+            // Check if the server is reachable before attempting connection
+            self.check_server_connectivity(&self.config.ip).await?;
             
             // Get all namespace information from the server
             let namespaces = self.browse_server_namespaces(&discovery_url).await?;
@@ -81,7 +84,7 @@ impl OpcUaPoller {
     /// Connect to OPC UA server and browse for namespace information
     async fn browse_server_namespaces(&self, discovery_url: &str) -> Result<Vec<(u16, String)>, TelegrafError> {
         if !is_opc_ua_binary_url(discovery_url) {
-            return Err(TelegrafError::ValidationError(
+            return Err(TelegrafError::OpcUaClientError(
                 format!("Not a valid OPC UA binary URL: {}", discovery_url)
             ));
         }
@@ -114,7 +117,7 @@ impl OpcUaPoller {
             } else {
                 client.connect_to_endpoint(endpoint, IdentityToken::Anonymous)
             }
-        }).map_err(|e| TelegrafError::ConfigError(format!("Failed to connect to OPC UA server: {}", e)))?;
+        }).map_err(|e| TelegrafError::OpcUaConnectionError(format!("Failed to connect to OPC UA server: {}", e)))?;
 
         let read_lock = session.read();
 
@@ -145,5 +148,46 @@ impl OpcUaPoller {
         }
         
         Ok(namespace_info)
+    }
+    
+    /// Check if the OPC UA server is reachable before attempting a full connection
+    async fn check_server_connectivity(&self, ip: &str) -> Result<(), TelegrafError> {
+        use std::net::ToSocketAddrs;
+        use tokio::net::TcpStream;
+        use tokio::time::{timeout, Duration};
+        
+        // Try to resolve the address
+        let addr = format!("{}:4840", ip);
+        let socket_addrs = addr.to_socket_addrs()
+            .map_err(|e| TelegrafError::OpcUaConnectionError(
+                format!("Could not resolve OPC UA server address: {}", e)
+            ))?;
+        
+        // Try connecting to the first resolved address with a timeout
+        for socket_addr in socket_addrs {
+            match timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await {
+                Ok(Ok(_)) => {
+                    // Connection successful
+                    return Ok(());
+                }
+                Ok(Err(e)) => {
+                    // Connection failed but did respond
+                    return Err(TelegrafError::OpcUaConnectionError(
+                        format!("Failed to connect to OPC UA server: {}", e)
+                    ));
+                }
+                Err(_) => {
+                    // Connection timed out
+                    return Err(TelegrafError::OpcUaTimeoutError(
+                        format!("Connection to OPC UA server at {} timed out", ip)
+                    ));
+                }
+            }
+        }
+        
+        // If we got here, we couldn't connect to any of the resolved addresses
+        Err(TelegrafError::OpcUaConnectionError(
+            format!("Could not connect to OPC UA server at {}", ip)
+        ))
     }
 }

@@ -603,12 +603,12 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "OPC UA namespace lookup");
+                                        self.status_message = e.user_friendly_message("OPC UA namespace lookup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "OPC UA connection");
+                                self.status_message = e.user_friendly_message("OPC UA connection");
                             }
                         }
                     }
