@@ -31,6 +31,46 @@ pub enum TelegrafError {
 impl TelegrafError {
     /// Converts this error into a user-friendly error message with context-specific guidance
     pub fn user_friendly_message(&self, context: &str) -> String {
+        // Get the basic error message as a string first to check for patterns
+        let error_str = self.to_string();
+        
+        // Check for specific error message patterns regardless of the TelegrafError variant
+        if error_str.contains("Host format error") || 
+           error_str.contains("Invalid host format") ||
+           error_str.contains("Invalid port in host") 
+        {
+            return format!(
+                "⚠️ Host Format Error: {}\n\nPlease correct the IOT host field to use format: hostname:port\nExample: 192.168.0.1:22", 
+                error_str
+            );
+        } else if error_str.contains("Failed to resolve hostname") {
+            return format!(
+                "⚠️ Hostname Error: {}\n\nPlease check:\n- IOT host address is correct\n- Your network can reach the host\n- DNS settings are correct (if using hostname)", 
+                error_str
+            );
+        } else if error_str.contains("No route to host") ||
+                  error_str.contains("Connection refused") ||
+                  error_str.contains("Network is unreachable") ||
+                  error_str.contains("Connection failed") ||
+                  error_str.contains("timed out")
+        {
+            return format!(
+                "⚠️ Connection Error: {}\n\nPlease check:\n- Host address is correct\n- Device is powered on and connected to the network\n- No firewall is blocking the connection", 
+                error_str
+            );
+        } else if error_str.contains("Authentication") || error_str.contains("Permission denied") {
+            return format!(
+                "⚠️ Authentication Error: {}\n\nPlease check:\n- Username and password are correct\n- User has proper permissions", 
+                error_str
+            );
+        } else if error_str.contains("not found") && context == "logs" {
+            return format!(
+                "⚠️ Log File Error: {}\n\nPlease check:\n- Telegraf is installed and has been run at least once\n- Logs are stored in the expected location", 
+                error_str
+            );
+        }
+        
+        // If no pattern matched, proceed with variant-specific handling
         match self {
             TelegrafError::IoError(e) => {
                 format!(

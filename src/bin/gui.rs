@@ -1,5 +1,5 @@
 use eframe::egui;
-use sie_generate_config::{backend::{ConfigGenerator, opcua_poller::OpcUaPoller}, TelegrafConfig};
+use sie_generate_config::{backend::{ConfigGenerator, opcua_poller::OpcUaPoller}, TelegrafConfig, error::TelegrafError};
 
 #[derive(Default)]
 struct XmlFileConfig {
@@ -47,63 +47,18 @@ impl TelegrafApp {
         }
     }
 
-    // Helper function to format error messages based on error type
-    fn format_error_message(&mut self, error: &str, context: &str) -> String {
-        // Look for specific patterns in the error message to categorize
-        if error.contains("Host format error")
-            || error.contains("Invalid host format")
-            || error.contains("Invalid port in host")
-        {
-            // Set show_iot_host_error to true
+    // Helper function to set UI error flags and get user-friendly error message
+    fn handle_error(&mut self, error: &TelegrafError, context: &str) -> String {
+        let message = error.user_friendly_message(context);
+        
+        // Set UI error flags based on the error message
+        if message.contains("Host Format Error") {
             self.show_iot_host_error = true;
-            // Host format validation errors
-            format!(
-                "⚠️ Host Format Error: {}\n\nPlease correct the IOT host field to use format: hostname:port\nExample: 192.168.0.1:22", 
-                error
-            )
-        } else if error.contains("Failed to resolve hostname") {
-            // Hostname resolution errors
-            format!(
-                "⚠️ Hostname Error: {}\n\nPlease check:\n- IOT host address is correct\n- Your network can reach the host\n- DNS settings are correct (if using hostname)", 
-                error
-            )
-        } else if error.contains("No route to host")
-            || error.contains("Connection refused")
-            || error.contains("Network is unreachable")
-            || error.contains("Connection failed")
-            || error.contains("timed out")
-        {
-            // Connection errors
-            format!(
-                "⚠️ Connection Error: {}\n\nPlease check:\n- IOT host IP address is correct ({})\n- IOT device is powered on and connected to the network\n- No firewall is blocking the connection", 
-                error,
-                self.config.iot_host
-            )
-        } else if error.contains("Authentication") || error.contains("Permission denied") {
-            // Authentication errors
-            format!(
-                "⚠️ Authentication Error: {}\n\nPlease check:\n- SSH username and password are correct\n- SSH user has proper permissions", 
-                error
-            )
-        } else if error.contains("not found") && context == "logs" {
-            // Log file issues
-            format!(
-                "⚠️ Log File Error: {}\n\nPlease check:\n- Telegraf is installed and has been run at least once\n- Logs are stored in the expected location", 
-                error
-            )
-        } else {
-            // Other errors
-            let additional_info = if context == "status" {
-                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Telegraf service is not running"
-            } else {
-                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Log file doesn't exist or has incorrect permissions"
-            };
-
-            format!(
-                "⚠️ Error getting Telegraf {}: {}\n\nPossible issues:\n{}",
-                context, error, additional_info
-            )
         }
+        
+        // Additional flags can be set here as needed
+        
+        message
     }
 }
 
@@ -537,12 +492,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration generated successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e.to_string(), "generating config");
+                                    self.status_message = self.handle_error(&e, "generating config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e.to_string(), "generating config");
+                            self.status_message = self.handle_error(&e, "generating config");
                         }
                     }
                 }
@@ -557,12 +512,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration sent successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e.to_string(), "send config");
+                                    self.status_message = self.handle_error(&e, "send config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e.to_string(), "send config");
+                            self.status_message = self.handle_error(&e, "send config");
                         }
                     }
                 }
@@ -603,12 +558,12 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = e.user_friendly_message("OPC UA namespace lookup");
+                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = e.user_friendly_message("OPC UA connection");
+                                self.status_message = self.handle_error(&e, "OPC UA connection");
                             }
                         }
                     }
@@ -624,12 +579,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "InfluxDB backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
+                                        self.status_message = self.handle_error(&e, "InfluxDB backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
+                                self.status_message = self.handle_error(&e, "InfluxDB backup");
                             }
                         }
                     }
@@ -643,12 +598,16 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "Grafana backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
+                                        let error_message = e.user_friendly_message("Grafana backup");
+                                        self.update_error_flags(&error_message);
+                                        self.status_message = error_message;
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
+                                let error_message = e.user_friendly_message("Grafana backup");
+                                self.update_error_flags(&error_message);
+                                self.status_message = error_message;
                             }
                         }
                     }
@@ -668,7 +627,7 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "status");
+                                        self.status_message = self.handle_error(&e, "status");
                                     }
                                 }
                             }
@@ -691,7 +650,7 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "logs");
+                                        self.status_message = self.handle_error(&e, "logs");
                                     }
                                 }
                             }
