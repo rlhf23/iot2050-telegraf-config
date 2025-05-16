@@ -8,12 +8,12 @@ mod config_generator_test;
 mod format;
 #[cfg(test)]
 mod format_test;
-mod ssh_utils;
-#[cfg(test)]
-mod ssh_utils_test;
 pub mod opcua_poller;
 #[cfg(test)]
 mod opcua_poller_test;
+mod ssh_utils;
+#[cfg(test)]
+mod ssh_utils_test;
 
 pub use format::OutputFormat;
 

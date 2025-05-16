@@ -33,11 +33,11 @@ impl TelegrafError {
     pub fn user_friendly_message(&self, context: &str) -> String {
         // Get the basic error message as a string first to check for patterns
         let error_str = self.to_string();
-        
+
         // Check for specific error message patterns regardless of the TelegrafError variant
-        if error_str.contains("Host format error") || 
-           error_str.contains("Invalid host format") ||
-           error_str.contains("Invalid port in host") 
+        if error_str.contains("Host format error")
+            || error_str.contains("Invalid host format")
+            || error_str.contains("Invalid port in host")
         {
             return format!(
                 "⚠️ Host Format Error: {}\n\nPlease correct the IOT host field to use format: hostname:port\nExample: 192.168.0.1:22", 
@@ -48,11 +48,11 @@ impl TelegrafError {
                 "⚠️ Hostname Error: {}\n\nPlease check:\n- IOT host address is correct\n- Your network can reach the host\n- DNS settings are correct (if using hostname)", 
                 error_str
             );
-        } else if error_str.contains("No route to host") ||
-                  error_str.contains("Connection refused") ||
-                  error_str.contains("Network is unreachable") ||
-                  error_str.contains("Connection failed") ||
-                  error_str.contains("timed out")
+        } else if error_str.contains("No route to host")
+            || error_str.contains("Connection refused")
+            || error_str.contains("Network is unreachable")
+            || error_str.contains("Connection failed")
+            || error_str.contains("timed out")
         {
             return format!(
                 "⚠️ Connection Error: {}\n\nPlease check:\n- Host address is correct\n- Device is powered on and connected to the network\n- No firewall is blocking the connection", 
@@ -69,7 +69,7 @@ impl TelegrafError {
                 error_str
             );
         }
-        
+
         // If no pattern matched, proceed with variant-specific handling
         match self {
             TelegrafError::IoError(e) => {
@@ -101,19 +101,19 @@ impl TelegrafError {
                     "⚠️ OPC UA Connection Error: {}\n\nPlease check:\n- OPC UA IP address is correct\n- OPC UA server is running and accessible\n- No firewall is blocking the connection", 
                     e
                 )
-            },
+            }
             TelegrafError::OpcUaTimeoutError(e) => {
                 format!(
                     "⚠️ OPC UA Timeout: {}\n\nThe server did not respond in time. Please check:\n- OPC UA server is running properly\n- Network latency is not too high", 
                     e
                 )
-            },
+            }
             TelegrafError::OpcUaClientError(e) => {
                 format!(
                     "⚠️ OPC UA Client Error: {}\n\nThere was a problem with the OPC UA client. Please check:\n- Username and password are correct (if authentication is required)\n- Server security settings", 
                     e
                 )
-            },
+            }
             TelegrafError::ConfigError(e) => {
                 let additional_info = match context {
                     "generating config" => "- Check the XML file format\n- Verify namespace configuration\n- Make sure all required fields are filled",
@@ -160,7 +160,6 @@ impl TelegrafError {
         }
     }
 }
-
 
 impl From<std::io::Error> for TelegrafError {
     fn from(error: std::io::Error) -> Self {
