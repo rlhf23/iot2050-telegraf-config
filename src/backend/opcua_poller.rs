@@ -181,6 +181,7 @@ impl OpcUaPoller {
         })?;
 
         // Try connecting to the first resolved address with a timeout
+        // TODO: multiple addresses
         for socket_addr in socket_addrs {
             match timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await {
                 Ok(Ok(_)) => {
