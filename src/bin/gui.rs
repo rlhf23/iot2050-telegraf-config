@@ -662,6 +662,51 @@ impl eframe::App for TelegrafApp {
                         }
                     }
                 });
+
+                // Add a new row for service status check
+                ui.horizontal(|ui| {
+                    // Calculate is_prometheus value
+                    let is_prometheus = self
+                        .config
+                        .output_format
+                        .clone()
+                        .unwrap_or_else(|| "influxdb".to_string())
+                        == "prometheus";
+
+                    // Service name based on output format
+                    let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+
+                    if ui.button(format!("Check {} Status", service_name)).clicked() {
+                        let service_url = self.config.iot_host.clone();
+
+                                self.status_message = format!("Checking {} status at {}...", service_name, service_url);
+
+                                match ConfigGenerator::new(self.config.clone()) {
+                                    Ok(generator) => {
+                                        let result = if is_prometheus {
+                                            generator.check_prometheus_status(service_url.as_str(), 5)
+                                        } else {
+                                            generator.check_influxdb_status(service_url.as_str(), 5)
+                                        };
+
+                                        match result {
+                                            Ok(true) => {
+                                                self.status_message = format!("✅ {} is responding normally at {}", service_name, service_url);
+                                            },
+                                            Ok(false) => {
+                                                self.status_message = format!("❌ {} is not responding at {}", service_name, service_url);
+                                            },
+                                            Err(e) => {
+                                                self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
+                                    }
+                                }
+                    }
+                });
             });
 
             // Status Message

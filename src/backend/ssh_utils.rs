@@ -594,38 +594,42 @@ pub fn check_service_status(
         ServiceType::InfluxDB => "InfluxDB",
         ServiceType::Prometheus => "Prometheus",
     };
-    
+
     println!("Checking {} status at {}", service_name, service_url);
 
     // Connect to the remote host
     let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
-    
+
     // Determine the health endpoint based on service type
     let endpoint = match service_type {
         ServiceType::InfluxDB => "health",
         ServiceType::Prometheus => "api/v1/status/config",
     };
-    
+
     // Construct curl command to check service health endpoint
     // Using curl with a timeout to prevent hanging
     let command = format!(
         "curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout {} {}/{}",
         timeout_seconds,
-        service_url.trim_end_matches('/'),  // Remove trailing slash if present
+        service_url.trim_end_matches('/'), // Remove trailing slash if present
         endpoint
     );
-    
+
     // Execute the command
     let output = execute_ssh_command(&session, &command)?;
-    
+
     // Check if the HTTP status code is 200 (OK)
     let is_healthy = output.trim() == "200";
-    
+
     if is_healthy {
         println!("{} is responding normally", service_name);
     } else {
-        println!("{} is not responding or returned an error code: {}", service_name, output.trim());
+        println!(
+            "{} is not responding or returned an error code: {}",
+            service_name,
+            output.trim()
+        );
     }
-    
+
     Ok(is_healthy)
 }
