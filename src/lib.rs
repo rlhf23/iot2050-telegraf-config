@@ -24,21 +24,25 @@ impl TelegrafConfig {
     /// 1. Valid IP format
     /// 2. Valid IoT host
     /// 3. Duplicate namespaces across files with the same IP
-    pub fn validate_config(&self, file_configs: &std::collections::HashMap<String, crate::error::XmlFileValidation>) -> Result<(), Vec<crate::error::TelegrafError>> {
+    pub fn validate_config(
+        &self,
+        file_configs: &std::collections::HashMap<String, crate::error::XmlFileValidation>,
+    ) -> Result<(), Vec<crate::error::TelegrafError>> {
         let mut errors = Vec::new();
-        
+
         // 1. Validate IP
         if let Err(e) = self.validate_ip() {
             errors.push(e);
         }
-        
+
         // 2. Validate IoT host
         if let Err(e) = self.validate_iot_host() {
             errors.push(e);
         }
-        
+
         // 3. Check for duplicate namespaces
-        let mut namespace_ip_map: std::collections::HashMap<(String, String), Vec<String>> = std::collections::HashMap::new();
+        let mut namespace_ip_map: std::collections::HashMap<(String, String), Vec<String>> =
+            std::collections::HashMap::new();
 
         for (file, config) in file_configs {
             // Validate namespace if provided
@@ -48,7 +52,7 @@ impl TelegrafConfig {
                     continue;
                 }
             }
-            
+
             // Validate interval if provided
             if !config.interval_ms.is_empty() {
                 if let Err(e) = self.validate_interval(&config.interval_ms) {
@@ -56,7 +60,7 @@ impl TelegrafConfig {
                     continue;
                 }
             }
-            
+
             // Validate custom IP if provided
             let ip = if !config.ip.is_empty() {
                 // Create a temporary config with this IP for validation
@@ -64,36 +68,36 @@ impl TelegrafConfig {
                     ip: config.ip.clone(),
                     ..self.clone()
                 };
-                
+
                 if let Err(e) = temp_config.validate_ip() {
                     errors.push(e);
                     continue;
                 }
-                
+
                 config.ip.clone()
             } else {
                 self.ip.clone()
             };
-            
+
             // Track namespace + IP combinations to detect duplicates
             if !config.namespace.is_empty() {
                 let key = (ip, config.namespace.clone());
-                namespace_ip_map.entry(key)
-                    .or_default()
-                    .push(file.clone());
+                namespace_ip_map.entry(key).or_default().push(file.clone());
             }
         }
-        
+
         // Check for duplicate namespaces on the same IP
         for ((ip, namespace), files) in namespace_ip_map {
             if files.len() > 1 {
                 errors.push(crate::error::TelegrafError::ValidationError(format!(
                     "Duplicate namespace {} on IP {}: {}",
-                    namespace, ip, files.join(", ")
+                    namespace,
+                    ip,
+                    files.join(", ")
                 )));
             }
         }
-        
+
         if errors.is_empty() {
             Ok(())
         } else {
@@ -106,11 +110,11 @@ impl TelegrafConfig {
             ip: ip.to_string(),
             ..self.clone()
         };
-        
+
         // Use the existing validation logic
         temp_config.validate_ip()
     }
-    
+
     pub fn validate_ip(&self) -> Result<(), crate::error::TelegrafError> {
         // Check if empty
         if self.ip.is_empty() {
@@ -168,7 +172,7 @@ impl TelegrafConfig {
                 "Namespace cannot be empty".to_string(),
             ));
         }
-        
+
         // Check if namespace is numeric (valid for OPC UA)
         if !namespace.chars().all(|c| c.is_ascii_digit()) {
             return Err(crate::error::TelegrafError::ValidationError(format!(
@@ -176,24 +180,24 @@ impl TelegrafConfig {
                 namespace
             )));
         }
-        
+
         Ok(())
     }
-    
+
     pub fn validate_interval(&self, interval: &str) -> Result<(), crate::error::TelegrafError> {
         // Check if interval is empty - empty is OK as we use defaults
         if interval.trim().is_empty() {
             return Ok(());
         }
-        
-        // Check if interval is numeric 
+
+        // Check if interval is numeric
         if !interval.chars().all(|c| c.is_ascii_digit()) {
             return Err(crate::error::TelegrafError::ValidationError(format!(
                 "Invalid interval '{}': Must contain only digits",
                 interval
             )));
         }
-        
+
         // Check if interval is greater than zero
         match interval.parse::<u32>() {
             Ok(val) if val > 0 => Ok(()),
@@ -271,6 +275,22 @@ impl TelegrafConfig {
 
         Ok(())
     }
+}
+
+/// Discover all XML files in the given folder
+/// Returns a list of file paths as strings
+pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
+    std::fs::read_dir(folder)
+        .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
+                Some(path.to_str()?.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 pub mod backend;
