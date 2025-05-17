@@ -16,6 +16,7 @@ mod ssh_utils;
 mod ssh_utils_test;
 
 pub use format::OutputFormat;
+pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]
 pub struct FileConfig {
@@ -233,6 +234,42 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
             lines,
+        )
+    }
+
+    /// Checks if InfluxDB is responding
+    pub fn check_influxdb_status(&self, influx_url: &str, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            influx_url,
+            ssh_utils::ServiceType::InfluxDB,
+            timeout_seconds,
+        )
+    }
+
+    /// Checks if Prometheus is responding
+    pub fn check_prometheus_status(&self, prometheus_url: &str, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            prometheus_url,
+            ssh_utils::ServiceType::Prometheus,
+            timeout_seconds,
+        )
+    }
+
+    /// Generic method to check if a service is responding
+    pub fn check_service_status(&self, service_url: &str, service_type: ssh_utils::ServiceType, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            service_url,
+            service_type,
+            timeout_seconds,
         )
     }
 }
