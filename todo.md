@@ -1,2 +1,0 @@
-- [ ] add prometheus output toggle
-- [ ] add check if influxdb/prometheus is running depending on toggle
