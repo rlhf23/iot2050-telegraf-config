@@ -1,7 +1,7 @@
 use eframe::egui;
 use sie_generate_config::{
     backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
-    error::TelegrafError,
+    error::{TelegrafError, XmlFileValidation},
     TelegrafConfig,
 };
 
@@ -12,6 +12,13 @@ struct XmlFileConfig {
     ip: String,
 }
 
+#[derive(Default)]
+struct FormState {
+    show_namespace_error: bool,           // Track if we should show namespace errors
+    show_iot_host_error: bool,            // Track if IOT host is invalid
+    ip_errors: std::collections::HashMap<String, bool>, // Track file IP validation errors
+}
+
 struct TelegrafApp {
     config: TelegrafConfig,
     xml_files: Vec<String>,
@@ -19,9 +26,7 @@ struct TelegrafApp {
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
     status_message: String,
     token_file_path: std::path::PathBuf, // Store the complete token file path
-    show_namespace_error: bool,          // Track if we should show namespace errors
-    show_iot_host_error: bool,           // Track if IOT host is invalid
-    ip_errors: std::collections::HashMap<String, bool>, // Track file IP validation errors
+    form_state: FormState,               // Validation state for the form
 }
 
 impl TelegrafApp {
@@ -57,7 +62,7 @@ impl TelegrafApp {
 
         // Set UI error flags based on the error message
         if message.contains("Host Format Error") {
-            self.show_iot_host_error = true;
+            self.form_state.show_iot_host_error = true;
         }
 
         // Additional flags can be set here as needed
@@ -94,9 +99,7 @@ impl Default for TelegrafApp {
             file_configs: std::collections::HashMap::new(),
             status_message: String::new(),
             token_file_path, // Default to token.txt in the current directory
-            show_namespace_error: false,
-            show_iot_host_error: false,
-            ip_errors: std::collections::HashMap::new(),
+            form_state: FormState::default(),
         };
         app.load_xml_files();
         app.load_token();
@@ -149,7 +152,7 @@ impl eframe::App for TelegrafApp {
                     ui.label("IOT Host:");
 
                     let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
-                    if self.show_iot_host_error {
+                    if self.form_state.show_iot_host_error {
                         egui::Frame::none()
                             .stroke(egui::Stroke::new(
                                 1.0,
@@ -287,7 +290,7 @@ impl eframe::App for TelegrafApp {
                         ui.horizontal(|ui| {
                             ui.label("Namespace:");
                             let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
-                            if self.show_namespace_error {
+                            if self.form_state.show_namespace_error {
                                 egui::Frame::none()
                                     .stroke(egui::Stroke::new(
                                         1.0,
@@ -304,7 +307,7 @@ impl eframe::App for TelegrafApp {
                             ui.label("OPC IP:");
 
                             // Check if we have a validation error for this file
-                            let has_error = self.ip_errors.get(file).unwrap_or(&false);
+                            let has_error = self.form_state.ip_errors.get(file).unwrap_or(&false);
 
                             // Show the field with appropriate styling
                             let response = if *has_error {
@@ -331,19 +334,14 @@ impl eframe::App for TelegrafApp {
                             if response.changed() {
                                 // Only validate non-empty custom IPs
                                 if !file_config.ip.is_empty() {
-                                    let temp_config = sie_generate_config::TelegrafConfig {
-                                        ip: file_config.ip.clone(),
-                                        ..self.config.clone()
-                                    };
-
+                                    // Use the backend validation logic
+                                    let validation_result = self.config.validate_ip_for_file(&file_config.ip);
+                                    
                                     // Update error state
-                                    self.ip_errors.insert(
-                                        file.clone(),
-                                        temp_config.validate_ip().is_err()
-                                    );
+                                    self.form_state.ip_errors.insert(file.clone(), validation_result.is_err());
                                 } else {
                                     // Empty IP means no error (will use default)
-                                    self.ip_errors.insert(file.clone(), false);
+                                    self.form_state.ip_errors.insert(file.clone(), false);
                                 }
                             }
                         });
@@ -394,57 +392,45 @@ impl eframe::App for TelegrafApp {
             // Main Action Buttons
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
-                    self.show_namespace_error = false;
-
-                    // Check for IP validation errors
-                    let ip_errors: Vec<String> = self.ip_errors
-                        .iter()
-                        .filter(|(_, &has_error)| has_error)
-                        .map(|(file, _)| file.clone())
-                        .collect();
-
-                    if !ip_errors.is_empty() {
-                        self.status_message = format!(
-                            "Error: Invalid IP format in files: {}. Please correct the IP addresses.",
-                            ip_errors.join(", ")
-                        );
-                        return;
-                    }
-
-                    // Validate that all namespace numbers are unique and provided
-                    // Use a map of (IP, namespace) -> files to track duplicates
-                    let mut namespace_ip_map: std::collections::HashMap<(String, &str), Vec<&str>> =
-                        std::collections::HashMap::new();
-
-                    // Collect namespaces and their corresponding files
-                    for (file, config) in &self.file_configs {
-                        let namespace = config.namespace.trim();
-                        if namespace.is_empty() {
-                            self.status_message =
-                                format!("Error: No namespace provided for file: {}", file);
-                            self.show_namespace_error = true;
-                            return;
-                        }
-
-                        // Use the file's custom IP if provided, otherwise use the default IP
-                        let ip = if config.ip.is_empty() {
-                            self.config.ip.clone()
-                        } else {
-                            config.ip.clone()
-                        };
-
-                        // Add to map with combined (IP, namespace) key
-                        namespace_ip_map.entry((ip, namespace)).or_default().push(file);
-                    }
-
-                    // Check for duplicate namespaces within the same IP
-                    for ((ip, namespace), files) in &namespace_ip_map {
-                        if files.len() > 1 {
-                            self.status_message = format!(
-                                "Error: Namespace {} is used by multiple files on IP {}: {}",
-                                namespace, ip, files.join(", ")
-                            );
-                            self.show_namespace_error = true;
+                    // Reset validation state
+                    self.form_state.show_namespace_error = false;
+                    self.form_state.show_iot_host_error = false;
+                    
+                    // Convert our file_configs to XmlFileValidation for backend validation
+                    let validation_configs: std::collections::HashMap<String, XmlFileValidation> = 
+                        self.file_configs.iter().map(|(file, config)| {
+                            (file.clone(), XmlFileValidation {
+                                namespace: config.namespace.clone(),
+                                interval_ms: config.interval_ms.clone(),
+                                ip: config.ip.clone(),
+                            })
+                        }).collect();
+                    
+                    // Perform comprehensive backend validation
+                    match self.config.validate_config(&validation_configs) {
+                        Ok(_) => {
+                            // All validations passed
+                        },
+                        Err(errors) => {
+                            // Handle errors and update UI state
+                            let error_messages: Vec<String> = errors.iter()
+                                .map(|e| e.to_string())
+                                .collect();
+                            
+                            // Set appropriate error flags
+                            for error in &errors {
+                                match error {
+                                    TelegrafError::ValidationError(msg) if msg.contains("namespace") => {
+                                        self.form_state.show_namespace_error = true;
+                                    },
+                                    TelegrafError::HostFormatError(_) => {
+                                        self.form_state.show_iot_host_error = true;
+                                    },
+                                    _ => {}
+                                }
+                            }
+                            
+                            self.status_message = format!("Validation errors: {}", error_messages.join("; "));
                             return;
                         }
                     }

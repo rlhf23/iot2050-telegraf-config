@@ -1,3 +1,11 @@
+/// A struct to hold XML file configuration for validation purposes
+#[derive(Debug, Clone, Default)]
+pub struct XmlFileValidation {
+    pub namespace: String,
+    pub interval_ms: String,
+    pub ip: String,
+}
+
 // Using thiserror to automatically implement Error and Display traits
 #[derive(Debug, thiserror::Error)]
 pub enum TelegrafError {
