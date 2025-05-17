@@ -238,7 +238,11 @@ impl ConfigGenerator {
     }
 
     /// Checks if InfluxDB is responding
-    pub fn check_influxdb_status(&self, influx_url: &str, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+    pub fn check_influxdb_status(
+        &self,
+        influx_url: &str,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
         ssh_utils::check_service_status(
             &self.config.iot_host,
             &self.config.iot_username,
@@ -250,7 +254,11 @@ impl ConfigGenerator {
     }
 
     /// Checks if Prometheus is responding
-    pub fn check_prometheus_status(&self, prometheus_url: &str, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+    pub fn check_prometheus_status(
+        &self,
+        prometheus_url: &str,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
         ssh_utils::check_service_status(
             &self.config.iot_host,
             &self.config.iot_username,
@@ -262,7 +270,12 @@ impl ConfigGenerator {
     }
 
     /// Generic method to check if a service is responding
-    pub fn check_service_status(&self, service_url: &str, service_type: ssh_utils::ServiceType, timeout_seconds: u64) -> Result<bool, TelegrafError> {
+    pub fn check_service_status(
+        &self,
+        service_url: &str,
+        service_type: ssh_utils::ServiceType,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
         ssh_utils::check_service_status(
             &self.config.iot_host,
             &self.config.iot_username,

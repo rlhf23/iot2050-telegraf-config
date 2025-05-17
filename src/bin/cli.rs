@@ -204,6 +204,25 @@ fn main() {
             .action(ArgAction::SetTrue)
             .help("Connect to OPC UA server and retrieve namespace information for XML files"),
         )
+        .arg(
+            Arg::new("check_influxdb")
+            .long("check-influxdb")
+            .value_name("INFLUXDB_URL")
+            .help("Check if InfluxDB is responding at the specified URL"),
+        )
+        .arg(
+            Arg::new("check_prometheus")
+            .long("check-prometheus")
+            .value_name("PROMETHEUS_URL")
+            .help("Check if Prometheus is responding at the specified URL"),
+        )
+        .arg(
+            Arg::new("service_timeout")
+            .long("service-timeout")
+            .value_name("SECONDS")
+            .help("Timeout in seconds for service health checks")
+            .default_value("5"),
+        )
         .get_matches();
 
     // print the current config
@@ -241,6 +260,8 @@ fn main() {
         || matches.get_flag("backup_influx")
         || matches.get_flag("backup_grafana")
         || matches.get_flag("get_namespaces")
+        || matches.contains_id("check_influxdb")
+        || matches.contains_id("check_prometheus")
     {
         // Create a clone of config for early operations
         let mut early_config = config.clone();
@@ -348,6 +369,77 @@ fn main() {
             }
 
             wrap_up(0);
+        }
+
+        // Handle InfluxDB status check
+        if let Some(influx_url) = matches.get_one::<String>("check_influxdb") {
+            println!("Checking if InfluxDB is responding at {}...", influx_url);
+
+            // Get timeout value
+            let timeout_seconds = matches
+                .get_one::<String>("service_timeout")
+                .unwrap_or(&"5".to_string())
+                .parse::<u64>()
+                .unwrap_or(5);
+
+            // Create the generator with current config
+            let generator = match ConfigGenerator::new(early_config.clone()) {
+                Ok(gen) => gen,
+                Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+            };
+
+            // Check if InfluxDB is responding
+            match generator.check_influxdb_status(influx_url, timeout_seconds) {
+                Ok(true) => {
+                    println!("✅ InfluxDB is responding normally");
+                    wrap_up(0);
+                }
+                Ok(false) => {
+                    println!("❌ InfluxDB is not responding");
+                    wrap_up(1);
+                }
+                Err(e) => {
+                    eprintln!("Failed to check InfluxDB status: {}", e);
+                    wrap_up(1);
+                }
+            }
+        }
+
+        // Handle Prometheus status check
+        if let Some(prometheus_url) = matches.get_one::<String>("check_prometheus") {
+            println!(
+                "Checking if Prometheus is responding at {}...",
+                prometheus_url
+            );
+
+            // Get timeout value
+            let timeout_seconds = matches
+                .get_one::<String>("service_timeout")
+                .unwrap_or(&"5".to_string())
+                .parse::<u64>()
+                .unwrap_or(5);
+
+            // Create the generator with current config
+            let generator = match ConfigGenerator::new(early_config.clone()) {
+                Ok(gen) => gen,
+                Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+            };
+
+            // Check if Prometheus is responding
+            match generator.check_prometheus_status(prometheus_url, timeout_seconds) {
+                Ok(true) => {
+                    println!("✅ Prometheus is responding normally");
+                    wrap_up(0);
+                }
+                Ok(false) => {
+                    println!("❌ Prometheus is not responding");
+                    wrap_up(1);
+                }
+                Err(e) => {
+                    eprintln!("Failed to check Prometheus status: {}", e);
+                    wrap_up(1);
+                }
+            }
         }
     }
 
