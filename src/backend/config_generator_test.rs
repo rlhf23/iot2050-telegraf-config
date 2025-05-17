@@ -99,7 +99,7 @@ mod tests {
         let config = create_test_config(dir.path().to_path_buf());
         let generator = ConfigGenerator::new(config).unwrap();
 
-        let xml_files = generator.get_xml_files().unwrap();
+        let xml_files = ConfigGenerator::discover_xml_files(&dir.path().to_path_buf());
 
         // Should find exactly 2 XML files
         assert_eq!(xml_files.len(), 2);
