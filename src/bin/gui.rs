@@ -142,27 +142,31 @@ impl eframe::App for TelegrafApp {
                     ui.label(self.config.folder.to_string_lossy().to_string());
                 });
 
-                // IP Configuration
-                ui.horizontal(|ui| {
-                    ui.label("OPC IP:");
-                    ui.text_edit_singleline(&mut self.config.ip);
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("IOT Host:");
-
-                    let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
-                    if self.form_state.show_iot_host_error {
-                        egui::Frame::none()
-                            .stroke(egui::Stroke::new(
-                                1.0,
-                                egui::Color32::from_rgb(255, 0, 0),
-                            ))
-                            .show(ui, |ui| ui.add(text_edit));
-                    } else {
-                        ui.add(text_edit);
-                    }
-                });
+                // Main Configuration using Grid
+                egui::Grid::new("config_grid")
+                    .num_columns(2)
+                    .spacing([40.0, 4.0])
+                    .show(ui, |ui| {
+                        // IP Configuration
+                        ui.label("OPC IP:");
+                        ui.text_edit_singleline(&mut self.config.ip);
+                        ui.end_row();
+                        
+                        // IOT Host with validation
+                        ui.label("IOT Host:");
+                        let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
+                        if self.form_state.show_iot_host_error {
+                            egui::Frame::none()
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    egui::Color32::from_rgb(255, 0, 0),
+                                ))
+                                .show(ui, |ui| ui.add(text_edit));
+                        } else {
+                            ui.add(text_edit);
+                        }
+                        ui.end_row();
+                    });
 
                 // Test Inputs Toggle
                 ui.horizontal(|ui| {
@@ -180,27 +184,31 @@ impl eframe::App for TelegrafApp {
 
                 // Credentials
                 ui.collapsing("Credentials", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("OPC Username:");
-                        ui.text_edit_singleline(&mut self.config.username);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("OPC Password:");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.password).password(true),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("IOT Username:");
-                        ui.text_edit_singleline(&mut self.config.iot_username);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("IOT Password:");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.iot_password)
-                                .password(true),
-                        );
-                    });
+                    egui::Grid::new("credentials_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            // OPC Username
+                            ui.label("OPC Username:");
+                            ui.text_edit_singleline(&mut self.config.username);
+                            ui.end_row();
+                            
+                            // OPC Password
+                            ui.label("OPC Password:");
+                            ui.add(egui::TextEdit::singleline(&mut self.config.password).password(true));
+                            ui.end_row();
+                            
+                            // IOT Username
+                            ui.label("IOT Username:");
+                            ui.text_edit_singleline(&mut self.config.iot_username);
+                            ui.end_row();
+                            
+                            // IOT Password
+                            ui.label("IOT Password:");
+                            ui.add(egui::TextEdit::singleline(&mut self.config.iot_password).password(true));
+                            ui.end_row();
+                        });
 
                     // Calculate is_prometheus value once
                     let mut is_prometheus = self
@@ -241,30 +249,37 @@ impl eframe::App for TelegrafApp {
                         // InfluxDB Token
                         ui.separator();
                         let mut token = self.config.influx_token.clone().unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            ui.label("InfluxDB Token:");
-                            if ui.text_edit_singleline(&mut token).changed() {
-                                self.config.influx_token = Some(token);
-                            }
-                        });
-
-                        // Token file path
-                        ui.horizontal(|ui| {
-                            ui.label("Token File:");
-                            if ui.button("Browse").clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("Text files", &["txt"])
-                                    .set_file_name("token.txt") // Default filename suggestion
-                                    .pick_file()
-                                {
-                                    self.token_file_path = path.clone();
-                                    self.config.token_folder =
-                                        path.parent().unwrap_or(&path).to_path_buf();
-                                    self.load_token();
+                        
+                        egui::Grid::new("influxdb_options_grid")
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .show(ui, |ui| {
+                                // Token input
+                                ui.label("InfluxDB Token:");
+                                if ui.text_edit_singleline(&mut token).changed() {
+                                    self.config.influx_token = Some(token);
                                 }
-                            }
-                            ui.label(self.token_file_path.to_string_lossy().to_string());
-                        });
+                                ui.end_row();
+                                
+                                // Token file path
+                                ui.label("Token File:");
+                                ui.horizontal(|ui| {
+                                    if ui.button("Browse").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .add_filter("Text files", &["txt"])
+                                            .set_file_name("token.txt") // Default filename suggestion
+                                            .pick_file()
+                                        {
+                                            self.token_file_path = path.clone();
+                                            self.config.token_folder =
+                                                path.parent().unwrap_or(&path).to_path_buf();
+                                            self.load_token();
+                                        }
+                                    }
+                                    ui.label(self.token_file_path.to_string_lossy().to_string());
+                                });
+                                ui.end_row();
+                            });
                     }
                 });
             });
@@ -286,85 +301,90 @@ impl eframe::App for TelegrafApp {
                             ui.strong(file);
                         });
 
-                        // Namespace input
-                        ui.horizontal(|ui| {
-                            ui.label("Namespace:");
-                            let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
-                            if self.form_state.show_namespace_error {
-                                egui::Frame::none()
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        egui::Color32::from_rgb(255, 0, 0),
-                                    ))
-                                    .show(ui, |ui| ui.add(text_edit));
-                            } else {
-                                ui.add(text_edit);
-                            }
-                        });
-
-                        // IP Address input (new)
-                        ui.horizontal(|ui| {
-                            ui.label("OPC IP:");
-
-                            // Check if we have a validation error for this file
-                            let has_error = self.form_state.ip_errors.get(file).unwrap_or(&false);
-
-                            // Show the field with appropriate styling
-                            let response = if *has_error {
-                                // If there's an error, show red border
-                                let response = egui::Frame::none()
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        egui::Color32::from_rgb(255, 0, 0),
-                                    ))
-                                    .show(ui, |ui| {
-                                        ui.add(egui::TextEdit::singleline(&mut file_config.ip)
-                                            .hint_text(&self.config.ip))
-                                    })
-                                    .inner;
-                                response.on_hover_text("Invalid IP format. Must be four numbers 0-255 separated by dots (e.g., 192.168.1.1)")
-                            } else {
-                                // No error, show normal text field
-                                let response = ui.add(egui::TextEdit::singleline(&mut file_config.ip)
-                                    .hint_text(&self.config.ip));
-                                response.on_hover_text("Override the default OPC IP address for this file")
-                            };
-
-                            // Validate IP after user types
-                            if response.changed() {
-                                // Only validate non-empty custom IPs
-                                if !file_config.ip.is_empty() {
-                                    // Use the backend validation logic
-                                    let validation_result = self.config.validate_ip_for_file(&file_config.ip);
-                                    
-                                    // Update error state
-                                    self.form_state.ip_errors.insert(file.clone(), validation_result.is_err());
+                        // Use grid layout for all fields in the XML file configuration
+                        egui::Grid::new(&format!("xml_file_grid_{}", i))
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .show(ui, |ui| {
+                                // Namespace input
+                                ui.label("Namespace:");
+                                let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
+                                if self.form_state.show_namespace_error {
+                                    egui::Frame::none()
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(255, 0, 0),
+                                        ))
+                                        .show(ui, |ui| ui.add(text_edit));
                                 } else {
-                                    // Empty IP means no error (will use default)
-                                    self.form_state.ip_errors.insert(file.clone(), false);
+                                    ui.add(text_edit);
                                 }
-                            }
-                        });
-
-                        // Interval input
-                        ui.horizontal(|ui| {
-                            let is_listener = self.selected_listener_files[i];
-                            let label = if is_listener {
-                                "Sampling Interval (ms):"
-                            } else {
-                                "Interval (ms):"
-                            };
-                            ui.label(label);
-                            let default_interval = if is_listener { "500" } else { "1000" };
-                            ui.add(
-                                egui::TextEdit::singleline(&mut file_config.interval_ms)
-                                    .hint_text(default_interval),
-                            )
-                            .on_hover_text(if is_listener {
-                                "Default: 500ms for listeners"
-                            } else {
-                                "Default: 1000ms for regular files"
-                            });
+                                ui.end_row();
+                                
+                                // IP Address input
+                                ui.label("OPC IP:");
+                                
+                                // Check if we have a validation error for this file
+                                let has_error = self.form_state.ip_errors.get(file).unwrap_or(&false);
+                                
+                                // Show the field with appropriate styling
+                                let response = if *has_error {
+                                    // If there's an error, show red border
+                                    let response = egui::Frame::none()
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(255, 0, 0),
+                                        ))
+                                        .show(ui, |ui| {
+                                            ui.add(egui::TextEdit::singleline(&mut file_config.ip)
+                                                .hint_text(&self.config.ip))
+                                        })
+                                        .inner;
+                                    response.on_hover_text("Invalid IP format. Must be four numbers 0-255 separated by dots (e.g., 192.168.1.1)")
+                                } else {
+                                    // No error, show normal text field
+                                    let response = ui.add(egui::TextEdit::singleline(&mut file_config.ip)
+                                        .hint_text(&self.config.ip));
+                                    response.on_hover_text("Override the default OPC IP address for this file")
+                                };
+                                
+                                // Validate IP after user types
+                                if response.changed() {
+                                    // Only validate non-empty custom IPs
+                                    if !file_config.ip.is_empty() {
+                                        // Use the backend validation logic
+                                        let validation_result = self.config.validate_ip_for_file(&file_config.ip);
+                                        
+                                        // Update error state
+                                        self.form_state.ip_errors.insert(file.clone(), validation_result.is_err());
+                                    } else {
+                                        // Empty IP means no error (will use default)
+                                        self.form_state.ip_errors.insert(file.clone(), false);
+                                    }
+                                }
+                                ui.end_row();
+                                
+                                // Interval input
+                                let is_listener = self.selected_listener_files[i];
+                                let label = if is_listener {
+                                    "Sampling Interval (ms):"
+                                } else {
+                                    "Interval (ms):"
+                                };
+                                ui.label(label);
+                                
+                                let default_interval = if is_listener { "500" } else { "1000" };
+                                let response = ui.add(
+                                    egui::TextEdit::singleline(&mut file_config.interval_ms)
+                                        .hint_text(default_interval),
+                                );
+                                
+                                response.on_hover_text(if is_listener {
+                                    "Default: 500ms for listeners"
+                                } else {
+                                    "Default: 1000ms for regular files"
+                                });
+                                ui.end_row();
                         });
                     });
                     ui.add_space(4.0);
