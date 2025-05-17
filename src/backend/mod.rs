@@ -77,10 +77,11 @@ impl ConfigGenerator {
         );
     }
 
-    //TODO: duplicate function?
-    pub fn get_xml_files(&self) -> Result<Vec<String>, TelegrafError> {
-        fs::read_dir(&self.config.folder)
-            .map_err(TelegrafError::IoError)?
+    /// Discover all XML files in the given folder
+    /// Returns a list of file paths as strings
+    pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
+        std::fs::read_dir(folder)
+            .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
             .filter_map(|entry| {
                 let path = entry.ok()?.path();
                 if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
@@ -89,9 +90,6 @@ impl ConfigGenerator {
                     None
                 }
             })
-            .collect::<Vec<String>>()
-            .into_iter()
-            .map(Ok)
             .collect()
     }
 

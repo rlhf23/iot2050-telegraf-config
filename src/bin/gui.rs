@@ -14,8 +14,8 @@ struct XmlFileConfig {
 
 #[derive(Default)]
 struct FormState {
-    show_namespace_error: bool,           // Track if we should show namespace errors
-    show_iot_host_error: bool,            // Track if IOT host is invalid
+    show_namespace_error: bool, // Track if we should show namespace errors
+    show_iot_host_error: bool,  // Track if IOT host is invalid
     ip_errors: std::collections::HashMap<String, bool>, // Track file IP validation errors
 }
 
@@ -37,17 +37,8 @@ impl TelegrafApp {
     }
 
     fn load_xml_files(&mut self) {
-        self.xml_files = std::fs::read_dir(&self.config.folder)
-            .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
-            .filter_map(|entry| {
-                let path = entry.ok()?.path();
-                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
-                    Some(path.to_str()?.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Use the shared function from lib.rs
+        self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_listener_files = vec![false; self.xml_files.len()];
 
         // Initialize configs for new files
@@ -151,7 +142,7 @@ impl eframe::App for TelegrafApp {
                         ui.label("OPC IP:");
                         ui.text_edit_singleline(&mut self.config.ip);
                         ui.end_row();
-                        
+
                         // IOT Host with validation
                         ui.label("IOT Host:");
                         let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
@@ -193,17 +184,14 @@ impl eframe::App for TelegrafApp {
                             ui.label("OPC Username:");
                             ui.text_edit_singleline(&mut self.config.username);
                             ui.end_row();
-                            
                             // OPC Password
                             ui.label("OPC Password:");
                             ui.add(egui::TextEdit::singleline(&mut self.config.password).password(true));
                             ui.end_row();
-                            
                             // IOT Username
                             ui.label("IOT Username:");
                             ui.text_edit_singleline(&mut self.config.iot_username);
                             ui.end_row();
-                            
                             // IOT Password
                             ui.label("IOT Password:");
                             ui.add(egui::TextEdit::singleline(&mut self.config.iot_password).password(true));
@@ -249,7 +237,7 @@ impl eframe::App for TelegrafApp {
                         // InfluxDB Token
                         ui.separator();
                         let mut token = self.config.influx_token.clone().unwrap_or_default();
-                        
+
                         egui::Grid::new("influxdb_options_grid")
                             .num_columns(2)
                             .spacing([40.0, 4.0])
@@ -260,7 +248,7 @@ impl eframe::App for TelegrafApp {
                                     self.config.influx_token = Some(token);
                                 }
                                 ui.end_row();
-                                
+
                                 // Token file path
                                 ui.label("Token File:");
                                 ui.horizontal(|ui| {
@@ -320,13 +308,13 @@ impl eframe::App for TelegrafApp {
                                     ui.add(text_edit);
                                 }
                                 ui.end_row();
-                                
+
                                 // IP Address input
                                 ui.label("OPC IP:");
-                                
+
                                 // Check if we have a validation error for this file
                                 let has_error = self.form_state.ip_errors.get(file).unwrap_or(&false);
-                                
+
                                 // Show the field with appropriate styling
                                 let response = if *has_error {
                                     // If there's an error, show red border
@@ -347,14 +335,14 @@ impl eframe::App for TelegrafApp {
                                         .hint_text(&self.config.ip));
                                     response.on_hover_text("Override the default OPC IP address for this file")
                                 };
-                                
+
                                 // Validate IP after user types
                                 if response.changed() {
                                     // Only validate non-empty custom IPs
                                     if !file_config.ip.is_empty() {
                                         // Use the backend validation logic
                                         let validation_result = self.config.validate_ip_for_file(&file_config.ip);
-                                        
+
                                         // Update error state
                                         self.form_state.ip_errors.insert(file.clone(), validation_result.is_err());
                                     } else {
@@ -363,7 +351,7 @@ impl eframe::App for TelegrafApp {
                                     }
                                 }
                                 ui.end_row();
-                                
+
                                 // Interval input
                                 let is_listener = self.selected_listener_files[i];
                                 let label = if is_listener {
@@ -372,13 +360,13 @@ impl eframe::App for TelegrafApp {
                                     "Interval (ms):"
                                 };
                                 ui.label(label);
-                                
+
                                 let default_interval = if is_listener { "500" } else { "1000" };
                                 let response = ui.add(
                                     egui::TextEdit::singleline(&mut file_config.interval_ms)
                                         .hint_text(default_interval),
                                 );
-                                
+
                                 response.on_hover_text(if is_listener {
                                     "Default: 500ms for listeners"
                                 } else {
@@ -415,9 +403,9 @@ impl eframe::App for TelegrafApp {
                     // Reset validation state
                     self.form_state.show_namespace_error = false;
                     self.form_state.show_iot_host_error = false;
-                    
+
                     // Convert our file_configs to XmlFileValidation for backend validation
-                    let validation_configs: std::collections::HashMap<String, XmlFileValidation> = 
+                    let validation_configs: std::collections::HashMap<String, XmlFileValidation> =
                         self.file_configs.iter().map(|(file, config)| {
                             (file.clone(), XmlFileValidation {
                                 namespace: config.namespace.clone(),
@@ -425,7 +413,7 @@ impl eframe::App for TelegrafApp {
                                 ip: config.ip.clone(),
                             })
                         }).collect();
-                    
+
                     // Perform comprehensive backend validation
                     match self.config.validate_config(&validation_configs) {
                         Ok(_) => {
@@ -436,7 +424,7 @@ impl eframe::App for TelegrafApp {
                             let error_messages: Vec<String> = errors.iter()
                                 .map(|e| e.to_string())
                                 .collect();
-                            
+
                             // Set appropriate error flags
                             for error in &errors {
                                 match error {
@@ -449,7 +437,7 @@ impl eframe::App for TelegrafApp {
                                     _ => {}
                                 }
                             }
-                            
+
                             self.status_message = format!("Validation errors: {}", error_messages.join("; "));
                             return;
                         }
