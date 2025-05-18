@@ -68,6 +68,19 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          runVcpkgInstall: true
+          vcpkgGitCommitId: 'a42af01b72c283e8e5c8a28c8666e139c8e2f9ea'
+
+      - name: Install OpenSSL with vcpkg
+        run: |
+          vcpkg install openssl:x64-windows-static-md
+          echo "OPENSSL_DIR=$env:VCPKG_ROOT/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
