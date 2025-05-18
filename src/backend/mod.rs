@@ -92,7 +92,7 @@ impl ConfigGenerator {
             })
             .collect()
     }
-    
+
     pub fn generate_config(
         &self,
         xml_files: &[String],
