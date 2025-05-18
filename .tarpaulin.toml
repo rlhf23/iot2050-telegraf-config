@@ -1,0 +1,29 @@
+# Tarpaulin configuration for coverage reporting
+
+[tarpaulin]
+# Include all source files
+include-files = ["src/**/*.rs"]
+
+# Exclude test files from coverage stats
+exclude-files = ["**/*_test.rs", "**/*_proptest.rs", "src/bin/**/*.rs"]
+
+# Choose output formats
+out = ["Html", "Json", "Lcov"]
+
+# Set timeout for tests
+timeout = 120
+
+# Skip doctests as they're often examples rather than test coverage
+skip-doctests = true
+
+# Verbose output
+verbose = true
+
+# Generate line coverage
+line = true
+
+# Generate branch coverage
+branch = true
+
+# Report function coverage
+function = true

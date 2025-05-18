@@ -88,6 +88,31 @@ For more CLI options, run:
 3. Run `cargo build --release`
 4. The executable will be available in `target/release/`
 
+## Testing
+
+This project uses both standard unit tests and property-based testing to ensure code quality.
+
+### Running Tests
+```bash
+# Run all tests
+cargo test
+
+# Run property tests only 
+cargo test -- tests::format_proptest
+cargo test -- tests::opcua_poller_proptest
+```
+
+### Coverage Reporting
+```bash
+# Install coverage tool (first time only)
+cargo install cargo-tarpaulin
+
+# Generate coverage report
+cargo tarpaulin --config .tarpaulin.toml
+```
+
+See the [Testing Guide](docs/testing-guide.md) for more detailed information.
+
 ## Support
 If you encounter issues or have questions, please submit an issue on our GitHub page.
 
