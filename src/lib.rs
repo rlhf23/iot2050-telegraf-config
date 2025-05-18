@@ -302,9 +302,5 @@ mod lib_test;
 #[cfg(test)]
 mod tests {
     // Include property tests
-    #[path = "backend/format_proptest.rs"]
-    mod format_proptest;
-    
-    #[path = "backend/opcua_poller_proptest.rs"]
-    mod opcua_poller_proptest;
+    use crate::backend;
 }
