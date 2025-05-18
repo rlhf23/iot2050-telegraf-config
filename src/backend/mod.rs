@@ -8,11 +8,15 @@ mod config_generator_test;
 mod format;
 #[cfg(test)]
 mod format_test;
+pub mod opcua_poller;
+#[cfg(test)]
+mod opcua_poller_test;
 mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
 
 pub use format::OutputFormat;
+pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]
 pub struct FileConfig {
@@ -73,9 +77,11 @@ impl ConfigGenerator {
         );
     }
 
-    pub fn get_xml_files(&self) -> Result<Vec<String>, TelegrafError> {
-        fs::read_dir(&self.config.folder)
-            .map_err(TelegrafError::IoError)?
+    /// Discover all XML files in the given folder
+    /// Returns a list of file paths as strings
+    pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
+        std::fs::read_dir(folder)
+            .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
             .filter_map(|entry| {
                 let path = entry.ok()?.path();
                 if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
@@ -84,9 +90,6 @@ impl ConfigGenerator {
                     None
                 }
             })
-            .collect::<Vec<String>>()
-            .into_iter()
-            .map(Ok)
             .collect()
     }
 
@@ -229,6 +232,55 @@ impl ConfigGenerator {
             &self.config.iot_username,
             &self.config.iot_password,
             lines,
+        )
+    }
+
+    /// Checks if InfluxDB is responding
+    pub fn check_influxdb_status(
+        &self,
+        influx_url: &str,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            influx_url,
+            ssh_utils::ServiceType::InfluxDB,
+            timeout_seconds,
+        )
+    }
+
+    /// Checks if Prometheus is responding
+    pub fn check_prometheus_status(
+        &self,
+        prometheus_url: &str,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            prometheus_url,
+            ssh_utils::ServiceType::Prometheus,
+            timeout_seconds,
+        )
+    }
+
+    /// Generic method to check if a service is responding
+    pub fn check_service_status(
+        &self,
+        service_url: &str,
+        service_type: ssh_utils::ServiceType,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
+        ssh_utils::check_service_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            service_url,
+            service_type,
+            timeout_seconds,
         )
     }
 }

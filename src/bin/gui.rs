@@ -1,11 +1,22 @@
 use eframe::egui;
-use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
+use sie_generate_config::{
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    error::{TelegrafError, XmlFileValidation},
+    TelegrafConfig,
+};
 
 #[derive(Default)]
 struct XmlFileConfig {
     namespace: String,
     interval_ms: String,
     ip: String,
+}
+
+#[derive(Default)]
+struct FormState {
+    show_namespace_error: bool, // Track if we should show namespace errors
+    show_iot_host_error: bool,  // Track if IOT host is invalid
+    ip_errors: std::collections::HashMap<String, bool>, // Track file IP validation errors
 }
 
 struct TelegrafApp {
@@ -15,9 +26,7 @@ struct TelegrafApp {
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
     status_message: String,
     token_file_path: std::path::PathBuf, // Store the complete token file path
-    show_namespace_error: bool,          // Track if we should show namespace errors
-    show_iot_host_error: bool,           // Track if IOT host is invalid
-    ip_errors: std::collections::HashMap<String, bool>, // Track file IP validation errors
+    form_state: FormState,               // Validation state for the form
 }
 
 impl TelegrafApp {
@@ -28,17 +37,8 @@ impl TelegrafApp {
     }
 
     fn load_xml_files(&mut self) {
-        self.xml_files = std::fs::read_dir(&self.config.folder)
-            .unwrap_or_else(|_| std::fs::read_dir(".").unwrap())
-            .filter_map(|entry| {
-                let path = entry.ok()?.path();
-                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
-                    Some(path.to_str()?.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Use the shared function from lib.rs
+        self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_listener_files = vec![false; self.xml_files.len()];
 
         // Initialize configs for new files
@@ -47,63 +47,18 @@ impl TelegrafApp {
         }
     }
 
-    // Helper function to format error messages based on error type
-    fn format_error_message(&mut self, error: &str, context: &str) -> String {
-        // Look for specific patterns in the error message to categorize
-        if error.contains("Host format error")
-            || error.contains("Invalid host format")
-            || error.contains("Invalid port in host")
-        {
-            // Set show_iot_host_error to true
-            self.show_iot_host_error = true;
-            // Host format validation errors
-            format!(
-                "⚠️ Host Format Error: {}\n\nPlease correct the IOT host field to use format: hostname:port\nExample: 192.168.0.1:22", 
-                error
-            )
-        } else if error.contains("Failed to resolve hostname") {
-            // Hostname resolution errors
-            format!(
-                "⚠️ Hostname Error: {}\n\nPlease check:\n- IOT host address is correct\n- Your network can reach the host\n- DNS settings are correct (if using hostname)", 
-                error
-            )
-        } else if error.contains("No route to host")
-            || error.contains("Connection refused")
-            || error.contains("Network is unreachable")
-            || error.contains("Connection failed")
-            || error.contains("timed out")
-        {
-            // Connection errors
-            format!(
-                "⚠️ Connection Error: {}\n\nPlease check:\n- IOT host IP address is correct ({})\n- IOT device is powered on and connected to the network\n- No firewall is blocking the connection", 
-                error,
-                self.config.iot_host
-            )
-        } else if error.contains("Authentication") || error.contains("Permission denied") {
-            // Authentication errors
-            format!(
-                "⚠️ Authentication Error: {}\n\nPlease check:\n- SSH username and password are correct\n- SSH user has proper permissions", 
-                error
-            )
-        } else if error.contains("not found") && context == "logs" {
-            // Log file issues
-            format!(
-                "⚠️ Log File Error: {}\n\nPlease check:\n- Telegraf is installed and has been run at least once\n- Logs are stored in the expected location", 
-                error
-            )
-        } else {
-            // Other errors
-            let additional_info = if context == "status" {
-                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Telegraf service is not running"
-            } else {
-                "- Telegraf is not installed\n- SSH user doesn't have sudo permissions\n- Log file doesn't exist or has incorrect permissions"
-            };
+    // Helper function to set UI error flags and get user-friendly error message
+    fn handle_error(&mut self, error: &TelegrafError, context: &str) -> String {
+        let message = error.user_friendly_message(context);
 
-            format!(
-                "⚠️ Error getting Telegraf {}: {}\n\nPossible issues:\n{}",
-                context, error, additional_info
-            )
+        // Set UI error flags based on the error message
+        if message.contains("Host Format Error") {
+            self.form_state.show_iot_host_error = true;
         }
+
+        // Additional flags can be set here as needed
+
+        message
     }
 }
 
@@ -125,7 +80,7 @@ impl Default for TelegrafApp {
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
                 token_folder: path,
                 bucket_name: String::new(),
-                influx_token: None,
+                influx_token: Some("${INFLUX_TOKEN}".to_string()), // moved to telegraf env var
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
@@ -135,9 +90,7 @@ impl Default for TelegrafApp {
             file_configs: std::collections::HashMap::new(),
             status_message: String::new(),
             token_file_path, // Default to token.txt in the current directory
-            show_namespace_error: false,
-            show_iot_host_error: false,
-            ip_errors: std::collections::HashMap::new(),
+            form_state: FormState::default(),
         };
         app.load_xml_files();
         app.load_token();
@@ -180,27 +133,31 @@ impl eframe::App for TelegrafApp {
                     ui.label(self.config.folder.to_string_lossy().to_string());
                 });
 
-                // IP Configuration
-                ui.horizontal(|ui| {
-                    ui.label("OPC IP:");
-                    ui.text_edit_singleline(&mut self.config.ip);
-                });
+                // Main Configuration using Grid
+                egui::Grid::new("config_grid")
+                    .num_columns(2)
+                    .spacing([40.0, 4.0])
+                    .show(ui, |ui| {
+                        // IP Configuration
+                        ui.label("OPC IP:");
+                        ui.text_edit_singleline(&mut self.config.ip);
+                        ui.end_row();
 
-                ui.horizontal(|ui| {
-                    ui.label("IOT Host:");
-
-                    let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
-                    if self.show_iot_host_error {
-                        egui::Frame::none()
-                            .stroke(egui::Stroke::new(
-                                1.0,
-                                egui::Color32::from_rgb(255, 0, 0),
-                            ))
-                            .show(ui, |ui| ui.add(text_edit));
-                    } else {
-                        ui.add(text_edit);
-                    }
-                });
+                        // IOT Host with validation
+                        ui.label("IOT Host:");
+                        let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
+                        if self.form_state.show_iot_host_error {
+                            egui::Frame::none()
+                                .stroke(egui::Stroke::new(
+                                    1.0,
+                                    egui::Color32::from_rgb(255, 0, 0),
+                                ))
+                                .show(ui, |ui| ui.add(text_edit));
+                        } else {
+                            ui.add(text_edit);
+                        }
+                        ui.end_row();
+                    });
 
                 // Test Inputs Toggle
                 ui.horizontal(|ui| {
@@ -218,27 +175,28 @@ impl eframe::App for TelegrafApp {
 
                 // Credentials
                 ui.collapsing("Credentials", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label("OPC Username:");
-                        ui.text_edit_singleline(&mut self.config.username);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("OPC Password:");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.password).password(true),
-                        );
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("IOT Username:");
-                        ui.text_edit_singleline(&mut self.config.iot_username);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("IOT Password:");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.config.iot_password)
-                                .password(true),
-                        );
-                    });
+                    egui::Grid::new("credentials_grid")
+                        .num_columns(2)
+                        .spacing([40.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            // OPC Username
+                            ui.label("OPC Username:");
+                            ui.text_edit_singleline(&mut self.config.username);
+                            ui.end_row();
+                            // OPC Password
+                            ui.label("OPC Password:");
+                            ui.add(egui::TextEdit::singleline(&mut self.config.password).password(true));
+                            ui.end_row();
+                            // IOT Username
+                            ui.label("IOT Username:");
+                            ui.text_edit_singleline(&mut self.config.iot_username);
+                            ui.end_row();
+                            // IOT Password
+                            ui.label("IOT Password:");
+                            ui.add(egui::TextEdit::singleline(&mut self.config.iot_password).password(true));
+                            ui.end_row();
+                        });
 
                     // Calculate is_prometheus value once
                     let mut is_prometheus = self
@@ -279,30 +237,37 @@ impl eframe::App for TelegrafApp {
                         // InfluxDB Token
                         ui.separator();
                         let mut token = self.config.influx_token.clone().unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            ui.label("InfluxDB Token:");
-                            if ui.text_edit_singleline(&mut token).changed() {
-                                self.config.influx_token = Some(token);
-                            }
-                        });
 
-                        // Token file path
-                        ui.horizontal(|ui| {
-                            ui.label("Token File:");
-                            if ui.button("Browse").clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("Text files", &["txt"])
-                                    .set_file_name("token.txt") // Default filename suggestion
-                                    .pick_file()
-                                {
-                                    self.token_file_path = path.clone();
-                                    self.config.token_folder =
-                                        path.parent().unwrap_or(&path).to_path_buf();
-                                    self.load_token();
+                        egui::Grid::new("influxdb_options_grid")
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .show(ui, |ui| {
+                                // Token input
+                                ui.label("InfluxDB Token:");
+                                if ui.text_edit_singleline(&mut token).changed() {
+                                    self.config.influx_token = Some(token);
                                 }
-                            }
-                            ui.label(self.token_file_path.to_string_lossy().to_string());
-                        });
+                                ui.end_row();
+
+                                // Token file path
+                                ui.label("Token File:");
+                                ui.horizontal(|ui| {
+                                    if ui.button("Browse").clicked() {
+                                        if let Some(path) = rfd::FileDialog::new()
+                                            .add_filter("Text files", &["txt"])
+                                            .set_file_name("token.txt") // Default filename suggestion
+                                            .pick_file()
+                                        {
+                                            self.token_file_path = path.clone();
+                                            self.config.token_folder =
+                                                path.parent().unwrap_or(&path).to_path_buf();
+                                            self.load_token();
+                                        }
+                                    }
+                                    ui.label(self.token_file_path.to_string_lossy().to_string());
+                                });
+                                ui.end_row();
+                            });
                     }
                 });
             });
@@ -324,90 +289,90 @@ impl eframe::App for TelegrafApp {
                             ui.strong(file);
                         });
 
-                        // Namespace input
-                        ui.horizontal(|ui| {
-                            ui.label("Namespace:");
-                            let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
-                            if self.show_namespace_error {
-                                egui::Frame::none()
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        egui::Color32::from_rgb(255, 0, 0),
-                                    ))
-                                    .show(ui, |ui| ui.add(text_edit));
-                            } else {
-                                ui.add(text_edit);
-                            }
-                        });
-
-                        // IP Address input (new)
-                        ui.horizontal(|ui| {
-                            ui.label("OPC IP:");
-
-                            // Check if we have a validation error for this file
-                            let has_error = self.ip_errors.get(file).unwrap_or(&false);
-
-                            // Show the field with appropriate styling
-                            let response = if *has_error {
-                                // If there's an error, show red border
-                                let response = egui::Frame::none()
-                                    .stroke(egui::Stroke::new(
-                                        1.0,
-                                        egui::Color32::from_rgb(255, 0, 0),
-                                    ))
-                                    .show(ui, |ui| {
-                                        ui.add(egui::TextEdit::singleline(&mut file_config.ip)
-                                            .hint_text(&self.config.ip))
-                                    })
-                                    .inner;
-                                response.on_hover_text("Invalid IP format. Must be four numbers 0-255 separated by dots (e.g., 192.168.1.1)")
-                            } else {
-                                // No error, show normal text field
-                                let response = ui.add(egui::TextEdit::singleline(&mut file_config.ip)
-                                    .hint_text(&self.config.ip));
-                                response.on_hover_text("Override the default OPC IP address for this file")
-                            };
-
-                            // Validate IP after user types
-                            if response.changed() {
-                                // Only validate non-empty custom IPs
-                                if !file_config.ip.is_empty() {
-                                    let temp_config = sie_generate_config::TelegrafConfig {
-                                        ip: file_config.ip.clone(),
-                                        ..self.config.clone()
-                                    };
-
-                                    // Update error state
-                                    self.ip_errors.insert(
-                                        file.clone(),
-                                        temp_config.validate_ip().is_err()
-                                    );
+                        // Use grid layout for all fields in the XML file configuration
+                        egui::Grid::new(&format!("xml_file_grid_{}", i))
+                            .num_columns(2)
+                            .spacing([40.0, 4.0])
+                            .show(ui, |ui| {
+                                // Namespace input
+                                ui.label("Namespace:");
+                                let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
+                                if self.form_state.show_namespace_error {
+                                    egui::Frame::none()
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(255, 0, 0),
+                                        ))
+                                        .show(ui, |ui| ui.add(text_edit));
                                 } else {
-                                    // Empty IP means no error (will use default)
-                                    self.ip_errors.insert(file.clone(), false);
+                                    ui.add(text_edit);
                                 }
-                            }
-                        });
+                                ui.end_row();
 
-                        // Interval input
-                        ui.horizontal(|ui| {
-                            let is_listener = self.selected_listener_files[i];
-                            let label = if is_listener {
-                                "Sampling Interval (ms):"
-                            } else {
-                                "Interval (ms):"
-                            };
-                            ui.label(label);
-                            let default_interval = if is_listener { "500" } else { "1000" };
-                            ui.add(
-                                egui::TextEdit::singleline(&mut file_config.interval_ms)
-                                    .hint_text(default_interval),
-                            )
-                            .on_hover_text(if is_listener {
-                                "Default: 500ms for listeners"
-                            } else {
-                                "Default: 1000ms for regular files"
-                            });
+                                // IP Address input
+                                ui.label("OPC IP:");
+
+                                // Check if we have a validation error for this file
+                                let has_error = self.form_state.ip_errors.get(file).unwrap_or(&false);
+
+                                // Show the field with appropriate styling
+                                let response = if *has_error {
+                                    // If there's an error, show red border
+                                    let response = egui::Frame::none()
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            egui::Color32::from_rgb(255, 0, 0),
+                                        ))
+                                        .show(ui, |ui| {
+                                            ui.add(egui::TextEdit::singleline(&mut file_config.ip)
+                                                .hint_text(&self.config.ip))
+                                        })
+                                        .inner;
+                                    response.on_hover_text("Invalid IP format. Must be four numbers 0-255 separated by dots (e.g., 192.168.1.1)")
+                                } else {
+                                    // No error, show normal text field
+                                    let response = ui.add(egui::TextEdit::singleline(&mut file_config.ip)
+                                        .hint_text(&self.config.ip));
+                                    response.on_hover_text("Override the default OPC IP address for this file")
+                                };
+
+                                // Validate IP after user types
+                                if response.changed() {
+                                    // Only validate non-empty custom IPs
+                                    if !file_config.ip.is_empty() {
+                                        // Use the backend validation logic
+                                        let validation_result = self.config.validate_ip_for_file(&file_config.ip);
+
+                                        // Update error state
+                                        self.form_state.ip_errors.insert(file.clone(), validation_result.is_err());
+                                    } else {
+                                        // Empty IP means no error (will use default)
+                                        self.form_state.ip_errors.insert(file.clone(), false);
+                                    }
+                                }
+                                ui.end_row();
+
+                                // Interval input
+                                let is_listener = self.selected_listener_files[i];
+                                let label = if is_listener {
+                                    "Sampling Interval (ms):"
+                                } else {
+                                    "Interval (ms):"
+                                };
+                                ui.label(label);
+
+                                let default_interval = if is_listener { "500" } else { "1000" };
+                                let response = ui.add(
+                                    egui::TextEdit::singleline(&mut file_config.interval_ms)
+                                        .hint_text(default_interval),
+                                );
+
+                                response.on_hover_text(if is_listener {
+                                    "Default: 500ms for listeners"
+                                } else {
+                                    "Default: 1000ms for regular files"
+                                });
+                                ui.end_row();
                         });
                     });
                     ui.add_space(4.0);
@@ -435,57 +400,45 @@ impl eframe::App for TelegrafApp {
             // Main Action Buttons
             ui.horizontal(|ui| {
                 if ui.button("Generate Config").clicked() {
-                    self.show_namespace_error = false;
+                    // Reset validation state
+                    self.form_state.show_namespace_error = false;
+                    self.form_state.show_iot_host_error = false;
 
-                    // Check for IP validation errors
-                    let ip_errors: Vec<String> = self.ip_errors
-                        .iter()
-                        .filter(|(_, &has_error)| has_error)
-                        .map(|(file, _)| file.clone())
-                        .collect();
+                    // Convert our file_configs to XmlFileValidation for backend validation
+                    let validation_configs: std::collections::HashMap<String, XmlFileValidation> =
+                        self.file_configs.iter().map(|(file, config)| {
+                            (file.clone(), XmlFileValidation {
+                                namespace: config.namespace.clone(),
+                                interval_ms: config.interval_ms.clone(),
+                                ip: config.ip.clone(),
+                            })
+                        }).collect();
 
-                    if !ip_errors.is_empty() {
-                        self.status_message = format!(
-                            "Error: Invalid IP format in files: {}. Please correct the IP addresses.",
-                            ip_errors.join(", ")
-                        );
-                        return;
-                    }
+                    // Perform comprehensive backend validation
+                    match self.config.validate_config(&validation_configs) {
+                        Ok(_) => {
+                            // All validations passed
+                        },
+                        Err(errors) => {
+                            // Handle errors and update UI state
+                            let error_messages: Vec<String> = errors.iter()
+                                .map(|e| e.to_string())
+                                .collect();
 
-                    // Validate that all namespace numbers are unique and provided
-                    // Use a map of (IP, namespace) -> files to track duplicates
-                    let mut namespace_ip_map: std::collections::HashMap<(String, &str), Vec<&str>> =
-                        std::collections::HashMap::new();
+                            // Set appropriate error flags
+                            for error in &errors {
+                                match error {
+                                    TelegrafError::ValidationError(msg) if msg.contains("namespace") => {
+                                        self.form_state.show_namespace_error = true;
+                                    },
+                                    TelegrafError::HostFormatError(_) => {
+                                        self.form_state.show_iot_host_error = true;
+                                    },
+                                    _ => {}
+                                }
+                            }
 
-                    // Collect namespaces and their corresponding files
-                    for (file, config) in &self.file_configs {
-                        let namespace = config.namespace.trim();
-                        if namespace.is_empty() {
-                            self.status_message =
-                                format!("Error: No namespace provided for file: {}", file);
-                            self.show_namespace_error = true;
-                            return;
-                        }
-
-                        // Use the file's custom IP if provided, otherwise use the default IP
-                        let ip = if config.ip.is_empty() {
-                            self.config.ip.clone()
-                        } else {
-                            config.ip.clone()
-                        };
-
-                        // Add to map with combined (IP, namespace) key
-                        namespace_ip_map.entry((ip, namespace)).or_default().push(file);
-                    }
-
-                    // Check for duplicate namespaces within the same IP
-                    for ((ip, namespace), files) in &namespace_ip_map {
-                        if files.len() > 1 {
-                            self.status_message = format!(
-                                "Error: Namespace {} is used by multiple files on IP {}: {}",
-                                namespace, ip, files.join(", ")
-                            );
-                            self.show_namespace_error = true;
+                            self.status_message = format!("Validation errors: {}", error_messages.join("; "));
                             return;
                         }
                     }
@@ -537,12 +490,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration generated successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e.to_string(), "generating config");
+                                    self.status_message = self.handle_error(&e, "generating config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e.to_string(), "generating config");
+                            self.status_message = self.handle_error(&e, "generating config");
                         }
                     }
                 }
@@ -557,12 +510,12 @@ impl eframe::App for TelegrafApp {
                                         "Configuration sent successfully!".to_string();
                                 }
                                 Err(e) => {
-                                    self.status_message = self.format_error_message(&e.to_string(), "send config");
+                                    self.status_message = self.handle_error(&e, "send config");
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.format_error_message(&e.to_string(), "send config");
+                            self.status_message = self.handle_error(&e, "send config");
                         }
                     }
                 }
@@ -570,6 +523,52 @@ impl eframe::App for TelegrafApp {
 
             // Other Commands Section
             ui.collapsing("Other Commands", |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Get OPC UA Namespaces").clicked() {
+                        self.status_message = "Connecting to OPC UA server...".to_string();
+                        // TODO: move to mod.rs
+                        // TODO: check multiple endpoints
+                        match OpcUaPoller::new(self.config.clone()) {
+                            Ok(poller) => {
+                                // Get the list of XML files
+                                let xml_files: Vec<String> = self.xml_files.clone();
+
+                                // Call the OPC UA poller to get namespace information
+                                match poller.get_namespace_info(&xml_files) {
+                                    Ok(namespace_map) => {
+                                        // Update the namespace fields in the GUI
+                                        let mut found_count = 0;
+                                        for (file_name, namespace_index) in namespace_map {
+                                            // Find the full path for this file name
+                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
+                                                path.ends_with(&file_name)
+                                            }) {
+                                                // Update the namespace field
+                                                if let Some(config) = self.file_configs.get_mut(full_path) {
+                                                    config.namespace = namespace_index.to_string();
+                                                    found_count += 1;
+                                                }
+                                            }
+                                        }
+
+                                        if found_count > 0 {
+                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                                        } else {
+                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.handle_error(&e, "OPC UA connection");
+                            }
+                        }
+                    }
+                });
+
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
                         self.status_message = "Backing up InfluxDB...".to_string();
@@ -580,12 +579,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "InfluxDB backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
+                                        self.status_message = self.handle_error(&e, "InfluxDB backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "InfluxDB backup");
+                                self.status_message = self.handle_error(&e, "InfluxDB backup");
                             }
                         }
                     }
@@ -599,12 +598,12 @@ impl eframe::App for TelegrafApp {
                                         self.status_message = "Grafana backup completed!".to_string();
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
+                                self.status_message = self.handle_error(&e, "Grafana backup");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "Grafana backup");
+                                self.status_message = self.handle_error(&e, "Grafana backup");
                             }
                         }
                     }
@@ -624,12 +623,12 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "status");
+                                        self.status_message = self.handle_error(&e, "status");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "status");
+                                self.status_message = self.handle_error(&e, "status");
                             }
                         }
                     }
@@ -647,14 +646,59 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                     Err(e) => {
-                                        self.status_message = self.format_error_message(&e.to_string(), "logs");
+                                        self.status_message = self.handle_error(&e, "logs");
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.status_message = self.format_error_message(&e.to_string(), "logs");
+                                self.status_message = self.handle_error(&e, "logs");
                             }
                         }
+                    }
+                });
+
+                // Add a new row for service status check
+                ui.horizontal(|ui| {
+                    // Calculate is_prometheus value
+                    let is_prometheus = self
+                        .config
+                        .output_format
+                        .clone()
+                        .unwrap_or_else(|| "influxdb".to_string())
+                        == "prometheus";
+
+                    // Service name based on output format
+                    let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+
+                    if ui.button(format!("Check {} Status", service_name)).clicked() {
+                        let service_url = self.config.iot_host.clone();
+
+                                self.status_message = format!("Checking {} status at {}...", service_name, service_url);
+
+                                match ConfigGenerator::new(self.config.clone()) {
+                                    Ok(generator) => {
+                                        let result = if is_prometheus {
+                                            generator.check_prometheus_status(service_url.as_str(), 5)
+                                        } else {
+                                            generator.check_influxdb_status(service_url.as_str(), 5)
+                                        };
+
+                                        match result {
+                                            Ok(true) => {
+                                                self.status_message = format!("✅ {} is responding normally at {}", service_name, service_url);
+                                            },
+                                            Ok(false) => {
+                                                self.status_message = format!("❌ {} is not responding at {}", service_name, service_url);
+                                            },
+                                            Err(e) => {
+                                                self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
+                                    }
+                                }
                     }
                 });
             });

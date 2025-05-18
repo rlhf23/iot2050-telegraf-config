@@ -98,6 +98,24 @@ jobs:
           toolchain: stable
           override: true
 
+      - name: Install vcpkg and OpenSSL
+        shell: pwsh
+        run: |
+          # Clone vcpkg
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          
+          # Bootstrap vcpkg
+          ./bootstrap-vcpkg.bat -disableMetrics
+          
+          # Install OpenSSL
+          ./vcpkg install openssl:x64-windows-static-md
+          
+          # Set environment variables
+          echo "OPENSSL_DIR=$PWD/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKG_ROOT=$PWD" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 

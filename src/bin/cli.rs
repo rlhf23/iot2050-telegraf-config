@@ -1,5 +1,10 @@
 use clap::{Arg, ArgAction, Command};
-use sie_generate_config::{backend::ConfigGenerator, TelegrafConfig};
+use sie_generate_config::{
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    error::TelegrafError,
+    TelegrafConfig,
+};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -192,6 +197,32 @@ fn main() {
             .action(ArgAction::SetTrue)
             .help("Include test inputs (CPU, disk, memory) in the configuration"),
         )
+        .arg(
+            Arg::new("get_namespaces")
+            .short('n')
+            .long("get-namespaces")
+            .action(ArgAction::SetTrue)
+            .help("Connect to OPC UA server and retrieve namespace information for XML files"),
+        )
+        .arg(
+            Arg::new("check_influxdb")
+            .long("check-influxdb")
+            .value_name("INFLUXDB_URL")
+            .help("Check if InfluxDB is responding at the specified URL"),
+        )
+        .arg(
+            Arg::new("check_prometheus")
+            .long("check-prometheus")
+            .value_name("PROMETHEUS_URL")
+            .help("Check if Prometheus is responding at the specified URL"),
+        )
+        .arg(
+            Arg::new("service_timeout")
+            .long("service-timeout")
+            .value_name("SECONDS")
+            .help("Timeout in seconds for service health checks")
+            .default_value("5"),
+        )
         .get_matches();
 
     // print the current config
@@ -228,6 +259,9 @@ fn main() {
     if matches.get_flag("send")
         || matches.get_flag("backup_influx")
         || matches.get_flag("backup_grafana")
+        || matches.get_flag("get_namespaces")
+        || matches.contains_id("check_influxdb")
+        || matches.contains_id("check_prometheus")
     {
         // Create a clone of config for early operations
         let mut early_config = config.clone();
@@ -240,7 +274,7 @@ fn main() {
             ));
         }
 
-        let generator = match ConfigGenerator::new(early_config) {
+        let generator = match ConfigGenerator::new(early_config.clone()) {
             Ok(gen) => gen,
             Err(e) => exit_with_error(format!("Configuration error: {}", e)),
         };
@@ -267,6 +301,145 @@ fn main() {
                 wrap_up(1);
             }
             wrap_up(0);
+        }
+
+        if matches.get_flag("get_namespaces") {
+            // Create an OpcUaPoller with the current configuration
+            let poller = match OpcUaPoller::new(early_config) {
+                Ok(p) => p,
+                Err(e) => exit_with_error(format!("Failed to create OPC UA poller: {}", e)),
+            };
+
+            // Get XML files for namespace lookup
+            let xml_files = match fs::read_dir(&config.folder) {
+                Ok(entries) => entries
+                    .filter_map(|entry| {
+                        let path = entry.ok()?.path();
+                        if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
+                            Some(path.to_str()?.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<String>>(),
+                Err(e) => exit_with_error(format!("Failed to read XML files: {}", e)),
+            };
+
+            if xml_files.is_empty() {
+                println!("No XML files found in the specified folder.");
+                wrap_up(1);
+            }
+
+            println!("Found {} XML files:", xml_files.len());
+            for (i, file) in xml_files.iter().enumerate() {
+                println!("  {}. {}", i + 1, file);
+            }
+
+            println!("Connecting to OPC UA server to retrieve namespace information...");
+
+            // Get namespace information from OPC UA server
+            match poller.get_namespace_info(&xml_files) {
+                Ok(namespace_map) => {
+                    let found_count = namespace_map.len();
+                    if found_count > 0 {
+                        println!("\nNamespaces found for {} XML files:\n", found_count);
+                        println!("{:<40} {:<10}", "File", "Namespace");
+                        println!("{}", "-".repeat(51));
+
+                        for (file_name, namespace) in namespace_map {
+                            // Find the full path for reporting
+                            if let Some(full_path) =
+                                xml_files.iter().find(|path| path.ends_with(&file_name))
+                            {
+                                let display_path = Path::new(full_path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or(&file_name);
+                                println!("{:<40} {:<10}", display_path, namespace);
+                            }
+                        }
+                    } else {
+                        println!("No matching namespaces found. Check if XML filenames match OPC UA namespace names.");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to get namespace information: {}", e);
+                    wrap_up(1);
+                }
+            }
+
+            wrap_up(0);
+        }
+
+        // Handle InfluxDB status check
+        if let Some(influx_url) = matches.get_one::<String>("check_influxdb") {
+            println!("Checking if InfluxDB is responding at {}...", influx_url);
+
+            // Get timeout value
+            let timeout_seconds = matches
+                .get_one::<String>("service_timeout")
+                .unwrap_or(&"5".to_string())
+                .parse::<u64>()
+                .unwrap_or(5);
+
+            // Create the generator with current config
+            let generator = match ConfigGenerator::new(early_config.clone()) {
+                Ok(gen) => gen,
+                Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+            };
+
+            // Check if InfluxDB is responding
+            match generator.check_influxdb_status(influx_url, timeout_seconds) {
+                Ok(true) => {
+                    println!("✅ InfluxDB is responding normally");
+                    wrap_up(0);
+                }
+                Ok(false) => {
+                    println!("❌ InfluxDB is not responding");
+                    wrap_up(1);
+                }
+                Err(e) => {
+                    eprintln!("Failed to check InfluxDB status: {}", e);
+                    wrap_up(1);
+                }
+            }
+        }
+
+        // Handle Prometheus status check
+        if let Some(prometheus_url) = matches.get_one::<String>("check_prometheus") {
+            println!(
+                "Checking if Prometheus is responding at {}...",
+                prometheus_url
+            );
+
+            // Get timeout value
+            let timeout_seconds = matches
+                .get_one::<String>("service_timeout")
+                .unwrap_or(&"5".to_string())
+                .parse::<u64>()
+                .unwrap_or(5);
+
+            // Create the generator with current config
+            let generator = match ConfigGenerator::new(early_config.clone()) {
+                Ok(gen) => gen,
+                Err(e) => exit_with_error(format!("Configuration error: {}", e)),
+            };
+
+            // Check if Prometheus is responding
+            match generator.check_prometheus_status(prometheus_url, timeout_seconds) {
+                Ok(true) => {
+                    println!("✅ Prometheus is responding normally");
+                    wrap_up(0);
+                }
+                Ok(false) => {
+                    println!("❌ Prometheus is not responding");
+                    wrap_up(1);
+                }
+                Err(e) => {
+                    eprintln!("Failed to check Prometheus status: {}", e);
+                    wrap_up(1);
+                }
+            }
         }
     }
 
