@@ -2,6 +2,7 @@
 mod tests {
     use crate::backend::format::{NodeIdFormat, OpcuaConfig, OutputFormat, parse_node_id};
     use proptest::prelude::*;
+    use crate::TelegrafConfig;
 
     proptest! {
         // Test that parsing and re-formatting node IDs is reversible
@@ -46,10 +47,10 @@ mod tests {
             username in "[a-zA-Z0-9]{1,20}",
             password in "[a-zA-Z0-9!@#$%^&*]{1,20}",
             namespace_number in 0u16..10,
-            interval_ms in (100u32..10000).prop_map(|n| n * 100), // Reasonable polling intervals
+            interval_ms in (100u64..10000).prop_map(|n| n * 100), // Reasonable polling intervals
         ) {
             let config = OpcuaConfig {
-                endpoint: &endpoint,
+                ip: &endpoint,
                 username: &username,
                 password: &password,
                 is_listener: false,
@@ -106,7 +107,7 @@ mod tests {
             
             // Basic config for testing
             let config = OpcuaConfig {
-                endpoint: "opc.tcp://localhost:4840",
+                ip: "opc.tcp://localhost:4840",
                 username: "user",
                 password: "pass",
                 is_listener: false,
