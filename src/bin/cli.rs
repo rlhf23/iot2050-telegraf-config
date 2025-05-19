@@ -57,42 +57,6 @@ fn exit_with_error(error: impl std::fmt::Display) -> ! {
     wrap_up(1)
 }
 
-fn read_influx_token(token_folder: &str) -> String {
-    let mut influx_token = String::new();
-    let token_file_path = Path::new(token_folder).join("token.txt");
-    if token_file_path.exists() {
-        match std::fs::read_to_string(&token_file_path) {
-            Ok(content) => {
-                influx_token = content.trim().to_string();
-                println!(
-                    "InfluxDB token read from {}",
-                    token_file_path.to_string_lossy()
-                );
-            }
-            Err(e) => {
-                eprintln!(
-                    "Failed to read InfluxDB token from {}: {}",
-                    token_file_path.to_string_lossy(),
-                    e
-                );
-                wrap_up(1);
-            }
-        }
-    } else {
-        println!("No 'token.txt' found, enter the InfluxDB token manually:");
-        match std::io::stdin().read_line(&mut influx_token) {
-            Ok(_) => {
-                influx_token = influx_token.trim().to_string();
-            }
-            Err(e) => {
-                eprintln!("Failed to read InfluxDB token from stdin: {}", e);
-                wrap_up(1);
-            }
-        }
-    }
-    influx_token
-}
-
 fn main() {
     let matches = Command::new("IOT2050 config handler")
         .version("0.6")
@@ -244,7 +208,7 @@ fn main() {
             .to_string(),
         token_folder: matches.get_one::<String>("token").unwrap().into(),
         bucket_name: String::from("line"),
-        influx_token: None,
+        influx_token: Some("${INFLUX_TOKEN}".to_string()), // moved to telegraf env var
         listener_files: Vec::new(),
         output_format: Some(
             matches
@@ -266,13 +230,14 @@ fn main() {
         // Create a clone of config for early operations
         let mut early_config = config.clone();
 
-        // Set influx token if needed for backup
-        if matches.get_flag("backup_influx") {
-            // Backup InfluxDB requires the token regardless of output format
-            early_config.influx_token = Some(read_influx_token(
-                &early_config.token_folder.to_string_lossy(),
-            ));
-        }
+        //TODO:
+        // // Set influx token if needed for backup
+        // if matches.get_flag("backup_influx") {
+        //     // Backup InfluxDB requires the token regardless of output format
+        //     early_config.influx_token = Some(read_influx_token(
+        //         &early_config.token_folder.to_string_lossy(),
+        //     ));
+        // }
 
         let generator = match ConfigGenerator::new(early_config.clone()) {
             Ok(gen) => gen,
@@ -300,74 +265,6 @@ fn main() {
                 eprintln!("Failed to backup Grafana: {}", e);
                 wrap_up(1);
             }
-            wrap_up(0);
-        }
-
-        if matches.get_flag("get_namespaces") {
-            // Create an OpcUaPoller with the current configuration
-            let poller = match OpcUaPoller::new(early_config) {
-                Ok(p) => p,
-                Err(e) => exit_with_error(format!("Failed to create OPC UA poller: {}", e)),
-            };
-
-            // Get XML files for namespace lookup
-            let xml_files = match fs::read_dir(&config.folder) {
-                Ok(entries) => entries
-                    .filter_map(|entry| {
-                        let path = entry.ok()?.path();
-                        if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
-                            Some(path.to_str()?.to_string())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<String>>(),
-                Err(e) => exit_with_error(format!("Failed to read XML files: {}", e)),
-            };
-
-            if xml_files.is_empty() {
-                println!("No XML files found in the specified folder.");
-                wrap_up(1);
-            }
-
-            println!("Found {} XML files:", xml_files.len());
-            for (i, file) in xml_files.iter().enumerate() {
-                println!("  {}. {}", i + 1, file);
-            }
-
-            println!("Connecting to OPC UA server to retrieve namespace information...");
-
-            // Get namespace information from OPC UA server
-            match poller.get_namespace_info(&xml_files) {
-                Ok(namespace_map) => {
-                    let found_count = namespace_map.len();
-                    if found_count > 0 {
-                        println!("\nNamespaces found for {} XML files:\n", found_count);
-                        println!("{:<40} {:<10}", "File", "Namespace");
-                        println!("{}", "-".repeat(51));
-
-                        for (file_name, namespace) in namespace_map {
-                            // Find the full path for reporting
-                            if let Some(full_path) =
-                                xml_files.iter().find(|path| path.ends_with(&file_name))
-                            {
-                                let display_path = Path::new(full_path)
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or(&file_name);
-                                println!("{:<40} {:<10}", display_path, namespace);
-                            }
-                        }
-                    } else {
-                        println!("No matching namespaces found. Check if XML filenames match OPC UA namespace names.");
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Failed to get namespace information: {}", e);
-                    wrap_up(1);
-                }
-            }
-
             wrap_up(0);
         }
 
@@ -513,7 +410,6 @@ fn main() {
 
     if using_influxdb {
         // Only need influx token and bucket name for InfluxDB output
-        config.influx_token = Some(read_influx_token(&config.token_folder.to_string_lossy()));
 
         println!("Enter the bucket name (press Enter for default 'line'):");
         let mut bucket_name = String::new();
@@ -526,10 +422,51 @@ fn main() {
     }
 
     // Create generator with complete config
-    let mut generator = match ConfigGenerator::new(config) {
+    let mut generator = match ConfigGenerator::new(config.clone()) {
         Ok(gen) => gen,
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
+
+    if matches.get_flag("get_namespaces") {
+        // Create an OpcUaPoller with the current configuration
+        let poller = match OpcUaPoller::new(config) {
+            Ok(p) => p,
+            Err(e) => exit_with_error(format!("Failed to create OPC UA poller: {}", e)),
+        };
+
+        println!("Connecting to OPC UA server to retrieve namespace information...");
+
+        // Get namespace information from OPC UA server
+        match poller.get_namespace_info(&xml_files) {
+            Ok(namespace_map) => {
+                let found_count = namespace_map.len();
+                if found_count > 0 {
+                    println!("\nNamespaces found for {} XML files:\n", found_count);
+                    println!("{:<40} {:<10}", "File", "Namespace");
+                    println!("{}", "-".repeat(51));
+
+                    for (file_name, namespace) in namespace_map {
+                        // Find the full path for reporting
+                        if let Some(full_path) =
+                            xml_files.iter().find(|path| path.ends_with(&file_name))
+                        {
+                            let display_path = Path::new(full_path)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(&file_name);
+                            println!("{:<40} {:<10}", display_path, namespace);
+                        }
+                    }
+                } else {
+                    println!("No matching namespaces found. Check if XML filenames match OPC UA namespace names.");
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to get namespace information: {}", e);
+                wrap_up(1);
+            }
+        }
+    }
 
     // Get namespace and interval for each XML file
     for file in &xml_files {
