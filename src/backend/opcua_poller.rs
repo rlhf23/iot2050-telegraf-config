@@ -43,7 +43,9 @@ impl OpcUaPoller {
         let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
-        // self.check_server_connectivity(&self.config.ip).await?;
+        if let Err(e) = self.check_server_connectivity(&self.config.ip) {
+            return Err(e);
+        }
 
         // Get all namespace information from the server
         let namespaces = self.browse_server_namespaces(&discovery_url)?;
@@ -163,10 +165,9 @@ impl OpcUaPoller {
     }
 
     /// Check if the OPC UA server is reachable before attempting a full connection
-    async fn check_server_connectivity(&self, ip: &str) -> Result<(), TelegrafError> {
-        use std::net::ToSocketAddrs;
-        use tokio::net::TcpStream;
-        use tokio::time::{timeout, Duration};
+    fn check_server_connectivity(&self, ip: &str) -> Result<(), TelegrafError> {
+        use std::net::{TcpStream, ToSocketAddrs};
+        use std::time::Duration;
 
         // Try to resolve the address
         let addr = format!("{}:4840", ip);
@@ -178,26 +179,26 @@ impl OpcUaPoller {
         })?;
 
         // Try connecting to the first resolved address with a timeout
-        // TODO: multiple addresses
         for socket_addr in socket_addrs {
-            match timeout(Duration::from_secs(3), TcpStream::connect(socket_addr)).await {
-                Ok(Ok(_)) => {
+            // Set a connect timeout of 3 seconds
+            match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
+                Ok(_) => {
                     // Connection successful
                     return Ok(());
                 }
-                Ok(Err(e)) => {
-                    // Connection failed but did respond
-                    return Err(TelegrafError::OpcUaConnectionError(format!(
-                        "Failed to connect to OPC UA server: {}",
-                        e
-                    )));
-                }
-                Err(_) => {
-                    // Connection timed out
-                    return Err(TelegrafError::OpcUaTimeoutError(format!(
-                        "Connection to OPC UA server at {} timed out",
-                        ip
-                    )));
+                Err(e) => {
+                    // Connection failed
+                    if e.kind() == std::io::ErrorKind::TimedOut {
+                        return Err(TelegrafError::OpcUaTimeoutError(format!(
+                            "Connection to OPC UA server at {} timed out",
+                            ip
+                        )));
+                    } else {
+                        return Err(TelegrafError::OpcUaConnectionError(format!(
+                            "Failed to connect to OPC UA server: {}",
+                            e
+                        )));
+                    }
                 }
             }
         }

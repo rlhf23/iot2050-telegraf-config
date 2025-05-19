@@ -427,7 +427,8 @@ fn main() {
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
 
-    if matches.get_flag("get_namespaces") {
+    // Initialize namespace map
+    let namespace_map = if matches.get_flag("get_namespaces") {
         // Create an OpcUaPoller with the current configuration
         let poller = match OpcUaPoller::new(config) {
             Ok(p) => p,
@@ -438,45 +439,55 @@ fn main() {
 
         // Get namespace information from OPC UA server
         match poller.get_namespace_info(&xml_files) {
-            Ok(namespace_map) => {
-                let found_count = namespace_map.len();
+            Ok(map) => {
+                let found_count = map.len();
                 if found_count > 0 {
                     println!("\nNamespaces found for {} XML files:\n", found_count);
                     println!("{:<40} {:<10}", "File", "Namespace");
                     println!("{}", "-".repeat(51));
 
-                    for (file_name, namespace) in namespace_map {
+                    for (file_name, namespace) in &map {
                         // Find the full path for reporting
                         if let Some(full_path) =
-                            xml_files.iter().find(|path| path.ends_with(&file_name))
+                            xml_files.iter().find(|path| path.ends_with(file_name))
                         {
                             let display_path = Path::new(full_path)
                                 .file_name()
                                 .and_then(|n| n.to_str())
-                                .unwrap_or(&file_name);
+                                .unwrap_or(file_name);
                             println!("{:<40} {:<10}", display_path, namespace);
                         }
                     }
                 } else {
                     println!("No matching namespaces found. Check if XML filenames match OPC UA namespace names.");
                 }
+                map
             }
             Err(e) => {
                 eprintln!("Failed to get namespace information: {}", e);
                 wrap_up(1);
             }
         }
-    }
+    } else {
+        HashMap::new()
+    };
 
     // Get namespace and interval for each XML file
     for file in &xml_files {
         println!("\nConfiguration for file: {}", file);
 
-        // Get namespace
-        println!("Enter the namespace number:");
-        let mut namespace = String::new();
-        std::io::stdin().read_line(&mut namespace).unwrap();
-        let namespace = namespace.trim().to_string();
+        // Get namespace - try to find it in the namespace_map first
+        let file_name = Path::new(file).file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let namespace = if let Some(ns) = namespace_map.get(file_name) {
+            println!("Using automatically detected namespace: {}", ns);
+            ns.clone()
+        } else {
+            // If not found in the map, ask user
+            println!("Enter the namespace number:");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input).unwrap();
+            input.trim().parse::<u16>().unwrap()
+        };
 
         // Get interval
         let is_listener = listener_files.contains(file);
@@ -494,7 +505,7 @@ fn main() {
         };
 
         // We don't prompt for custom IP in CLI mode, so pass None
-        generator.set_file_config(file.clone(), namespace, interval_ms, None);
+        generator.set_file_config(file.clone(), namespace.to_string(), interval_ms, None);
     }
 
     // Generate config
