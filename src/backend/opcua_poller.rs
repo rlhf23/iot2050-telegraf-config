@@ -39,50 +39,48 @@ impl OpcUaPoller {
         &self,
         xml_files: &[String],
     ) -> Result<HashMap<String, u16>, TelegrafError> {
-        self.runtime.block_on(async {
-            // Connect to the OPC UA server using the configured IP
-            let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        // Connect to the OPC UA server using the configured IP
+        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
 
-            // Check if the server is reachable before attempting connection
-            self.check_server_connectivity(&self.config.ip).await?;
+        // Check if the server is reachable before attempting connection
+        // self.check_server_connectivity(&self.config.ip).await?;
 
-            // Get all namespace information from the server
-            let namespaces = self.browse_server_namespaces(&discovery_url).await?;
+        // Get all namespace information from the server
+        let namespaces = self.browse_server_namespaces(&discovery_url)?;
 
-            // Process XML files to extract base names (without extension)
-            let file_base_names: Vec<(String, String)> = xml_files
-                .iter()
-                .filter_map(|file_path| {
-                    let path = Path::new(file_path);
-                    let file_name = path.file_name()?.to_str()?.to_string();
+        // Process XML files to extract base names (without extension)
+        let file_base_names: Vec<(String, String)> = xml_files
+            .iter()
+            .filter_map(|file_path| {
+                let path = Path::new(file_path);
+                let file_name = path.file_name()?.to_str()?.to_string();
 
-                    // Get the base name without extension
-                    let base_name = path.file_stem()?.to_str()?.to_string();
+                // Get the base name without extension
+                let base_name = path.file_stem()?.to_str()?.to_string();
 
-                    Some((file_name, base_name))
-                })
-                .collect();
+                Some((file_name, base_name))
+            })
+            .collect();
 
-            // Match XML file names with namespace information
-            let mut namespace_map = HashMap::new();
+        // Match XML file names with namespace information
+        let mut namespace_map = HashMap::new();
 
-            for (file_name, base_name) in file_base_names {
-                // Try to find a matching namespace
-                for (namespace_index, namespace_name) in &namespaces {
-                    // Compare the namespace name with the XML base name (case insensitive)
-                    if namespace_name.to_lowercase() == base_name.to_lowercase() {
-                        namespace_map.insert(file_name, *namespace_index);
-                        break;
-                    }
+        for (file_name, base_name) in file_base_names {
+            // Try to find a matching namespace
+            for (namespace_index, namespace_name) in &namespaces {
+                // Compare the namespace name with the XML base name (case insensitive)
+                if namespace_name.to_lowercase() == base_name.to_lowercase() {
+                    namespace_map.insert(file_name, *namespace_index);
+                    break;
                 }
             }
+        }
 
-            Ok(namespace_map)
-        })
+        Ok(namespace_map)
     }
 
     /// Connect to OPC UA server and browse for namespace information
-    async fn browse_server_namespaces(
+    fn browse_server_namespaces(
         &self,
         discovery_url: &str,
     ) -> Result<Vec<(u16, String)>, TelegrafError> {
@@ -114,7 +112,7 @@ impl OpcUaPoller {
             .into();
 
         // Use block_in_place for connections since they are blocking
-        let session = tokio::task::block_in_place(move || {
+        let session = {
             if !self.config.username.is_empty() && !self.config.password.is_empty() {
                 client.connect_to_endpoint(
                     endpoint,
@@ -126,7 +124,7 @@ impl OpcUaPoller {
             } else {
                 client.connect_to_endpoint(endpoint, IdentityToken::Anonymous)
             }
-        })
+        }
         .map_err(|e| {
             TelegrafError::OpcUaConnectionError(format!(
                 "Failed to connect to OPC UA server: {}",
@@ -161,7 +159,6 @@ impl OpcUaPoller {
                 }
             }
         }
-
         Ok(namespace_info)
     }
 
