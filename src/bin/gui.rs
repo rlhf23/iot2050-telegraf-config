@@ -710,9 +710,7 @@ impl eframe::App for TelegrafApp {
                 ui.heading("Command Output:");
                 // Create a frame with a border to make the output more visible
                 let frame = egui::Frame::dark_canvas(ui.style())
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE))
-                    .inner_margin(egui::style::Margin::same(8.0))
-                    .outer_margin(egui::style::Margin::same(4.0));
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE));
                 frame.show(ui, |ui| {
                     // Use scrollable area with fixed height for multiline text
                     egui::ScrollArea::vertical()
@@ -736,14 +734,19 @@ impl eframe::App for TelegrafApp {
 }
 
 fn main() -> eframe::Result<()> {
-    let native_options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(800.0, 1000.0)),
+    // let native_options = eframe::NativeOptions {
+    //     viewport: Some(egui::vec2(800.0, 1000.0)),
+    //     ..Default::default()
+    // };
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([800.0, 1000.0]) // wide enough for the drag-drop overlay text
+            .with_drag_and_drop(true),
         ..Default::default()
     };
-
     eframe::run_native(
         "Telegraf Config Generator",
-        native_options,
-        Box::new(|_cc| Box::new(TelegrafApp::default())),
+        options,
+        Box::new(|_cc| Ok(Box::new(TelegrafApp::default()))),
     )
 }
