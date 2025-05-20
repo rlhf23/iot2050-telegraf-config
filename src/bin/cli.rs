@@ -465,7 +465,7 @@ fn main() {
             }
             Err(e) => {
                 eprintln!("Failed to get namespace information: {}", e);
-                wrap_up(1);
+                HashMap::new()
             }
         }
     } else {
@@ -477,7 +477,10 @@ fn main() {
         println!("\nConfiguration for file: {}", file);
 
         // Get namespace - try to find it in the namespace_map first
-        let file_name = Path::new(file).file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let file_name = Path::new(file)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
         let namespace = if let Some(ns) = namespace_map.get(file_name) {
             println!("Using automatically detected namespace: {}", ns);
             ns.clone()
@@ -491,7 +494,7 @@ fn main() {
 
         // Get interval
         let is_listener = listener_files.contains(file);
-        let default_interval = if is_listener { 500 } else { 1000 };
+        let default_interval = if is_listener { 1000 } else { 500 };
         println!(
             "Enter the interval in milliseconds (default {}ms):",
             default_interval
