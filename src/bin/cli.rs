@@ -216,7 +216,6 @@ fn main() {
     if matches.get_flag("send")
         || matches.get_flag("backup_influx")
         || matches.get_flag("backup_grafana")
-        || matches.get_flag("get_namespaces")
         || matches.contains_id("check_influxdb")
         || matches.contains_id("check_prometheus")
     {
@@ -325,22 +324,7 @@ fn main() {
     }
 
     // Get XML files
-    let xml_files = match fs::read_dir(&config.folder) {
-        Ok(entries) => entries
-            .filter_map(|entry| {
-                let path = entry.ok()?.path();
-                if path.is_file() && path.extension().is_some_and(|ext| ext == "xml") {
-                    Some(path.to_str()?.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<String>>(),
-        Err(e) => {
-            eprintln!("Failed to read XML files: {}", e);
-            wrap_up(1);
-        }
-    };
+    let xml_files = ConfigGenerator::discover_xml_files(&config.folder);
 
     // Check if we're generating a config with only test inputs
     let test_inputs_only = matches.get_flag("test_inputs") && xml_files.is_empty();
