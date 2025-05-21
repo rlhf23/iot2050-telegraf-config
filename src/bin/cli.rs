@@ -162,13 +162,6 @@ fn main() {
             .help("Include test inputs (CPU, disk, memory) in the configuration"),
         )
         .arg(
-            Arg::new("get_namespaces")
-            .short('n')
-            .long("get-namespaces")
-            .action(ArgAction::SetTrue)
-            .help("Connect to OPC UA server and retrieve namespace information for XML files"),
-        )
-        .arg(
             Arg::new("check_influxdb")
             .long("check-influxdb")
             .value_name("INFLUXDB_URL")
@@ -418,7 +411,7 @@ fn main() {
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
 
-    let namespace_confirm = if !matches.get_flag("get_namespaces") {
+    let namespace_confirm = {
         println!("Check namespaces from server? (y/N)");
         let mut confirm = String::new();
         std::io::stdin().read_line(&mut confirm).unwrap();
@@ -428,8 +421,6 @@ fn main() {
         } else {
             true
         }
-    } else {
-        true
     };
 
     // Initialize namespace map
