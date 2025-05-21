@@ -399,6 +399,51 @@ impl eframe::App for TelegrafApp {
 
             // Main Action Buttons
             ui.horizontal(|ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("Get OPC UA Namespaces").clicked() {
+                        self.status_message = "Connecting to OPC UA server...".to_string();
+                        // TODO: move to mod.rs
+                        // TODO: check multiple endpoints
+                        match OpcUaPoller::new(self.config.clone()) {
+                            Ok(poller) => {
+                                // Get the list of XML files
+                                let xml_files: Vec<String> = self.xml_files.clone();
+
+                                // Call the OPC UA poller to get namespace information
+                                match poller.get_namespace_info(&xml_files) {
+                                    Ok(namespace_map) => {
+                                        // Update the namespace fields in the GUI
+                                        let mut found_count = 0;
+                                        for (file_name, namespace_index) in namespace_map {
+                                            // Find the full path for this file name
+                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
+                                                path.ends_with(&file_name)
+                                            }) {
+                                                // Update the namespace field
+                                                if let Some(config) = self.file_configs.get_mut(full_path) {
+                                                    config.namespace = namespace_index.to_string();
+                                                    found_count += 1;
+                                                }
+                                            }
+                                        }
+
+                                        if found_count > 0 {
+                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                                        } else {
+                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.handle_error(&e, "OPC UA connection");
+                            }
+                        }
+                    }
+                });
                 if ui.button("Generate Config").clicked() {
                     // Reset validation state
                     self.form_state.show_namespace_error = false;
@@ -523,51 +568,7 @@ impl eframe::App for TelegrafApp {
 
             // Other Commands Section
             ui.collapsing("Other Commands", |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Get OPC UA Namespaces").clicked() {
-                        self.status_message = "Connecting to OPC UA server...".to_string();
-                        // TODO: move to mod.rs
-                        // TODO: check multiple endpoints
-                        match OpcUaPoller::new(self.config.clone()) {
-                            Ok(poller) => {
-                                // Get the list of XML files
-                                let xml_files: Vec<String> = self.xml_files.clone();
 
-                                // Call the OPC UA poller to get namespace information
-                                match poller.get_namespace_info(&xml_files) {
-                                    Ok(namespace_map) => {
-                                        // Update the namespace fields in the GUI
-                                        let mut found_count = 0;
-                                        for (file_name, namespace_index) in namespace_map {
-                                            // Find the full path for this file name
-                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
-                                                path.ends_with(&file_name)
-                                            }) {
-                                                // Update the namespace field
-                                                if let Some(config) = self.file_configs.get_mut(full_path) {
-                                                    config.namespace = namespace_index.to_string();
-                                                    found_count += 1;
-                                                }
-                                            }
-                                        }
-
-                                        if found_count > 0 {
-                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
-                                        } else {
-                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "OPC UA connection");
-                            }
-                        }
-                    }
-                });
 
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {

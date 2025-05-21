@@ -427,8 +427,22 @@ fn main() {
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
 
+    let namespace_confirm = if !matches.get_flag("get_namespaces") {
+        println!("Check namespaces from server? (y/N)");
+        let mut confirm = String::new();
+        std::io::stdin().read_line(&mut confirm).unwrap();
+
+        if confirm.trim().to_lowercase() != "y" {
+            false
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
     // Initialize namespace map
-    let namespace_map = if matches.get_flag("get_namespaces") {
+    let namespace_map = if namespace_confirm {
         // Create an OpcUaPoller with the current configuration
         let poller = match OpcUaPoller::new(config) {
             Ok(p) => p,
