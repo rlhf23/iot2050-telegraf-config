@@ -1,6 +1,6 @@
 use eframe::egui;
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     error::{TelegrafError, XmlFileValidation},
     TelegrafConfig,
 };
@@ -679,9 +679,9 @@ impl eframe::App for TelegrafApp {
                                 match ConfigGenerator::new(self.config.clone()) {
                                     Ok(generator) => {
                                         let result = if is_prometheus {
-                                            generator.check_prometheus_status(service_url.as_str(), 5)
+                                            generator.check_service_status(service_url.as_str(), ServiceType::Prometheus, 5)
                                         } else {
-                                            generator.check_influxdb_status(service_url.as_str(), 5)
+                                            generator.check_service_status(service_url.as_str(), ServiceType::InfluxDB, 5)
                                         };
 
                                         match result {

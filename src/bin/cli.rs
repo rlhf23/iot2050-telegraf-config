@@ -1,6 +1,6 @@
 use clap::{Arg, ArgAction, Command};
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     error::TelegrafError,
     TelegrafConfig,
 };
@@ -164,14 +164,14 @@ fn main() {
         .arg(
             Arg::new("check_influxdb")
             .long("check-influxdb")
-            .value_name("INFLUXDB_URL")
-            .help("Check if InfluxDB is responding at the specified URL"),
+            .action(ArgAction::SetTrue)
+            .help("Check if InfluxDB is responding"),
         )
         .arg(
             Arg::new("check_prometheus")
             .long("check-prometheus")
-            .value_name("PROMETHEUS_URL")
-            .help("Check if Prometheus is responding at the specified URL"),
+            .action(ArgAction::SetTrue)
+            .help("Check if Prometheus is responding"),
         )
         .arg(
             Arg::new("service_timeout")
@@ -216,8 +216,8 @@ fn main() {
     if matches.get_flag("send")
         || matches.get_flag("backup_influx")
         || matches.get_flag("backup_grafana")
-        || matches.contains_id("check_influxdb")
-        || matches.contains_id("check_prometheus")
+        || matches.get_flag("check_influxdb")
+        || matches.get_flag("check_prometheus")
     {
         // Create a clone of config for early operations
         let early_config = config.clone();
@@ -252,8 +252,11 @@ fn main() {
         }
 
         // Handle InfluxDB status check
-        if let Some(influx_url) = matches.get_one::<String>("check_influxdb") {
-            println!("Checking if InfluxDB is responding at {}...", influx_url);
+        if matches.get_flag("check_influxdb") {
+            println!(
+                "Checking if InfluxDB is responding at {}...",
+                early_config.iot_host.clone()
+            );
 
             // Get timeout value
             let timeout_seconds = matches
@@ -269,7 +272,11 @@ fn main() {
             };
 
             // Check if InfluxDB is responding
-            match generator.check_influxdb_status(influx_url, timeout_seconds) {
+            match generator.check_service_status(
+                early_config.iot_host.as_str(),
+                ServiceType::InfluxDB,
+                timeout_seconds,
+            ) {
                 Ok(true) => {
                     println!("✅ InfluxDB is responding normally");
                     wrap_up(0);
@@ -286,10 +293,10 @@ fn main() {
         }
 
         // Handle Prometheus status check
-        if let Some(prometheus_url) = matches.get_one::<String>("check_prometheus") {
+        if matches.get_flag("check_prometheus") {
             println!(
                 "Checking if Prometheus is responding at {}...",
-                prometheus_url
+                early_config.iot_host.clone(),
             );
 
             // Get timeout value
@@ -306,7 +313,11 @@ fn main() {
             };
 
             // Check if Prometheus is responding
-            match generator.check_prometheus_status(prometheus_url, timeout_seconds) {
+            match generator.check_service_status(
+                early_config.iot_host.as_str(),
+                ServiceType::Prometheus,
+                timeout_seconds,
+            ) {
                 Ok(true) => {
                     println!("✅ Prometheus is responding normally");
                     wrap_up(0);
