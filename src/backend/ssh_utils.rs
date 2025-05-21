@@ -341,8 +341,25 @@ pub fn backup_influxdb(
     iot_host: &str,
     iot_username: &str,
     iot_password: &str,
-    token: &str,
+    token: Option<&str>,
 ) -> Result<(), TelegrafError> {
+    // Get token from parameter or read from /etc/default/telegraf
+    let token = if let Some(token_value) = token {
+        token_value.to_string()
+    } else {
+        // Read token from the environment file via SSH
+        let command = "cat /etc/default/telegraf | grep token=";
+        let session = connect_ssh_with_timeout(iot_host, iot_username, iot_password, 10)?;
+        let output = execute_ssh_command(&session, command)?;
+
+        // Parse the token from the output (format: token=value)
+        let token_value = output.trim().strip_prefix("token=").ok_or_else(|| {
+            TelegrafError::SshError("Token not found in /etc/default/telegraf".into())
+        })?;
+
+        token_value.to_string()
+    };
+
     let date = chrono::Utc::now().format("%Y-%m-%d-%H-%M").to_string();
     let backup_folder = format!("/tmp/influx_backup_{}", date);
     let backup_command = format!("influx backup -t {} {}", token, backup_folder);

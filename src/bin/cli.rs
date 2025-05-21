@@ -228,16 +228,7 @@ fn main() {
         || matches.contains_id("check_prometheus")
     {
         // Create a clone of config for early operations
-        let mut early_config = config.clone();
-
-        //TODO:
-        // // Set influx token if needed for backup
-        // if matches.get_flag("backup_influx") {
-        //     // Backup InfluxDB requires the token regardless of output format
-        //     early_config.influx_token = Some(read_influx_token(
-        //         &early_config.token_folder.to_string_lossy(),
-        //     ));
-        // }
+        let early_config = config.clone();
 
         let generator = match ConfigGenerator::new(early_config.clone()) {
             Ok(gen) => gen,

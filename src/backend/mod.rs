@@ -196,11 +196,8 @@ impl ConfigGenerator {
 
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
         // Ensure we have an InfluxDB token
-        let influx_token = self
-            .config
-            .influx_token
-            .as_ref()
-            .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?;
+        // Get token from config if available, otherwise it will be read from /etc/default/telegraf
+        let influx_token = self.config.influx_token.as_deref();
 
         ssh_utils::backup_influxdb(
             &self.config.iot_host,

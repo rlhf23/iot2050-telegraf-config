@@ -147,7 +147,7 @@ impl eframe::App for TelegrafApp {
                         ui.label("IOT Host:");
                         let text_edit = egui::TextEdit::singleline(&mut self.config.iot_host);
                         if self.form_state.show_iot_host_error {
-                            egui::Frame::none()
+                            egui::Frame::NONE
                                 .stroke(egui::Stroke::new(
                                     1.0,
                                     egui::Color32::from_rgb(255, 0, 0),
@@ -298,7 +298,7 @@ impl eframe::App for TelegrafApp {
                                 ui.label("Namespace:");
                                 let text_edit = egui::TextEdit::singleline(&mut file_config.namespace);
                                 if self.form_state.show_namespace_error {
-                                    egui::Frame::none()
+                                    egui::Frame::NONE
                                         .stroke(egui::Stroke::new(
                                             1.0,
                                             egui::Color32::from_rgb(255, 0, 0),
@@ -318,7 +318,7 @@ impl eframe::App for TelegrafApp {
                                 // Show the field with appropriate styling
                                 let response = if *has_error {
                                     // If there's an error, show red border
-                                    let response = egui::Frame::none()
+                                    let response = egui::Frame::NONE
                                         .stroke(egui::Stroke::new(
                                             1.0,
                                             egui::Color32::from_rgb(255, 0, 0),

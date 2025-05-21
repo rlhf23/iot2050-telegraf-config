@@ -59,7 +59,7 @@ mod tests {
             "127.0.0.1:1", // Invalid port
             "user",
             "pass",
-            "token",
+            Some("token"),
         );
 
         assert!(result.is_err());
