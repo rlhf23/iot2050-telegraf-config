@@ -26,6 +26,12 @@
         rustVersion = pkgs.pkgsBuildHost.rust-bin.stable.latest.default.override {
           targets = ["x86_64-pc-windows-gnu"];
         };
+        libPath = with pkgs;
+          lib.makeLibraryPath [
+            libGL
+            libxkbcommon
+            wayland
+          ];
       in {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
@@ -57,8 +63,9 @@
             # windows.mingw_w64_pthreads
             wine64
           ];
-          # RUST_SRC_PATH = "${rustVersion}/lib/rustlib/src/rust/library";
-          RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+          RUST_SRC_PATH = "${rustVersion}/lib/rustlib/src/rust/library";
+          # RUST_SRC_PATH = "${pkgs.rust.packages.stable.rustPlatform.rustLibSrc}";
+          LD_LIBRARY_PATH = libPath;
           shellHook = ''
             export LD_LIBRARY_PATH=${pkgs.libGL}/lib:$LD_LIBRARY_PATH
             export LIBGL_DRIVERS_PATH=${pkgs.mesa.drivers}/lib/dri
