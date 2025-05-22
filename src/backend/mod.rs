@@ -203,7 +203,7 @@ impl ConfigGenerator {
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,
-            influx_token,
+            None,
         )
     }
 

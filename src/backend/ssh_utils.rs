@@ -348,12 +348,12 @@ pub fn backup_influxdb(
         token_value.to_string()
     } else {
         // Read token from the environment file via SSH
-        let command = "cat /etc/default/telegraf | grep token=";
+        let command = "cat /etc/default/telegraf | grep INFLUX_TOKEN=";
         let session = connect_ssh_with_timeout(iot_host, iot_username, iot_password, 10)?;
         let output = execute_ssh_command(&session, command)?;
 
         // Parse the token from the output (format: token=value)
-        let token_value = output.trim().strip_prefix("token=").ok_or_else(|| {
+        let token_value = output.trim().strip_prefix("INFLUX_TOKEN=").ok_or_else(|| {
             TelegrafError::SshError("Token not found in /etc/default/telegraf".into())
         })?;
 
@@ -390,8 +390,8 @@ pub fn execute_command_over_ssh(
     password: &str,
     command: &str,
 ) -> Result<(), TelegrafError> {
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with timeout (360 seconds)
+    let session = connect_ssh_with_timeout(remote_host, username, password, 360)?;
 
     let mut channel = session.channel_session()?;
     channel.exec(command)?;
