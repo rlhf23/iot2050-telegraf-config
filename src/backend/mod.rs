@@ -248,4 +248,19 @@ impl ConfigGenerator {
             timeout_seconds,
         )
     }
+
+    /// Generic method to check if a service is responding
+    pub fn check_influxdb_status(
+        &self,
+        service_url: &str,
+        service_type: ssh_utils::ServiceType,
+        timeout_seconds: u64,
+    ) -> Result<bool, TelegrafError> {
+        ssh_utils::check_influxdb_status(
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            5,
+        )
+    }
 }

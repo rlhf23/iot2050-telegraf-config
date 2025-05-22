@@ -625,18 +625,52 @@ pub fn check_service_status(
 
     // Construct curl command to check service health endpoint
     // Using curl with a timeout to prevent hanging
-    let command = format!(
-        "curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout {} {}/{}",
-        timeout_seconds,
-        service_url.trim_end_matches('/'), // Remove trailing slash if present
-        endpoint
-    );
+    // let command = format!(
+    //     "curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout {} {}/{}",
+    //     timeout_seconds,
+    //     service_url.trim_end_matches('/'), // Remove trailing slash if present
+    //     endpoint
+    // );
+    let command = "influx ping".to_string();
 
     // Execute the command
     let output = execute_ssh_command(&session, &command)?;
 
     // Check if the HTTP status code is 200 (OK)
-    let is_healthy = output.trim() == "200";
+    let is_healthy = output.trim() == "OK";
+
+    if is_healthy {
+        println!("{} is responding normally", service_name);
+    } else {
+        println!(
+            "{} is not responding or returned an error code: {}",
+            service_name,
+            output.trim()
+        );
+    }
+
+    Ok(is_healthy)
+}
+
+pub fn check_influxdb_status(
+    remote_host: &str,
+    username: &str,
+    password: &str,
+    timeout_seconds: u64,
+) -> Result<bool, TelegrafError> {
+    let service_name = "Influxdb".to_string();
+    println!("Checking {} status at {}", service_name, remote_host);
+
+    // Connect to the remote host
+    let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
+
+    let command = "influx ping".to_string();
+
+    // Execute the command
+    let output = execute_ssh_command(&session, &command)?;
+
+    // Check if the HTTP status code is 200 (OK)
+    let is_healthy = output.trim() == "OK";
 
     if is_healthy {
         println!("{} is responding normally", service_name);
