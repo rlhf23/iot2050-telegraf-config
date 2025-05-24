@@ -250,9 +250,8 @@ pub fn parse_xml(
     xml_file: &str,
     namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> Result<String, TelegrafError> {
-    let xml = std::fs::read_to_string(xml_file)
-        .map_err(|e| TelegrafError::IoError(e))?;
-    
+    let xml = std::fs::read_to_string(xml_file).map_err(|e| TelegrafError::IoError(e))?;
+
     let doc = Document::parse(&xml)
         .map_err(|e| TelegrafError::ConfigError(format!("Invalid XML format: {}", e)))?;
 

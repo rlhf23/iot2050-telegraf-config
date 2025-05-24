@@ -8,8 +8,9 @@ use opcua::{
     core::comms::url::is_opc_ua_binary_url,
     sync::*,
     types::{
-        AttributeId, BrowseDescription, BrowseDescriptionResultMask, BrowseDirection, EndpointDescription,
-        MessageSecurityMode, NodeClass, NodeId, ReferenceTypeId, UserTokenPolicy, Variant,
+        AttributeId, BrowseDescription, BrowseDescriptionResultMask, BrowseDirection,
+        EndpointDescription, MessageSecurityMode, NodeClass, NodeId, ReferenceTypeId,
+        UserTokenPolicy, Variant,
     },
 };
 use tokio;
@@ -27,7 +28,12 @@ pub struct OpcUaNode {
 }
 
 impl OpcUaNode {
-    pub fn new(node_id: NodeId, browse_name: String, display_name: String, node_class: NodeClass) -> Self {
+    pub fn new(
+        node_id: NodeId,
+        browse_name: String,
+        display_name: String,
+        node_class: NodeClass,
+    ) -> Self {
         Self {
             node_id,
             browse_name,
@@ -240,7 +246,10 @@ impl OpcUaPoller {
     }
 
     /// Connect to the OPC UA server and get a session
-    fn connect_to_server(&self, discovery_url: &str) -> Result<Arc<RwLock<Session>>, TelegrafError> {
+    fn connect_to_server(
+        &self,
+        discovery_url: &str,
+    ) -> Result<Arc<RwLock<Session>>, TelegrafError> {
         if !is_opc_ua_binary_url(discovery_url) {
             return Err(TelegrafError::OpcUaClientError(format!(
                 "Not a valid OPC UA binary URL: {}",
@@ -313,7 +322,11 @@ impl OpcUaPoller {
     }
 
     /// Recursively browse nodes starting from a given node
-    fn browse_nodes(&self, session: &Arc<RwLock<Session>>, node_id: &NodeId) -> Result<Vec<OpcUaNode>, TelegrafError> {
+    fn browse_nodes(
+        &self,
+        session: &Arc<RwLock<Session>>,
+        node_id: &NodeId,
+    ) -> Result<Vec<OpcUaNode>, TelegrafError> {
         let mut nodes = Vec::new();
 
         // Create browse description for this node
@@ -328,7 +341,7 @@ impl OpcUaPoller {
 
         // Get a read lock on the session
         let session_read = session.read();
-        
+
         // Execute browse request - using pattern from browse_server_namespaces
         let browse_results = session_read.browse(&[browse_desc]);
         if let Ok(Some(ref results)) = browse_results {
@@ -371,7 +384,7 @@ impl OpcUaPoller {
                             let read_results = session_read.read(
                                 &read_value_ids,
                                 opcua::types::TimestampsToReturn::Neither,
-                                0.0 // max_age (0 = latest value)
+                                0.0, // max_age (0 = latest value)
                             );
 
                             if let Ok(read_results) = read_results {
@@ -408,7 +421,7 @@ impl OpcUaPoller {
                                 }
                             }
                         }
-                        
+
                         // Recursively browse children if this is not a method
                         if node_class != NodeClass::Method {
                             // Limit recursion depth to avoid infinite loops

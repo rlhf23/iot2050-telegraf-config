@@ -1,4 +1,4 @@
-use crate::{error::TelegrafError, TelegrafConfig, SelectedOpcUaNode};
+use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -144,17 +144,20 @@ impl ConfigGenerator {
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
             config_strings.push(config_string);
         }
-        
+
         // Generate configuration strings for selected OPC UA nodes
         if !self.config.selected_opcua_nodes.is_empty() {
             // Group nodes by namespace for efficient configuration
-            let mut namespace_groups: std::collections::HashMap<u16, Vec<&SelectedOpcUaNode>> = 
+            let mut namespace_groups: std::collections::HashMap<u16, Vec<&SelectedOpcUaNode>> =
                 std::collections::HashMap::new();
-                
+
             for node in &self.config.selected_opcua_nodes {
-                namespace_groups.entry(node.namespace).or_default().push(node);
+                namespace_groups
+                    .entry(node.namespace)
+                    .or_default()
+                    .push(node);
             }
-            
+
             // Create configuration for each namespace group
             for (namespace, nodes) in namespace_groups {
                 // Track the namespace
@@ -163,15 +166,18 @@ impl ConfigGenerator {
                     number: namespace_str.clone(),
                     file_name: format!("opcua_browser_{}", namespace_str),
                 };
-                
+
                 // Check if this namespace is already in the list
-                if !namespace_numbers.iter().any(|info| info.number == namespace_str) {
+                if !namespace_numbers
+                    .iter()
+                    .any(|info| info.number == namespace_str)
+                {
                     namespace_numbers.push(namespace_info);
                 }
-                
+
                 // Create configuration string for this namespace group
                 let mut node_configs = Vec::new();
-                
+
                 for node in nodes {
                     // Format the node ID for configuration
                     let node_id_str = format!("{:?}", node.node_id);
@@ -182,10 +188,10 @@ impl ConfigGenerator {
                         node_id_str.trim_start_matches("NodeId(ns=").trim_start_matches(&format!("NodeId(ns={}, ", node.namespace)).trim_end_matches(")"),
                         node.interval_ms
                     );
-                    
+
                     node_configs.push(node_config);
                 }
-                
+
                 // Create the full config for this namespace
                 let config_string = format!(
                     "[[inputs.opcua]]\n  name = \"opcua_browser_ns{}\"\n  endpoint = \"opc.tcp://{}:4840/\"\n  username = \"{}\"\n  password = \"{}\"\n  connect_timeout = \"10s\"\n  request_timeout = \"5s\"\n\n{}",
@@ -195,7 +201,7 @@ impl ConfigGenerator {
                     self.config.password,
                     node_configs.join("\n")
                 );
-                
+
                 config_strings.push(config_string);
             }
         }

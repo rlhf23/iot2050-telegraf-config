@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use opcua::types::NodeId;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct SelectedOpcUaNode {
