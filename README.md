@@ -88,6 +88,36 @@ For more CLI options, run:
 3. Run `cargo build --release`
 4. The executable will be available in `target/release/`
 
+## Test Coverage
+This project includes comprehensive test coverage capabilities using `cargo-tarpaulin`.
+
+### Running Test Coverage Locally
+1. Install `cargo-tarpaulin`:
+   ```bash
+   cargo install cargo-tarpaulin
+   ```
+
+2. Run the coverage script:
+   ```bash
+   ./run_coverage.sh
+   ```
+
+3. View the HTML report in your browser:
+   ```bash
+   open coverage/tarpaulin-report.html
+   ```
+
+### Coverage Configuration
+- `.tarpaulin.toml` - Configuration file for tarpaulin with custom settings
+- `.codecov.yml` - Configuration for Codecov integration
+- GitHub Actions automatically run coverage on each push and PR
+- Reports are uploaded to Codecov and available as GitHub Actions artifacts
+
+### Current Coverage
+- Minimum required coverage: 60%
+- Reports include line, branch, and function coverage
+- Detailed per-file metrics are available in the HTML and JSON reports
+
 ## Support
 If you encounter issues or have questions, please submit an issue on our GitHub page.
 

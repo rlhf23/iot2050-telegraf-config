@@ -1,0 +1,27 @@
+[all]
+# Configure the types of coverage to collect
+count = true
+line = true
+branch = true
+ignore-panics = true
+
+# Reporting options
+out = ["Html", "Xml", "Json"]
+output-dir = "coverage"
+
+# Minimum coverage target (informational only, will not cause failure)
+# minimum-coverage = 60
+
+# Ignore files matching these patterns
+exclude-files = [
+    "tests/*",
+    ".cargo/*",
+    "target/*"
+]
+
+# Only run tests matching these filters
+# test-names = ["*_test*"]
+
+# Additional arguments to pass to cargo
+#[all.cargo]
+#no-default-features = true
