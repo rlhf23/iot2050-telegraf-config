@@ -69,7 +69,7 @@ impl TelegrafApp {
     fn render_node_tree(&mut self, ui: &mut egui::Ui, nodes: &mut [OpcUaNode], indent_level: usize) {
         for node in nodes.iter_mut() {
             // Calculate indentation
-            let indent = indent_level * 20.0; // 20 pixels per indent level
+            let indent = (indent_level as f32) * 20.0; // 20 pixels per indent level
             ui.horizontal(|ui| {
                 ui.add_space(indent);
                 
@@ -98,7 +98,7 @@ impl TelegrafApp {
                 
                 // Show node information with collapsing header if it has children
                 if !node.children.is_empty() {
-                    let label = format!("{}{} ({})", node_icon, node.display_name, node.node_class);
+                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
                     let header = ui.collapsing(label, |ui| {
                         // Show additional node information
                         if let Some(data_type) = &node.data_type {
@@ -128,7 +128,7 @@ impl TelegrafApp {
                     }
                 } else {
                     // Leaf node without children
-                    let label = format!("{}{} ({})", node_icon, node.display_name, node.node_class);
+                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
                     ui.label(label).on_hover_text(format!(
                         "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}", 
                         node.node_id,
@@ -156,7 +156,9 @@ impl TelegrafApp {
     // Add selected nodes to the configuration
     fn add_selected_nodes_to_config(&mut self) {
         let mut new_selected_nodes = Vec::new();
-        self.collect_selected_nodes(&mut self.opcua_nodes, &mut new_selected_nodes);
+        // Clone the nodes to avoid borrowing issues
+        let nodes_clone = self.opcua_nodes.clone();
+        Self::collect_selected_nodes(&nodes_clone, &mut new_selected_nodes);
         
         // Add new nodes to the configuration
         for node in new_selected_nodes {
@@ -181,14 +183,14 @@ impl TelegrafApp {
         }
     }
     
-    // Collect all selected nodes into a flat vector
-    fn collect_selected_nodes(&self, nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
+    // Collect all selected nodes into a flat vector - made static to avoid self reference issues
+    fn collect_selected_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
             if node.selected {
                 result.push(node.clone());
             }
             // Still check children even if parent is selected
-            self.collect_selected_nodes(&node.children, result);
+            Self::collect_selected_nodes(&node.children, result);
         }
     }
 }
@@ -627,9 +629,15 @@ impl eframe::App for TelegrafApp {
                     
                     // Display the node tree with checkboxes
                     if !self.opcua_nodes.is_empty() {
+                        // Create a clone of opcua_nodes to avoid borrowing issues
+                        let mut nodes_clone = self.opcua_nodes.clone();
                         egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                            self.render_node_tree(ui, &mut self.opcua_nodes, 0);
+                            // Render using the cloned nodes
+                            self.render_node_tree(ui, &mut nodes_clone, 0);
                         });
+                        
+                        // Update the original nodes with any changes from UI
+                        self.opcua_nodes = nodes_clone;
                         
                         // Add selected nodes button
                         if ui.button("Add Selected Nodes to Configuration").clicked() {

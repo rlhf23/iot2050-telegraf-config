@@ -210,6 +210,7 @@ fn main() {
                 .to_string(),
         ),
         include_test_inputs: matches.get_flag("test_inputs"),
+        selected_opcua_nodes: Vec::new(),
     };
 
     // For operations that don't need full config setup
