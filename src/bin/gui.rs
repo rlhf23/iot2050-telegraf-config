@@ -1,8 +1,8 @@
 use eframe::egui;
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
+    backend::{opcua_poller::{OpcUaPoller, OpcUaNode}, ConfigGenerator, ServiceType},
     error::{TelegrafError, XmlFileValidation},
-    TelegrafConfig,
+    TelegrafConfig, SelectedOpcUaNode,
 };
 
 #[derive(Default)]
@@ -27,6 +27,10 @@ struct TelegrafApp {
     status_message: String,
     token_file_path: std::path::PathBuf, // Store the complete token file path
     form_state: FormState,               // Validation state for the form
+    opcua_nodes: Vec<OpcUaNode>,         // Store the complete OPC UA node hierarchy
+    show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
+    is_browsing_opcua: bool,             // Flag to indicate if currently browsing OPC UA
+    browse_status_message: String,       // Status message for OPC UA browsing
 }
 
 impl TelegrafApp {
@@ -60,6 +64,133 @@ impl TelegrafApp {
 
         message
     }
+    
+    // Render the OPC UA node tree recursively
+    fn render_node_tree(&mut self, ui: &mut egui::Ui, nodes: &mut [OpcUaNode], indent_level: usize) {
+        for node in nodes.iter_mut() {
+            // Calculate indentation
+            let indent = indent_level * 20.0; // 20 pixels per indent level
+            ui.horizontal(|ui| {
+                ui.add_space(indent);
+                
+                // Only show checkboxes for variables that can be selected
+                if node.node_class == opcua::types::NodeClass::Variable {
+                    if ui.checkbox(&mut node.selected, "").changed() {
+                        // If a node is deselected, also deselect all its children
+                        if !node.selected {
+                            self.deselect_children(node);
+                        }
+                    }
+                }
+                
+                // Node display - show different icons based on node type
+                let node_icon = match node.node_class {
+                    opcua::types::NodeClass::Object => "📁 ",
+                    opcua::types::NodeClass::Variable => "🔢 ",
+                    opcua::types::NodeClass::Method => "⚙️ ",
+                    opcua::types::NodeClass::ObjectType => "📋 ",
+                    opcua::types::NodeClass::VariableType => "📊 ",
+                    opcua::types::NodeClass::ReferenceType => "🔗 ",
+                    opcua::types::NodeClass::DataType => "📝 ",
+                    opcua::types::NodeClass::View => "👁️ ",
+                    _ => "❓ ",
+                };
+                
+                // Show node information with collapsing header if it has children
+                if !node.children.is_empty() {
+                    let label = format!("{}{} ({})", node_icon, node.display_name, node.node_class);
+                    let header = ui.collapsing(label, |ui| {
+                        // Show additional node information
+                        if let Some(data_type) = &node.data_type {
+                            ui.label(format!("Data Type: {}", data_type));
+                        }
+                        if let Some(description) = &node.description {
+                            ui.label(format!("Description: {}", description));
+                        }
+                        
+                        // Render children recursively
+                        self.render_node_tree(ui, &mut node.children, indent_level + 1);
+                    });
+                    
+                    // If the header is expanded, we don't need to show the hover text
+                    if !header.fully_open() {
+                        header.header_response.on_hover_text(format!(
+                            "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}", 
+                            node.node_id,
+                            node.node_id.namespace,
+                            node.browse_name,
+                            if let Some(data_type) = &node.data_type {
+                                format!("\nData Type: {}", data_type)
+                            } else { 
+                                String::new() 
+                            }
+                        ));
+                    }
+                } else {
+                    // Leaf node without children
+                    let label = format!("{}{} ({})", node_icon, node.display_name, node.node_class);
+                    ui.label(label).on_hover_text(format!(
+                        "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}", 
+                        node.node_id,
+                        node.node_id.namespace,
+                        node.browse_name,
+                        if let Some(data_type) = &node.data_type {
+                            format!("\nData Type: {}", data_type)
+                        } else { 
+                            String::new() 
+                        }
+                    ));
+                }
+            });
+        }
+    }
+    
+    // Deselect all children of a node
+    fn deselect_children(&mut self, node: &mut OpcUaNode) {
+        for child in &mut node.children {
+            child.selected = false;
+            self.deselect_children(child);
+        }
+    }
+    
+    // Add selected nodes to the configuration
+    fn add_selected_nodes_to_config(&mut self) {
+        let mut new_selected_nodes = Vec::new();
+        self.collect_selected_nodes(&mut self.opcua_nodes, &mut new_selected_nodes);
+        
+        // Add new nodes to the configuration
+        for node in new_selected_nodes {
+            // Check if this node is already in the config
+            let is_duplicate = self.config.selected_opcua_nodes.iter().any(|existing| {
+                existing.node_id == node.node_id
+            });
+            
+            if !is_duplicate {
+                // Create a new SelectedOpcUaNode
+                let selected_node = SelectedOpcUaNode {
+                    node_id: node.node_id.clone(),
+                    namespace: node.node_id.namespace,
+                    browse_name: node.browse_name.clone(),
+                    display_name: node.display_name.clone(),
+                    measurement_name: node.display_name.clone().replace(" ", "_").to_lowercase(),
+                    interval_ms: 1000, // Default interval
+                };
+                
+                self.config.selected_opcua_nodes.push(selected_node);
+            }
+        }
+    }
+    
+    // Collect all selected nodes into a flat vector
+    fn collect_selected_nodes(&self, nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
+        for node in nodes {
+            if node.selected {
+                result.push(node.clone());
+            }
+            // Still check children even if parent is selected
+            self.collect_selected_nodes(&node.children, result);
+        }
+    }
 }
 
 impl Default for TelegrafApp {
@@ -84,6 +215,7 @@ impl Default for TelegrafApp {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
+                selected_opcua_nodes: Vec::new(), // Initialize empty vector for selected nodes
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
@@ -91,6 +223,10 @@ impl Default for TelegrafApp {
             status_message: String::new(),
             token_file_path, // Default to token.txt in the current directory
             form_state: FormState::default(),
+            opcua_nodes: Vec::new(),
+            show_opcua_browser: false,
+            is_browsing_opcua: false,
+            browse_status_message: String::new(),
         };
         app.load_xml_files();
         app.load_token();
@@ -443,7 +579,124 @@ impl eframe::App for TelegrafApp {
                             }
                         }
                     }
+                    
+                    // OPC UA Browser button
+                    if ui.button("Browse OPC UA Structure").clicked() {
+                        self.show_opcua_browser = true;
+                        if self.opcua_nodes.is_empty() && !self.is_browsing_opcua {
+                            self.is_browsing_opcua = true;
+                            self.browse_status_message = "Browsing OPC UA structure...".to_string();
+                            
+                            // Start browsing in a separate thread
+                            match OpcUaPoller::new(self.config.clone()) {
+                                Ok(poller) => {
+                                    // Attempt to browse the OPC UA structure
+                                    match poller.browse_complete_structure() {
+                                        Ok(nodes) => {
+                                            self.opcua_nodes = nodes;
+                                            self.browse_status_message = "OPC UA structure loaded successfully.".to_string();
+                                        }
+                                        Err(e) => {
+                                            self.browse_status_message = format!("Error browsing OPC UA structure: {}", e);
+                                        }
+                                    }
+                                    self.is_browsing_opcua = false;
+                                }
+                                Err(e) => {
+                                    self.browse_status_message = format!("Error connecting to OPC UA server: {}", e);
+                                    self.is_browsing_opcua = false;
+                                }
+                            }
+                        }
+                    }
                 });
+                
+                // OPC UA Browser Panel
+                if self.show_opcua_browser {
+                    ui.separator();
+                    ui.heading("OPC UA Browser");
+                    
+                    ui.horizontal(|ui| {
+                        ui.label("Status: ");
+                        ui.label(&self.browse_status_message);
+                        
+                        if ui.button("Close Browser").clicked() {
+                            self.show_opcua_browser = false;
+                        }
+                    });
+                    
+                    // Display the node tree with checkboxes
+                    if !self.opcua_nodes.is_empty() {
+                        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                            self.render_node_tree(ui, &mut self.opcua_nodes, 0);
+                        });
+                        
+                        // Add selected nodes button
+                        if ui.button("Add Selected Nodes to Configuration").clicked() {
+                            self.add_selected_nodes_to_config();
+                            self.status_message = "Selected nodes added to configuration.".to_string();
+                        }
+                    } else if self.is_browsing_opcua {
+                        ui.spinner();
+                        ui.label("Loading OPC UA structure... This may take a moment.");
+                    } else {
+                        ui.label("No OPC UA structure available. Click 'Browse OPC UA Structure' to load.");
+                    }
+                    
+                    // Display currently selected nodes
+                    if !self.config.selected_opcua_nodes.is_empty() {
+                        ui.heading("Selected Nodes");
+                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                            egui::Grid::new("selected_nodes_grid")
+                                .num_columns(5)
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.label("Node Name");
+                                    ui.label("Namespace");
+                                    ui.label("Measurement Name");
+                                    ui.label("Interval (ms)");
+                                    ui.label("Actions");
+                                    ui.end_row();
+                                    
+                                    let mut nodes_to_remove = Vec::new();
+                                    
+                                    for (i, node) in self.config.selected_opcua_nodes.iter_mut().enumerate() {
+                                        ui.label(&node.display_name);
+                                        ui.label(&node.namespace.to_string());
+                                        
+                                        // Allow editing the measurement name
+                                        let mut measurement_name = node.measurement_name.clone();
+                                        if ui.text_edit_singleline(&mut measurement_name).changed() {
+                                            node.measurement_name = measurement_name;
+                                        }
+                                        
+                                        // Allow editing the interval
+                                        let mut interval_str = node.interval_ms.to_string();
+                                        if ui.text_edit_singleline(&mut interval_str).changed() {
+                                            if let Ok(interval) = interval_str.parse::<u32>() {
+                                                node.interval_ms = interval;
+                                            }
+                                        }
+                                        
+                                        // Remove button
+                                        if ui.button("Remove").clicked() {
+                                            nodes_to_remove.push(i);
+                                        }
+                                        
+                                        ui.end_row();
+                                    }
+                                    
+                                    // Remove nodes that were marked for removal
+                                    for &index in nodes_to_remove.iter().rev() {
+                                        if index < self.config.selected_opcua_nodes.len() {
+                                            self.config.selected_opcua_nodes.remove(index);
+                                        }
+                                    }
+                                });
+                        });
+                    }
+                }
+                
                 if ui.button("Generate Config").clicked() {
                     // Reset validation state
                     self.form_state.show_namespace_error = false;

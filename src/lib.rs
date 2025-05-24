@@ -1,4 +1,15 @@
 use std::path::PathBuf;
+use opcua::types::NodeId;
+
+#[derive(Debug, Clone)]
+pub struct SelectedOpcUaNode {
+    pub node_id: NodeId,
+    pub namespace: u16,
+    pub browse_name: String,
+    pub display_name: String,
+    pub measurement_name: String,
+    pub interval_ms: u32,
+}
 
 #[derive(Clone)]
 pub struct TelegrafConfig {
@@ -15,6 +26,7 @@ pub struct TelegrafConfig {
     pub listener_files: Vec<String>,
     pub output_format: Option<String>, // "influxdb" or "prometheus"
     pub include_test_inputs: bool,     // Include CPU, disk, mem inputs for testing
+    pub selected_opcua_nodes: Vec<SelectedOpcUaNode>, // Selected OPC UA nodes from browser
 }
 
 impl TelegrafConfig {

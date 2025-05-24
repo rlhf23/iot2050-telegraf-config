@@ -20,6 +20,7 @@ mod tests {
             bucket_name: "bucket".to_string(),
             influx_token: None,
             listener_files: Vec::new(),
+            selected_opcua_nodes: Vec::new(),
             output_format: None,
             include_test_inputs: false,
         };
@@ -89,6 +90,7 @@ mod tests {
             token_folder: PathBuf::new(),
             bucket_name: "bucket".to_string(),
             influx_token: None,
+            selected_opcua_nodes: Vec::new(),
             listener_files: Vec::new(),
             output_format: None,
             include_test_inputs: false,
@@ -161,6 +163,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            selected_opcua_nodes: Vec::new(),
         };
 
         let generator_result = ConfigGenerator::new(config);
@@ -177,6 +180,7 @@ mod tests {
             iot_password: "iot_pass".to_string(),
             token_folder: PathBuf::new(),
             bucket_name: "bucket".to_string(),
+            selected_opcua_nodes: Vec::new(),
             influx_token: None,
             listener_files: Vec::new(),
             output_format: None,
