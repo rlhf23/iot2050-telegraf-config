@@ -45,12 +45,16 @@ impl TelegrafConfig {
             std::collections::HashMap::new();
 
         for (file, config) in file_configs {
-            // Validate namespace if provided
-            if !config.namespace.is_empty() {
-                if let Err(e) = self.validate_namespace(&config.namespace) {
-                    errors.push(e);
-                    continue;
-                }
+            // Validate namespace - it's required for all files
+            if config.namespace.is_empty() {
+                errors.push(crate::error::TelegrafError::ValidationError(format!(
+                    "Missing namespace in file: {}",
+                    file
+                )));
+                continue;
+            } else if let Err(e) = self.validate_namespace(&config.namespace) {
+                errors.push(e);
+                continue;
             }
 
             // Validate interval if provided

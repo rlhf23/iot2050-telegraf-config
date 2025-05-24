@@ -26,18 +26,20 @@ owo-colors = "4.0.0"
 
 eframe = { version = "0.31", features = [] }  # GUI framework
 rfd = "0.15.0"     # Native file dialogs
-winapi = {version = "0.3.9", features = ["winuser"]}
 
 opcua = { version = "0.12.0", features = ["console-logging"] }
 tokio = { version = "1.44.0", features = ["full"] }
 thiserror = "2.0.12"
-openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
 tempfile = "3.8.0"
 
 [build-dependencies]
 dotenv = "0.15.0"
+
+[target.'cfg(windows)'.build-dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
+winapi = {version = "0.3.9", features = ["winuser"]}
 
 [profile.release]
 opt-level = 'z'   # Optimize for size.

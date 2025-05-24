@@ -2,3 +2,15 @@
 *.env
 /pki
 !README.md
+
+# Generated configuration files
+telegraf.conf
+
+# Coverage reports
+/coverage
+*.profraw
+*.profdata
+*.lcov
+*.info
+cobertura.xml
+tarpaulin-report.html
