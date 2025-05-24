@@ -39,12 +39,6 @@ jobs:
         run: cargo tarpaulin --config .tarpaulin.toml
         continue-on-error: true
 
-      - name: Upload to codecov.io
-        uses: codecov/codecov-action@v3
-        with:
-          file: coverage/cobertura.xml
-          fail_ci_if_error: false
-
       - name: Archive code coverage results
         uses: actions/upload-artifact@v4
         with:
