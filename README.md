@@ -1,7 +1,7 @@
 # Telegraf Configuration Generator
 
 ## Introduction
-Telegraf Configuration Generator is a powerful tool designed to simplify the management of Telegraf deployments for IoT devices, particularly the SIEMENS SIMATIC IOT2050. This application provides an intuitive graphical interface for creating, deploying, and managing Telegraf configurations based on XML templates.
+Telegraf Configuration Generator is a simple automation tool designed to streamline the process of exporting OPCUA server interface lists from TIA Portal and quickly converting them into configuration files for Telegraf when using small simple repeatable configs. The primary goal is to facilitate data transfer into InfluxDB for later visualization in Grafana or similar platforms. This tool serves as an efficient alternative to Node-RED and similar approaches, focusing on fewer mouse clicks and greater automation when working with the SIEMENS SIMATIC IOT2050 and other IoT devices.
 
 ![Telegraf Config Generator GUI](./telegraf-config-gui.png)
 
