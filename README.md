@@ -3,7 +3,7 @@
 ## Introduction
 Telegraf Configuration Generator is a powerful tool designed to simplify the management of Telegraf deployments for IoT devices, particularly the SIEMENS SIMATIC IOT2050. This application provides an intuitive graphical interface for creating, deploying, and managing Telegraf configurations based on XML templates.
 
-![Telegraf Config Generator GUI](https://example.com/telegraf-config-generator-gui.png)
+![Telegraf Config Generator GUI](./2025-05-24T15:38:20,244217426+03:00.png)
 
 ## Key Features
 
