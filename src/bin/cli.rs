@@ -5,7 +5,6 @@ use sie_generate_config::{
     TelegrafConfig,
 };
 use std::collections::HashMap;
-use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 

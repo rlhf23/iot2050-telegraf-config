@@ -1,6 +1,6 @@
 use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Write;
 
 #[cfg(test)]
@@ -310,7 +310,6 @@ impl ConfigGenerator {
         )
     }
 
-    /// Generic method to check if a service is responding
     pub fn check_influxdb_status(
         &self,
         service_url: &str,
