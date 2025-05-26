@@ -166,7 +166,7 @@ fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     }
 }
 
-fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
 
     format!(
