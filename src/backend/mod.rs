@@ -213,15 +213,18 @@ impl ConfigGenerator {
                     node_configs.push(node_config);
                 }
 
-                // Create the full config for this namespace
-                let config_string = format!(
-                    "[[inputs.opcua]]\n  name = \"opcua_browser_ns{}\"\n  endpoint = \"opc.tcp://{}:4840/\"\n  username = \"{}\"\n  password = \"{}\"\n  connect_timeout = \"10s\"\n  request_timeout = \"5s\"\n\n{}",
-                    namespace,
-                    self.config.ip,
-                    self.config.username,
-                    self.config.password,
-                    node_configs.join("\n")
-                );
+                // Create the full config for this namespace using format_browsed_config for the header
+                let opcua_config = format::OpcuaConfig {
+                    ip: &self.config.ip,
+                    username: &self.config.username,
+                    password: &self.config.password,
+                    is_listener: false,
+                    group_name: &format!("opcua_browser_ns{}", namespace),
+                    namespace_number: &namespace.to_string(),
+                    interval_ms: 1000, // Default interval
+                };
+                
+                let config_string = format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
 
                 config_strings.push(config_string);
             }

@@ -245,6 +245,37 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     )
 }
 
+pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+    let interval = config.get_interval_string();
+
+    format!(
+        r#"
+[[inputs.opcua]]
+  name = "opcua"
+  endpoint = "opc.tcp://{}:4840"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  session_timeout = "5m"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "source"
+  client_trace = false
+  interval = "{}" 
+    {}
+    "#,
+        config.ip,
+        config.username,
+        config.password,
+        interval,
+        nodes_str
+    )
+}
+
 pub fn parse_xml(
     config: &OpcuaConfig,
     xml_file: &str,
