@@ -521,8 +521,36 @@ impl OpcUaPoller {
                                             // But for now we'll skip detailed attribute reading to avoid hangs
                                         }
                                         
-                                        // We'll skip recursive browsing for continuation point nodes
-                                        // to avoid excessive depth and potential hangs
+                                        // Apply the same browsing logic to continuation point nodes as initial nodes
+                                        // Determine whether to browse children based on node class and depth
+                                        let should_browse_children = match node_class {
+                                            // Never browse methods
+                                            NodeClass::Method => false,
+                                            // Always browse objects and folders regardless of their name
+                                            NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
+                                            // For variables, check if it might be a folder-like variable that should be browsed
+                                            NodeClass::Variable => {
+                                                // Special case for known folder-like variables
+                                                // DataBlocksGlobal and similar folders need special handling
+                                                if node.display_name.contains("DataBlocks") || 
+                                                   node.display_name.contains("Global") ||
+                                                   node.browse_name.contains("DataBlocks") ||
+                                                   node.browse_name.contains("Global") {
+                                                    current_depth < max_depth
+                                                } else {
+                                                    false
+                                                }
+                                            },
+                                            // For other node types, browse if we haven't reached max depth
+                                            _ => current_depth < max_depth,
+                                        };
+
+                                        if should_browse_children {
+                                            // Recursively browse with incremented depth
+                                            let children = self.browse_nodes(session, &child_node_id, current_depth + 1, max_depth)?;
+                                            node.children = children;
+                                        }
+
                                         nodes.push(node);
                                     }
                                 }
