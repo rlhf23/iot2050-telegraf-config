@@ -81,11 +81,21 @@ impl TelegrafApp {
             ui.horizontal(|ui| {
                 ui.add_space(indent);
 
-                // Only show checkboxes for variables that can be selected
-                if node.node_class == opcua::types::NodeClass::Variable {
+                // Determine if this is a folder-like node
+                let is_folder = node.node_class == opcua::types::NodeClass::Object 
+                    || node.node_class == opcua::types::NodeClass::ObjectType
+                    || (node.node_class == opcua::types::NodeClass::Variable 
+                        && (node.display_name.contains("DataBlocks") 
+                            || node.display_name.contains("Global") 
+                            || node.browse_name.contains("DataBlocks") 
+                            || node.browse_name.contains("Global")));
+                
+                // Show checkboxes for variables that can be selected and for folders
+                if node.node_class == opcua::types::NodeClass::Variable || is_folder {
                     if ui.checkbox(&mut node.selected, "").changed() {
-                        // If a node is deselected, also deselect all its children
-                        if !node.selected {
+                        // Only for variables: If a node is deselected, also deselect all its children
+                        // For folders, we don't auto-select children - they're treated as a unit
+                        if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
                             self.deselect_children(node);
                         }
                     }
@@ -156,13 +166,7 @@ impl TelegrafApp {
                 }
                 */
                 // Check if this is a folder-like node that can have children
-                if node.node_class == opcua::types::NodeClass::Object 
-                   || node.node_class == opcua::types::NodeClass::ObjectType
-                   || (node.node_class == opcua::types::NodeClass::Variable 
-                       && (node.display_name.contains("DataBlocks") 
-                           || node.display_name.contains("Global") 
-                           || node.browse_name.contains("DataBlocks") 
-                           || node.browse_name.contains("Global"))) {
+                if is_folder {
                     
                     let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
                     
@@ -286,10 +290,32 @@ impl TelegrafApp {
     // Collect all selected nodes into a flat vector - made static to avoid self reference issues
     fn collect_selected_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
+            // Determine if this is a folder-like node
+            let is_folder = node.node_class == opcua::types::NodeClass::Object 
+                || node.node_class == opcua::types::NodeClass::ObjectType
+                || (node.node_class == opcua::types::NodeClass::Variable 
+                    && (node.display_name.contains("DataBlocks") 
+                        || node.display_name.contains("Global") 
+                        || node.browse_name.contains("DataBlocks") 
+                        || node.browse_name.contains("Global")));
+            
             if node.selected {
-                result.push(node.clone());
+                // Create a clone that we'll add to results
+                let mut node_clone = node.clone();
+                
+                // Add a special property to mark folder nodes for future folder-based configuration
+                if is_folder {
+                    // This node_type field doesn't exist yet, so we'd need to add it to OpcUaNode struct
+                    // For now, we'll just add the node as is, and you can extend this in the future
+                    // node_clone.node_type = "folder";
+                    
+                    // We'll discuss how to properly handle this in the future
+                }
+                
+                result.push(node_clone);
             }
-            // Still check children even if parent is selected
+            
+            // Still check children regardless of parent selection state
             Self::collect_selected_nodes(&node.children, result);
         }
     }
