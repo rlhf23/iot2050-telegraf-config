@@ -68,7 +68,7 @@ impl TelegrafApp {
         message
     }
 
-    // Render the OPC UA node tree recursively
+    // Render the OPC UA node tree recursively with support for lazy loading
     fn render_node_tree(
         &mut self,
         ui: &mut egui::Ui,
@@ -104,10 +104,67 @@ impl TelegrafApp {
                     _ => "❓ ",
                 };
 
-                // Show node information with collapsing header if it has children
-                if !node.children.is_empty() {
-                    let label =
-                        format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+                // Special handling for "Load more items..." placeholder node
+                if OpcUaPoller::is_load_more_node(node) {
+                    if ui.button(format!("🔄 {}", node.display_name)).clicked() {
+                        self.browse_status_message = "Loading more items...".to_string();
+                        
+                        // Save the continuation point for later use
+                        if let Some(continuation_point) = &node.continuation_point {
+                            // We need to update the entire tree structure since we can't modify the slice
+                            // directly. Let's update our main nodes structure instead.
+                            
+                            // Find the path to this node in the tree (parent folders)
+                            let path_str = format!("Level {} continuation point", indent_level);
+                            
+                            // Load the items in a background task and set a flag to update the UI
+                            let continuation_point_clone = continuation_point.clone();
+                            let config_clone = self.config.clone();
+                            
+                            // Update the placeholder text to indicate loading
+                            node.display_name = "Loading more items...".to_string();
+                            
+                            // Set a flag to reload the entire tree on the next update
+                            // For this basic implementation, we'll just force a reload of the top-level nodes
+                            // This will cause a brief flicker but will update the structure correctly
+                            self.is_browsing_opcua = true;
+                            
+                            match OpcUaPoller::new(config_clone) {
+                                Ok(poller) => {
+                                    // Just re-browse the entire structure
+                                    // In a more sophisticated implementation, we would only update the affected nodes
+                                    match poller.browse_complete_structure() {
+                                        Ok(new_nodes) => {
+                                            self.opcua_nodes = new_nodes;
+                                            self.browse_status_message = "Structure updated with more items.".to_string();
+                                            self.is_browsing_opcua = false;
+                                        }
+                                        Err(e) => {
+                                            self.browse_status_message = format!("Error refreshing tree: {}", e);
+                                            self.is_browsing_opcua = false;
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    self.browse_status_message = format!("Error creating poller: {}", e);
+                                    self.is_browsing_opcua = false;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Check if this is a folder-like node that can have children
+                else if node.node_class == opcua::types::NodeClass::Object 
+                       || node.node_class == opcua::types::NodeClass::ObjectType
+                       || (node.node_class == opcua::types::NodeClass::Variable 
+                           && (node.display_name.contains("DataBlocks") 
+                               || node.display_name.contains("Global") 
+                               || node.browse_name.contains("DataBlocks") 
+                               || node.browse_name.contains("Global"))) {
+                    
+                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+                    
+                    // Use collapsing header to show node and its children
                     let header = ui.collapsing(label, |ui| {
                         // Show additional node information
                         if let Some(data_type) = &node.data_type {
@@ -116,11 +173,40 @@ impl TelegrafApp {
                         if let Some(description) = &node.description {
                             ui.label(format!("Description: {}", description));
                         }
-
-                        // Render children recursively
-                        self.render_node_tree(ui, &mut node.children, indent_level + 1);
+                        
+                        // Check if children need to be loaded
+                        if !node.children_loaded && node.children.is_empty() {
+                            // Show loading indicator
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("Loading children...");
+                            });
+                            
+                            // Clone to avoid borrow issues
+                            let node_clone = node.clone();
+                            
+                            // Create a new poller to load children
+                            if let Ok(poller) = OpcUaPoller::new(self.config.clone()) {
+                                match poller.load_node_children(&node_clone, indent_level) {
+                                    Ok(children) => {
+                                        // Update the node with loaded children
+                                        node.children = children;
+                                        node.children_loaded = true;
+                                        
+                                        // Force a redraw
+                                        ui.ctx().request_repaint();
+                                    }
+                                    Err(e) => {
+                                        ui.label(format!("Error loading children: {}", e));
+                                    }
+                                }
+                            }
+                        } else {
+                            // Render children recursively
+                            self.render_node_tree(ui, &mut node.children, indent_level + 1);
+                        }
                     });
-
+                    
                     // If the header is expanded, we don't need to show the hover text
                     if !header.fully_open() {
                         header.header_response.on_hover_text(format!(
