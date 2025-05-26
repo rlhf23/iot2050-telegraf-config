@@ -179,13 +179,34 @@ impl ConfigGenerator {
                 let mut node_configs = Vec::new();
 
                 for node in nodes {
-                    // Format the node ID for configuration
-                    let node_id_str = format!("{:?}", node.node_id);
+                    // Extract the identifier directly from the NodeId using its Identifier enum
+                    // We need to convert everything to a standard string for the TOML output
+                    let identifier = match &node.node_id.identifier {
+                        // For String type identifiers
+                        opcua::types::Identifier::String(ua_string) => {
+                            // Need to extract the actual String from UAString
+                            if let Some(value) = &ua_string.value(){
+                                value.clone() // Already a String
+                            } else {
+                                String::new() // Empty string as fallback
+                            }
+                        },
+                        // For numeric identifiers
+                        opcua::types::Identifier::Numeric(i) => {
+                            i.to_string() // Convert u32 to String
+                        },
+                        // For other types, use debug formatting as fallback
+                        _ => format!("{:?}", node.node_id.identifier)
+                    };
+                    
+                    // Escape any quotes in the identifier for TOML format
+                    let escaped_identifier = identifier.replace('"', "\\\"");
+                    
                     let node_config = format!(
                         "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"s\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
                         node.measurement_name,
                         node.namespace,
-                        node_id_str.trim_start_matches("NodeId(ns=").trim_start_matches(&format!("NodeId(ns={}, ", node.namespace)).trim_end_matches(")"),
+                        escaped_identifier,
                         node.interval_ms
                     );
 
