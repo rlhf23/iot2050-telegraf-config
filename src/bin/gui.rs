@@ -104,7 +104,8 @@ impl TelegrafApp {
                     _ => "❓ ",
                 };
 
-                // Special handling for "Load more items..." placeholder node
+                // Special handling for "Load more items..." placeholder node - commented out since folder expansion works well
+                /*
                 if OpcUaPoller::is_load_more_node(node) {
                     if ui.button(format!("🔄 {}", node.display_name)).clicked() {
                         self.browse_status_message = "Loading more items...".to_string();
@@ -153,14 +154,15 @@ impl TelegrafApp {
                         }
                     }
                 }
+                */
                 // Check if this is a folder-like node that can have children
-                else if node.node_class == opcua::types::NodeClass::Object 
-                       || node.node_class == opcua::types::NodeClass::ObjectType
-                       || (node.node_class == opcua::types::NodeClass::Variable 
-                           && (node.display_name.contains("DataBlocks") 
-                               || node.display_name.contains("Global") 
-                               || node.browse_name.contains("DataBlocks") 
-                               || node.browse_name.contains("Global"))) {
+                if node.node_class == opcua::types::NodeClass::Object 
+                   || node.node_class == opcua::types::NodeClass::ObjectType
+                   || (node.node_class == opcua::types::NodeClass::Variable 
+                       && (node.display_name.contains("DataBlocks") 
+                           || node.display_name.contains("Global") 
+                           || node.browse_name.contains("DataBlocks") 
+                           || node.browse_name.contains("Global"))) {
                     
                     let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
                     

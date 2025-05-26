@@ -491,116 +491,91 @@ impl OpcUaPoller {
                 
                 // Check for continuation point (if it exists)
                 if !result.continuation_point.is_empty() {
-                    // For lazy loading, we'll set a flag and store the continuation point
-                    // in the last node we processed, or a special node if we haven't processed any
-                    if load_children {
-                        // Process the continuation point only if we're explicitly loading children
-                        // We have a continuation point, meaning there are more nodes to fetch
-                        // Use browse_next to retrieve them
-                        let mut continuation_points = vec![result.continuation_point.clone()];
-                        let mut max_continuations = 5; // Limit to prevent infinite loops
+                    // For lazy loading, process continuation points
+                    // We'll process all continuation points immediately rather than creating placeholder nodes
+                    let mut continuation_points = vec![result.continuation_point.clone()];
+                    let mut max_continuations = 5; // Limit to prevent infinite loops
+                    
+                    // Process continuation points with a safety limit
+                    while !continuation_points.is_empty() && max_continuations > 0 {
+                        // Call browse_next with the continuation points
+                        let browse_next_result = session_read.browse_next(
+                            false, // don't release continuation points yet
+                            &continuation_points
+                        );
                         
-                        // Process continuation points with a safety limit
-                        while !continuation_points.is_empty() && max_continuations > 0 {
-                            // Call browse_next with the continuation points
-                            let browse_next_result = session_read.browse_next(
-                                false, // don't release continuation points yet
-                                &continuation_points
-                            );
-                            
-                            // Clear the current continuation points
-                            continuation_points.clear();
-                            
-                            // Process the continuation point results
-                            if let Ok(Some(next_results)) = browse_next_result {
-                                for next_result in next_results {
-                                    // Process references if they exist
-                                    if let Some(refs) = &next_result.references {
-                                        for reference in refs {
-                                            // Extract node info (same as above)
-                                            let browse_name = reference.browse_name.name.to_string();
-                                            let display_name = reference.display_name.text.to_string();
-                                            let node_class = reference.node_class;
-                                            let child_node_id = reference.node_id.node_id.clone();
-                                            
-                                            // Create the node
-                                            let mut node = OpcUaNode::new(
-                                                child_node_id.clone(),
-                                                browse_name.clone(),
-                                                display_name.clone(),
-                                                node_class,
-                                            );
-                                            
-                                            // For variables, get the data type (simplified version)
-                                            if node_class == NodeClass::Variable {
-                                                // Here we could add variable-specific handling
-                                            }
-                                            
-                                            // Determine whether node could have children
-                                            let should_browse_children = match node_class {
-                                                NodeClass::Method => false,
-                                                NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
-                                                NodeClass::Variable => {
-                                                    if node.display_name.contains("DataBlocks") || 
-                                                       node.display_name.contains("Global") ||
-                                                       node.browse_name.contains("DataBlocks") ||
-                                                       node.browse_name.contains("Global") {
-                                                        current_depth < max_depth
-                                                    } else {
-                                                        false
-                                                    }
-                                                },
-                                                _ => current_depth < max_depth,
-                                            };
-                                            
-                                            // Only set the flag, don't browse
-                                            if should_browse_children {
-                                                // Not loading children now
-                                            }
-                                            
-                                            nodes.push(node);
-                                        }
-                                    }
-                                    
-                                    // Store the next continuation point if it exists
-                                    if !next_result.continuation_point.is_empty() {
-                                        // Create a placeholder node for the next continuation point
-                                        let mut more_node = OpcUaNode::new(
-                                            NodeId::null(),
-                                            String::from("__more_items__"),
-                                            String::from("Load more items..."),
-                                            NodeClass::Object,
+                        // Clear the current continuation points
+                        continuation_points.clear();
+                        
+                        // Process the continuation point results
+                        if let Ok(Some(next_results)) = browse_next_result {
+                            for next_result in next_results {
+                                // Process references if they exist
+                                if let Some(refs) = &next_result.references {
+                                    for reference in refs {
+                                        // Extract node info (same as above)
+                                        let browse_name = reference.browse_name.name.to_string();
+                                        let display_name = reference.display_name.text.to_string();
+                                        let node_class = reference.node_class;
+                                        let child_node_id = reference.node_id.node_id.clone();
+                                        
+                                        // Create the node
+                                        let mut node = OpcUaNode::new(
+                                            child_node_id.clone(),
+                                            browse_name.clone(),
+                                            display_name.clone(),
+                                            node_class,
                                         );
-                                        more_node.has_more_children = true;
-                                        more_node.continuation_point = Some(next_result.continuation_point.clone());
-                                        nodes.push(more_node);
-                                        break; // Exit early, we'll load more on demand
+                                        
+                                        // For variables, get the data type (simplified version)
+                                        if node_class == NodeClass::Variable {
+                                            // Here we could add variable-specific handling
+                                        }
+                                        
+                                        // Determine whether node could have children
+                                        let should_browse_children = match node_class {
+                                            NodeClass::Method => false,
+                                            NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
+                                            NodeClass::Variable => {
+                                                if node.display_name.contains("DataBlocks") || 
+                                                   node.display_name.contains("Global") ||
+                                                   node.browse_name.contains("DataBlocks") ||
+                                                   node.browse_name.contains("Global") {
+                                                    current_depth < max_depth
+                                                } else {
+                                                    false
+                                                }
+                                            },
+                                            _ => current_depth < max_depth,
+                                        };
+                                        
+                                        // Only set the flag, don't browse
+                                        if should_browse_children {
+                                            // Set the flag to indicate it has children (will be loaded on demand)
+                                            // But don't recursively browse them now
+                                        }
+                                        
+                                        nodes.push(node);
                                     }
                                 }
-                            } else {
-                                // Error or no results from browse_next, break the loop
-                                break;
+                                
+                                // Handle the next continuation point
+                                if !next_result.continuation_point.is_empty() {
+                                    continuation_points.push(next_result.continuation_point.clone());
+                                }
                             }
-                            
-                            // Decrement our safety counter
-                            max_continuations -= 1;
+                        } else {
+                            // Error or no results from browse_next, break the loop
+                            break;
                         }
                         
-                        // Release any remaining continuation points
-                        if !continuation_points.is_empty() {
-                            let _ = session_read.browse_next(true, &continuation_points);
-                        }
-                    } else {
-                        // Create a placeholder node indicating more items to load
-                        let mut more_node = OpcUaNode::new(
-                            NodeId::null(), // Use null NodeId for placeholder
-                            String::from("__more_items__"),
-                            String::from("Load more items..."),
-                            NodeClass::Object,
-                        );
-                        more_node.has_more_children = true;
-                        more_node.continuation_point = Some(result.continuation_point.clone());
-                        nodes.push(more_node);
+                        // Decrement our safety counter
+                        max_continuations -= 1;
+                    }
+                    
+                    // Release any remaining continuation points
+                    if !continuation_points.is_empty() {
+                        let _ = session_read.browse_next(true, &continuation_points);
                     }
                 }
             }
