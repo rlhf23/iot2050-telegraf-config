@@ -179,33 +179,42 @@ impl ConfigGenerator {
                 let mut node_configs = Vec::new();
 
                 for node in nodes {
-                    // Extract the identifier directly from the NodeId using its Identifier enum
-                    // We need to convert everything to a standard string for the TOML output
-                    let identifier = match &node.node_id.identifier {
-                        // For String type identifiers
+                    // Extract the identifier and determine identifier_type based on the NodeId type
+                    let (identifier, identifier_type) = match &node.node_id.identifier {
+                        // For String type identifiers (type "s")
                         opcua::types::Identifier::String(ua_string) => {
                             // Need to extract the actual String from UAString
-                            if let Some(value) = &ua_string.value(){
-                                value.clone() // Already a String
+                            let value = if let Some(val) = &ua_string.value() {
+                                val.clone() // Already a String
                             } else {
                                 String::new() // Empty string as fallback
-                            }
+                            };
+                            (value, "s")
                         },
-                        // For numeric identifiers
+                        // For numeric identifiers (type "i")
                         opcua::types::Identifier::Numeric(i) => {
-                            i.to_string() // Convert u32 to String
+                            (i.to_string(), "i")
+                        },
+                        // For GUID identifiers (type "g")
+                        opcua::types::Identifier::Guid(guid) => {
+                            (format!("{:?}", guid), "g")
+                        },
+                        // For ByteString identifiers (type "b")
+                        opcua::types::Identifier::ByteString(bytes) => {
+                            (format!("{:?}", bytes), "b")
                         },
                         // For other types, use debug formatting as fallback
-                        _ => format!("{:?}", node.node_id.identifier)
+                        _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
                     };
                     
                     // Escape any quotes in the identifier for TOML format
                     let escaped_identifier = identifier.replace('"', "\\\"");
                     
                     let node_config = format!(
-                        "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"s\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
+                        "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"{}\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
                         node.measurement_name,
                         node.namespace,
+                        identifier_type,
                         escaped_identifier,
                         node.interval_ms
                     );
