@@ -1017,9 +1017,11 @@ impl eframe::App for TelegrafApp {
                     if !self.opcua_nodes.is_empty() {
                         // Create a clone of opcua_nodes to avoid borrowing issues
                         let mut nodes_clone = self.opcua_nodes.clone();
-                        egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                            // Render using the cloned nodes
-                            self.render_node_tree(ui, &mut nodes_clone, 0);
+                        ui.push_id("opcua_browser_area", |ui| {
+                            egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
+                                // Render using the cloned nodes
+                                self.render_node_tree(ui, &mut nodes_clone, 0);
+                            });
                         });
                         
                         // Update the original nodes with any changes from UI
@@ -1040,8 +1042,9 @@ impl eframe::App for TelegrafApp {
                     // Display currently selected nodes
                     if !self.config.selected_opcua_nodes.is_empty() {
                         ui.heading("Selected Nodes");
-                        egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                            egui::Grid::new("selected_nodes_grid")
+                        ui.push_id("selected_nodes_area", |ui| {
+                            egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                                egui::Grid::new("selected_opcua_nodes_grid")
                                 .num_columns(5)
                                 .striped(true)
                                 .show(ui, |ui| {
@@ -1087,6 +1090,7 @@ impl eframe::App for TelegrafApp {
                                         }
                                     }
                                 });
+                            });
                         });
                     }
                 }
