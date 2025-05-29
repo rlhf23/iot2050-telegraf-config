@@ -22,12 +22,12 @@ impl OpcUaTestServer {
         
         let endpoint_url = format!("opc.tcp://{}:{}", address, port);
         
-        // Initialize server with minimal configuration needed for testing
-        let server_builder = ServerBuilder::new()
+        // Use the sample server configuration which is preconfigured with correct settings
+        // This is recommended in the documentation for testing purposes
+        let server_builder = ServerBuilder::new_sample()
             .application_name("OPC UA Test Server")
             .application_uri("urn:opcua-test-server")
             .product_uri("urn:opcua-test-server:product")
-            .create_sample_keypair(true)
             .host_and_port(address, port);
             
         // Build the server
