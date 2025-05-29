@@ -11,6 +11,8 @@ use crate::error::TelegrafError;
 pub struct OpcUaTestServer {
     server: Server,
     endpoint_url: String,
+    address: String,
+    port: u16,
     handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -39,6 +41,8 @@ impl OpcUaTestServer {
         Ok(Self {
             server,
             endpoint_url,
+            address: address.to_string(),
+            port,
             handle: None,
         })
     }
@@ -112,12 +116,39 @@ impl OpcUaTestServer {
 
     /// Starts the OPC UA server in a background thread.
     pub fn start(&mut self) -> Result<(), TelegrafError> {
-        // We'll run a simple check instead of actually starting the server
-        // Starting the server in a thread is complex with opcua 0.12.0 and not needed for basic testing
-        // For actual tests, the opcua_poller can be tested against a real OPC UA server
-        println!("[Test] Would start OPC UA server at {}", self.endpoint_url);
+        // For the standalone test server, we need to actually start the server
+        let endpoint_url = self.endpoint_url.clone();
+        let address = self.address.clone();
+        let port = self.port;
         
-        // For testing purposes, simulate server started successfully
+        // Create a new server instance for the thread using the same configuration
+        let server_builder = ServerBuilder::new_sample()
+            .application_name("OPC UA Test Server")
+            .application_uri("urn:opcua-test-server")
+            .product_uri("urn:opcua-test-server:product")
+            .host_and_port(&address, port);
+            
+        // Build the server
+        let server = match server_builder.server() {
+            Some(s) => s,
+            None => return Err(TelegrafError::OpcUaClientError("Failed to create server for thread".to_string())),
+        };
+        
+        // Start the server in a background thread
+        let handle = thread::spawn(move || {
+            println!("Starting OPC UA test server at {}", endpoint_url);
+            println!("Note: You may see errors about discovery server connection - these are normal and can be ignored");
+            // This call is blocking and will run until the server is stopped
+            server.run();
+            println!("OPC UA test server stopped");
+        });
+        
+        // Store the thread handle for cleanup
+        self.handle = Some(handle);
+        
+        // Give the server a moment to start up
+        thread::sleep(Duration::from_millis(500));
+        
         Ok(())
     }
 
