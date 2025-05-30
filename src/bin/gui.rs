@@ -91,7 +91,8 @@ impl TelegrafApp {
                             || node.browse_name.contains("Global")));
                 
                 // Show checkboxes for variables that can be selected and for folders
-                if node.node_class == opcua::types::NodeClass::Variable || is_folder {
+                // Skip checkbox for the root node (at indent_level 0)
+                if (node.node_class == opcua::types::NodeClass::Variable || is_folder) && indent_level > 0 {
                     if ui.checkbox(&mut node.selected, "").changed() {
                         // Only for variables: If a node is deselected, also deselect all its children
                         // For folders, we don't auto-select children - they're treated as a unit
