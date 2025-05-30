@@ -290,13 +290,24 @@ impl ConfigGenerator {
                         let escaped_identifier = identifier.replace('"', "\\\"");
                         
                         // Format individual node config
+                        // let node_config = format!(
+                        //     "    # {{0}}\n
+                        //         [[inputs.opcua.nodes]]\n
+                        //               name = \"{}\"\n
+                        //                     namespace = \"{}\"\n
+                        //                           identifier_type = \"{}\"\n
+                        //                                 identifier = \"{}\"\n
+                        //                                       interval = \"{}ms\"\n",
+                        //     node.measurement_name,
+                        //     node.namespace,
+                        //     identifier_type,
+                        //     escaped_identifier,
+                        //     node.interval_ms
+                        // );
                         let node_config = format!(
-                            "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"{}\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
+                            "{{name=\"{}\", identifier=\"{}\"}}",
                             node.measurement_name,
-                            node.namespace,
-                            identifier_type,
                             escaped_identifier,
-                            node.interval_ms
                         );
                         
                         node_configs.push(node_config);
@@ -313,7 +324,7 @@ impl ConfigGenerator {
                         interval_ms: 1000, // Default interval
                     };
                     
-                    let config_string = format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
+                    let config_string = format::format_regular_config(&opcua_config, &node_configs.join("\n"));
                     config_strings.push(config_string);
                 }
             }

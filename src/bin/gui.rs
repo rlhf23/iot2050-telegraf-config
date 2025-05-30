@@ -115,57 +115,6 @@ impl TelegrafApp {
                     _ => "❓ ",
                 };
 
-                // Special handling for "Load more items..." placeholder node - commented out since folder expansion works well
-                /*
-                if OpcUaPoller::is_load_more_node(node) {
-                    if ui.button(format!("🔄 {}", node.display_name)).clicked() {
-                        self.browse_status_message = "Loading more items...".to_string();
-                        
-                        // Save the continuation point for later use
-                        if let Some(continuation_point) = &node.continuation_point {
-                            // We need to update the entire tree structure since we can't modify the slice
-                            // directly. Let's update our main nodes structure instead.
-                            
-                            // Find the path to this node in the tree (parent folders)
-                            let path_str = format!("Level {} continuation point", indent_level);
-                            
-                            // Load the items in a background task and set a flag to update the UI
-                            let continuation_point_clone = continuation_point.clone();
-                            let config_clone = self.config.clone();
-                            
-                            // Update the placeholder text to indicate loading
-                            node.display_name = "Loading more items...".to_string();
-                            
-                            // Set a flag to reload the entire tree on the next update
-                            // For this basic implementation, we'll just force a reload of the top-level nodes
-                            // This will cause a brief flicker but will update the structure correctly
-                            self.is_browsing_opcua = true;
-                            
-                            match OpcUaPoller::new(config_clone) {
-                                Ok(poller) => {
-                                    // Just re-browse the entire structure
-                                    // In a more sophisticated implementation, we would only update the affected nodes
-                                    match poller.browse_complete_structure() {
-                                        Ok(new_nodes) => {
-                                            self.opcua_nodes = new_nodes;
-                                            self.browse_status_message = "Structure updated with more items.".to_string();
-                                            self.is_browsing_opcua = false;
-                                        }
-                                        Err(e) => {
-                                            self.browse_status_message = format!("Error refreshing tree: {}", e);
-                                            self.is_browsing_opcua = false;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    self.browse_status_message = format!("Error creating poller: {}", e);
-                                    self.is_browsing_opcua = false;
-                                }
-                            }
-                        }
-                    }
-                }
-                */
                 // Check if this is a folder-like node that can have children
                 if is_folder {
                     
