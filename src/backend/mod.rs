@@ -138,6 +138,7 @@ impl ConfigGenerator {
                 group_name: "", // This will be determined in parse_xml
                 namespace_number: &file_config.namespace,
                 interval_ms: file_config.interval_ms,
+                identifier_type: "i", // Default to numeric identifier
             };
 
             let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
@@ -188,6 +189,9 @@ impl ConfigGenerator {
                 // Create the nodes configuration string for this folder
                 let mut node_configs = Vec::new();
                 
+                // Default identifier type for the group (will be overridden if we have nodes)
+                let mut group_identifier_type = "i";
+                
                 for node in &folder_nodes {
                     // Extract the identifier and determine identifier_type
                     let (identifier, identifier_type) = match &node.node_id.identifier {
@@ -210,6 +214,11 @@ impl ConfigGenerator {
                         // For other types, use debug formatting as fallback
                         _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
                     };
+                    
+                    // If this is the first node, use its identifier type for the group
+                    if node_configs.is_empty() {
+                        group_identifier_type = identifier_type;
+                    }
                     
                     // Escape any quotes in the identifier for TOML format
                     let escaped_identifier = identifier.replace('"', "\\\"");
@@ -234,6 +243,7 @@ impl ConfigGenerator {
                     group_name: &folder_name,
                     namespace_number: &namespace_str,
                     interval_ms: 1000, // Default interval
+                    identifier_type: group_identifier_type, // Use identifier type from the first node
                 };
                 
                 let config_string = format::format_regular_config(&opcua_config, &nodes_str);
@@ -269,6 +279,9 @@ impl ConfigGenerator {
                     // Create individual node configurations
                     let mut node_configs = Vec::new();
                     
+                    // Default identifier type for this namespace group (will be overridden by first node)
+                    let mut group_identifier_type = "i";
+                    
                     for node in nodes {
                         // Extract the identifier and determine identifier_type
                         let (identifier, identifier_type) = match &node.node_id.identifier {
@@ -283,31 +296,22 @@ impl ConfigGenerator {
                             opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
                             opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
                             opcua::types::Identifier::ByteString(bytes) => (format!("{:?}", bytes), "b"),
-                            _ => (format!("{:?}", node.node_id.identifier), "s")
+                            _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
                         };
                         
-                        // Escape any quotes
+                        // If this is the first node, use its identifier type for the group
+                        if node_configs.is_empty() {
+                            group_identifier_type = identifier_type;
+                        }
+                        
+                        // Escape any quotes in the identifier for TOML format
                         let escaped_identifier = identifier.replace('"', "\\\"");
                         
                         // Format individual node config
-                        // let node_config = format!(
-                        //     "    # {{0}}\n
-                        //         [[inputs.opcua.nodes]]\n
-                        //               name = \"{}\"\n
-                        //                     namespace = \"{}\"\n
-                        //                           identifier_type = \"{}\"\n
-                        //                                 identifier = \"{}\"\n
-                        //                                       interval = \"{}ms\"\n",
-                        //     node.measurement_name,
-                        //     node.namespace,
-                        //     identifier_type,
-                        //     escaped_identifier,
-                        //     node.interval_ms
-                        // );
                         let node_config = format!(
                             "{{name=\"{}\", identifier=\"{}\"}}",
                             node.measurement_name,
-                            escaped_identifier,
+                            escaped_identifier
                         );
                         
                         node_configs.push(node_config);
@@ -322,6 +326,7 @@ impl ConfigGenerator {
                         group_name: &format!("opcua_browser_ns{}", namespace),
                         namespace_number: &namespace.to_string(),
                         interval_ms: 1000, // Default interval
+                        identifier_type: group_identifier_type, // Use identifier type from the first node
                     };
                     
                     let config_string = format::format_regular_config(&opcua_config, &node_configs.join("\n"));

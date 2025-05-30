@@ -25,6 +25,7 @@ pub struct OpcuaConfig<'a> {
     pub group_name: &'a str,
     pub namespace_number: &'a str,
     pub interval_ms: u64, // Store as u64 and format when needed
+    pub identifier_type: &'a str, // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
 }
 
 impl OpcuaConfig<'_> {
@@ -190,7 +191,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     [[inputs.opcua.group]]
       name = "{}"
       namespace = "{}"
-      identifier_type = "i"
+      identifier_type = "{}"
       nodes = [
         {}
       ]
@@ -201,6 +202,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         interval,
         config.group_name,
         config.namespace_number,
+        config.identifier_type,
         nodes_str
     )
 }
@@ -229,7 +231,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     [[inputs.opcua_listener.group]]
       name = "{}"
       namespace = "{}"
-      identifier_type = "i"
+      identifier_type = "{}"
       sampling_interval = "{}"
       nodes = [
         {}
@@ -240,6 +242,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         config.password,
         config.group_name,
         config.namespace_number,
+        config.identifier_type,
         interval,
         nodes_str
     )
