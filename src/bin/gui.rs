@@ -228,6 +228,18 @@ impl TelegrafApp {
             
             // Add each variable with the folder name for grouping
             for var_node in folder_variables {
+                // DEBUG: Print complete node information for inspection
+                // println!("\n==== FOLDER NODE DEBUG INFO ====");
+                // println!("Node ID: {:?}", var_node.node_id);
+                // println!("Namespace: {}", var_node.node_id.namespace);
+                // println!("Browse Name: {}", var_node.browse_name);
+                // println!("Display Name: {}", var_node.display_name);
+                // println!("Node Class: {:?}", var_node.node_class);
+                // println!("Data Type: {:?}", var_node.data_type);
+                // println!("Description: {:?}", var_node.description);
+                // println!("Folder: {}", group_name);
+                // println!("==============================\n");
+                
                 let selected_node = SelectedOpcUaNode {
                     node_id: var_node.node_id.clone(),
                     namespace: var_node.node_id.namespace,
@@ -247,6 +259,18 @@ impl TelegrafApp {
         Self::collect_selected_variable_nodes(&nodes_clone, &mut selected_variables);
         
         for var_node in selected_variables {
+            // DEBUG: Print complete node information for inspection
+            // println!("\n==== INDIVIDUAL NODE DEBUG INFO ====");
+            // println!("Node ID: {:?}", var_node.node_id);
+            // println!("Namespace: {}", var_node.node_id.namespace);
+            // println!("Browse Name: {}", var_node.browse_name);
+            // println!("Display Name: {}", var_node.display_name);
+            // println!("Node Class: {:?}", var_node.node_class);
+            // println!("Data Type: {:?}", var_node.data_type);
+            // println!("Description: {:?}", var_node.description);
+            // println!("Folder: None (individual node)");
+            // println!("==============================\n");
+            
             let selected_node = SelectedOpcUaNode {
                 node_id: var_node.node_id.clone(),
                 namespace: var_node.node_id.namespace,
