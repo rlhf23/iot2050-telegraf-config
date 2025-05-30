@@ -94,10 +94,33 @@ impl TelegrafApp {
                 // Skip checkbox for the root node (at indent_level 0)
                 if (node.node_class == opcua::types::NodeClass::Variable || is_folder) && indent_level > 0 {
                     if ui.checkbox(&mut node.selected, "").changed() {
-                        // Only for variables: If a node is deselected, also deselect all its children
-                        // For folders, we don't auto-select children - they're treated as a unit
+                        // For variables: If a node is deselected, also deselect all its children
                         if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
                             self.deselect_children(node);
+                        }
+                        
+                        // For folders: When selected, ensure children are loaded
+                        if node.selected && is_folder && !node.children_loaded {
+                            // Clone to avoid borrow issues
+                            let node_clone = node.clone();
+                            
+                            // Create a new poller to load children
+                            if let Ok(poller) = OpcUaPoller::new(self.config.clone()) {
+                                match poller.load_node_children(&node_clone, indent_level) {
+                                    Ok(children) => {
+                                        // Update the node with loaded children
+                                        node.children = children;
+                                        node.children_loaded = true;
+                                        
+                                        // Force a redraw
+                                        ui.ctx().request_repaint();
+                                    }
+                                    Err(e) => {
+                                        // Log the error but don't display it in the UI to avoid disrupting the layout
+                                        eprintln!("Error loading folder children when selecting checkbox: {}", e);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
