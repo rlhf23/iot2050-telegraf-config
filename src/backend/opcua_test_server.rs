@@ -198,6 +198,29 @@ impl OpcUaTestServer {
         Ok(())
     }
 
+    fn init2(&mut self) -> Result<(), TelegrafError> {
+        //... after server is set up
+        // let mut address_space = self.server.address_space().write();
+        let binding = self.server.address_space();
+        let mut address_space = binding.write();
+        // This is a convenience helper
+        let folder_id = address_space
+            .add_folder("Variables", "Variables", &NodeId::objects_folder_id())
+            .unwrap();
+    
+        // Build a variable
+        let node_id = NodeId::new(2, "MyVar");
+        VariableBuilder::new(&node_id, "MyVar", "MyVar")
+            .organized_by(&folder_id)
+            .value(0u8)
+            .insert(&mut address_space);
+        let now = DateTime::now();
+        let value = 123.456;
+        let node_id = NodeId::new(2, "myvalue");
+        let _ = address_space.set_variable_value(node_id, value, &now, &now);
+        Ok(())
+    }
+
     /// Starts the OPC UA server in a background thread.
     pub fn start(&mut self) -> Result<(), TelegrafError> {
         // For the standalone test server, we need to actually start the server
