@@ -24,7 +24,7 @@ pub struct OpcuaConfig<'a> {
     // Group settings
     pub group_name: &'a str,
     pub namespace_number: &'a str,
-    pub interval_ms: u64, // Store as u64 and format when needed
+    pub interval_ms: u64,         // Store as u64 and format when needed
     pub identifier_type: &'a str, // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
 }
 
@@ -174,7 +174,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         r#"
 [[inputs.opcua]]
   name = "opcua"
-  endpoint = "opc.tcp://{}:4840"
+  endpoint = "opc.tcp://{}"
   connect_timeout = "300s"
   request_timeout = "10s"
   session_timeout = "5m"
@@ -214,7 +214,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         r#"
 [[inputs.opcua_listener]]
   name = "opcua_listener"
-  endpoint = "opc.tcp://{}:4840"
+  endpoint = "opc.tcp://{}"
   connect_fail_behavior = "ignore"
   connect_timeout = "300s"
   request_timeout = "10s"
@@ -255,7 +255,7 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         r#"
 [[inputs.opcua]]
   name = "opcua"
-  endpoint = "opc.tcp://{}:4840"
+  endpoint = "opc.tcp://{}"
   connect_timeout = "300s"
   request_timeout = "10s"
   session_timeout = "5m"
