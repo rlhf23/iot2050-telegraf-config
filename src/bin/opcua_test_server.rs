@@ -51,10 +51,10 @@ fn main() -> Result<(), TelegrafError> {
 
 fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
     let xml_content = std::fs::read_to_string("tests/sample_db.xml")
-        .map_err(|e| TelegrafError::FileError(format!("Failed to read XML file: {}", e)))?;
+        .map_err(|e| TelegrafError::IoError(e))?;
     
     let doc = roxmltree::Document::parse(&xml_content)
-        .map_err(|e| TelegrafError::FileError(format!("Failed to parse XML: {}", e)))?;
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
     
     // Parse namespace URIs
     let mut namespaces = HashMap::new();
@@ -95,9 +95,8 @@ fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
     // Create Sample_DB folder under ServerInterfaces
     let sample_db_id = {
         let mut address_space = address_space.write();
-        let sample_db_node_id = NodeId::new(sample_db_ns, 1u32);
         address_space
-            .add_folder_with_id(sample_db_node_id, "Sample_DB", "Sample_DB", &server_interfaces_id)
+            .add_folder("Sample_DB", "Sample_DB", &server_interfaces_id)
             .unwrap()
     };
     
@@ -111,7 +110,7 @@ fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
             Variable::new(&NodeId::new(sample_db_ns, 5u32), "Real_4", "Real_4", 0.0f32),
             Variable::new(&NodeId::new(sample_db_ns, 6u32), "Real_5", "Real_5", 0.0f32),
         ];
-        address_space.add_variables(variables, &sample_db_id)?;
+        let _ = address_space.add_variables(variables, &sample_db_id);
     }
     
     Ok(())
