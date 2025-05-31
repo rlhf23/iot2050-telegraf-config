@@ -98,7 +98,7 @@ mod tests {
         non_xml_file.write_all(b"This is not an XML file").unwrap();
 
         let config = create_test_config(dir.path().to_path_buf());
-        let generator = ConfigGenerator::new(config).unwrap();
+        let _generator = ConfigGenerator::new(config).unwrap();
 
         let xml_files = ConfigGenerator::discover_xml_files(&dir.path().to_path_buf());
 

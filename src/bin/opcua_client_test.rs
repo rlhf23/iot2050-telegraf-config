@@ -2,7 +2,7 @@ use std::process::exit;
 
 use clap::{Arg, Command};
 use opcua::client::prelude::*;
-use opcua::types::{NodeId, Variant, MessageSecurityMode, ReadValueId, TimestampsToReturn};
+use opcua::types::{MessageSecurityMode, NodeId, ReadValueId, TimestampsToReturn, Variant};
 use sie_generate_config::error::TelegrafError;
 
 fn main() -> Result<(), TelegrafError> {
@@ -52,7 +52,7 @@ fn main() -> Result<(), TelegrafError> {
         .trust_server_certs(true)
         .create_sample_keypair(true)
         .client();
-    
+
     if let Some(mut client) = client {
         // Create the endpoint description
         let endpoint: EndpointDescription = (
@@ -62,30 +62,30 @@ fn main() -> Result<(), TelegrafError> {
             UserTokenPolicy::anonymous(),
         )
             .into();
-        
+
         // Connect to the server
         println!("Attempting to connect to the server...");
         match client.connect_to_endpoint(endpoint, IdentityToken::Anonymous) {
             Ok(session) => {
                 println!("Successfully connected to the server!");
-                
+
                 // Read test variables
                 println!("Testing read access to server variables...");
-                
+
                 let test_variables = [
                     ("IntVar", "Integer test variable"),
                     ("StringVar", "String test variable"),
                     ("BoolVar", "Boolean test variable"),
                 ];
-                
+
                 // Try to read each test variable
                 let namespace_index = 1; // Assuming the test namespace was registered with index 1
                 let mut success_count = 0;
-                
+
                 for (var_name, description) in &test_variables {
                     // Read the variable directly here without a separate function
                     let node_id = NodeId::new(namespace_index, *var_name);
-                    
+
                     // Create a read request
                     let read_id = ReadValueId {
                         node_id,
@@ -93,12 +93,13 @@ fn main() -> Result<(), TelegrafError> {
                         index_range: opcua::types::UAString::null(),
                         data_encoding: opcua::types::QualifiedName::null(),
                     };
-                    
+
                     // First, acquire a read lock on the session
                     let session_guard = session.read();
-                    
+
                     // Now use the session through the read guard
-                    let result = match session_guard.read(&[read_id], TimestampsToReturn::Both, 0.0) {
+                    let result = match session_guard.read(&[read_id], TimestampsToReturn::Both, 0.0)
+                    {
                         Ok(response) => {
                             if response.is_empty() {
                                 Err("Empty response from server".to_string())
@@ -120,13 +121,17 @@ fn main() -> Result<(), TelegrafError> {
                                     }
                                 }
                             }
-                        },
+                        }
                         Err(e) => Err(format!("Failed to read variable: {}", e)),
                     };
-                    
+
                     match result {
                         Ok(value) => {
-                            println!("✅ Successfully read {}: {}", description, format_variant(&value));
+                            println!(
+                                "✅ Successfully read {}: {}",
+                                description,
+                                format_variant(&value)
+                            );
                             success_count += 1;
                         }
                         Err(e) => {
@@ -134,16 +139,20 @@ fn main() -> Result<(), TelegrafError> {
                         }
                     }
                 }
-                
+
                 println!("\nTest Summary:");
-                println!("Successfully read {}/{} test variables", success_count, test_variables.len());
-                
+                println!(
+                    "Successfully read {}/{} test variables",
+                    success_count,
+                    test_variables.len()
+                );
+
                 if success_count == test_variables.len() {
                     println!("🎉 All tests passed! The OPC UA server is functioning correctly.");
                 } else {
                     println!("⚠️  Some tests failed. The OPC UA server might not be configured correctly.");
                 }
-            },
+            }
             Err(e) => {
                 eprintln!("Failed to connect to the server: {}", e);
                 exit(1);
@@ -153,11 +162,9 @@ fn main() -> Result<(), TelegrafError> {
         eprintln!("Failed to create OPC UA client");
         exit(1);
     }
-    
+
     Ok(())
 }
-
-
 
 /// Format a variant value as a string
 fn format_variant(variant: &Variant) -> String {

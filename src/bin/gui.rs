@@ -105,16 +105,17 @@ impl TelegrafApp {
                 };
 
                 // Check if this is a folder-like node that can have children
-                if node.node_class == opcua::types::NodeClass::Object 
-                   || node.node_class == opcua::types::NodeClass::ObjectType
-                   || (node.node_class == opcua::types::NodeClass::Variable 
-                       && (node.display_name.contains("DataBlocks") 
-                           || node.display_name.contains("Global") 
-                           || node.browse_name.contains("DataBlocks") 
-                           || node.browse_name.contains("Global"))) {
-                    
-                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
-                    
+                if node.node_class == opcua::types::NodeClass::Object
+                    || node.node_class == opcua::types::NodeClass::ObjectType
+                    || (node.node_class == opcua::types::NodeClass::Variable
+                        && (node.display_name.contains("DataBlocks")
+                            || node.display_name.contains("Global")
+                            || node.browse_name.contains("DataBlocks")
+                            || node.browse_name.contains("Global")))
+                {
+                    let label =
+                        format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+
                     // Use collapsing header to show node and its children
                     let header = ui.collapsing(label, |ui| {
                         // Show additional node information
@@ -124,7 +125,7 @@ impl TelegrafApp {
                         if let Some(description) = &node.description {
                             ui.label(format!("Description: {}", description));
                         }
-                        
+
                         // Check if children need to be loaded
                         if !node.children_loaded && node.children.is_empty() {
                             // Show loading indicator
@@ -132,10 +133,10 @@ impl TelegrafApp {
                                 ui.spinner();
                                 ui.label("Loading children...");
                             });
-                            
+
                             // Clone to avoid borrow issues
                             let node_clone = node.clone();
-                            
+
                             // Create a new poller to load children
                             if let Ok(poller) = OpcUaPoller::new(self.config.clone()) {
                                 match poller.load_node_children(&node_clone, indent_level) {
@@ -143,7 +144,7 @@ impl TelegrafApp {
                                         // Update the node with loaded children
                                         node.children = children;
                                         node.children_loaded = true;
-                                        
+
                                         // Force a redraw
                                         ui.ctx().request_repaint();
                                     }
@@ -157,7 +158,7 @@ impl TelegrafApp {
                             self.render_node_tree(ui, &mut node.children, indent_level + 1);
                         }
                     });
-                    
+
                     // If the header is expanded, we don't need to show the hover text
                     if !header.fully_open() {
                         header.header_response.on_hover_text(format!(
@@ -898,7 +899,7 @@ impl eframe::App for TelegrafApp {
                                         let result = if is_prometheus {
                                             generator.check_service_status(service_url.as_str(), ServiceType::Prometheus, 5)
                                         } else {
-                                            generator.check_influxdb_status(service_url.as_str(), ServiceType::InfluxDB, 5)
+                                            generator.check_influxdb_status()
                                         };
 
                                         match result {

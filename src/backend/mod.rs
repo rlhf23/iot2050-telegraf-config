@@ -11,7 +11,6 @@ mod format_test;
 pub mod opcua_poller;
 #[cfg(test)]
 mod opcua_poller_test;
-pub mod opcua_test_server;
 mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
@@ -183,34 +182,20 @@ impl ConfigGenerator {
                     // Extract the identifier and determine identifier_type based on the NodeId type
                     let (identifier, identifier_type) = match &node.node_id.identifier {
                         // For String type identifiers (type "s")
-                        opcua::types::Identifier::String(ua_string) => {
-                            // Need to extract the actual String from UAString
-                            let value = if let Some(val) = &ua_string.value() {
-                                val.clone() // Already a String
-                            } else {
-                                String::new() // Empty string as fallback
-                            };
-                            (value, "s")
-                        },
+                        opcua::types::Identifier::String(s) => (s.to_string(), "s"),
                         // For numeric identifiers (type "i")
-                        opcua::types::Identifier::Numeric(i) => {
-                            (i.to_string(), "i")
-                        },
+                        opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
                         // For GUID identifiers (type "g")
-                        opcua::types::Identifier::Guid(guid) => {
-                            (format!("{:?}", guid), "g")
-                        },
+                        opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
                         // For ByteString identifiers (type "b")
                         opcua::types::Identifier::ByteString(bytes) => {
                             (format!("{:?}", bytes), "b")
-                        },
-                        // For other types, use debug formatting as fallback
-                        _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
+                        }
                     };
-                    
+
                     // Escape any quotes in the identifier for TOML format
                     let escaped_identifier = identifier.replace('"', "\\\"");
-                    
+
                     let node_config = format!(
                         "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"{}\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
                         node.measurement_name,
@@ -233,8 +218,9 @@ impl ConfigGenerator {
                     namespace_number: &namespace.to_string(),
                     interval_ms: 1000, // Default interval
                 };
-                
-                let config_string = format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
+
+                let config_string =
+                    format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
 
                 config_strings.push(config_string);
             }
@@ -292,7 +278,7 @@ impl ConfigGenerator {
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
         // Ensure we have an InfluxDB token
         // Get token from config if available, otherwise it will be read from /etc/default/telegraf
-        let influx_token = self.config.influx_token.as_deref();
+        let _influx_token = self.config.influx_token.as_deref();
 
         ssh_utils::backup_influxdb(
             &self.config.iot_host,
@@ -344,12 +330,7 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn check_influxdb_status(
-        &self,
-        service_url: &str,
-        service_type: ssh_utils::ServiceType,
-        timeout_seconds: u64,
-    ) -> Result<bool, TelegrafError> {
+    pub fn check_influxdb_status(&self) -> Result<bool, TelegrafError> {
         ssh_utils::check_influxdb_status(
             &self.config.iot_host,
             &self.config.iot_username,
