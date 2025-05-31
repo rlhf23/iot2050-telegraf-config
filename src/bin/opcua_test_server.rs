@@ -103,4 +103,30 @@ pub fn add_example_variables(server: &mut Server, ns: u16) {
         // Add all variables to the test folder
         let _ = address_space.add_variables(vec![var1, var2, var3], &test_folder);
     }
+    {
+        let mut address_space = address_space.write();
+        let test_folder = address_space
+            .add_folder(
+                "SampleInterface",
+                "SampleInterface",
+                &NodeId::objects_folder_id(),
+            )
+            .unwrap();
+        // Create integer variable
+        let var1 = Variable::new(&NodeId::new(ns, 10), "IntVar", "Integer Variable", 42_i32);
+
+        // Create string variable
+        let var2 = Variable::new(
+            &NodeId::new(ns, 11),
+            "StringVar",
+            "String Variable",
+            "Hello OPC UA!",
+        );
+
+        // Create boolean variable
+        let var3 = Variable::new(&NodeId::new(ns, 12), "BoolVar", "Boolean Variable", true);
+
+        // Add all variables to the test folder
+        let _ = address_space.add_variables(vec![var1, var2, var3], &test_folder);
+    }
 }
