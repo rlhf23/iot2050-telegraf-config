@@ -138,6 +138,7 @@ impl ConfigGenerator {
                 group_name: "", // This will be determined in parse_xml
                 namespace_number: &file_config.namespace,
                 interval_ms: file_config.interval_ms,
+                identifier_type: "i", // Default to numeric identifier
             };
 
             let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
@@ -145,41 +146,54 @@ impl ConfigGenerator {
             config_strings.push(config_string);
         }
 
-        // Generate configuration strings for selected OPC UA nodes
+        // Generate configuration for selected OPC UA nodes from browser if available
         if !self.config.selected_opcua_nodes.is_empty() {
-            // Group nodes by namespace for efficient configuration
-            let mut namespace_groups: std::collections::HashMap<u16, Vec<&SelectedOpcUaNode>> =
-                std::collections::HashMap::new();
-
+            // First, separate nodes into folder groups and individual nodes
+            let mut folder_groups: std::collections::HashMap<String, Vec<SelectedOpcUaNode>> = std::collections::HashMap::new();
+            let mut individual_nodes: Vec<SelectedOpcUaNode> = Vec::new();
+            
             for node in &self.config.selected_opcua_nodes {
-                namespace_groups
-                    .entry(node.namespace)
-                    .or_default()
-                    .push(node);
+                if let Some(folder_name) = &node.folder_name {
+                    // Add to folder group
+                    folder_groups
+                        .entry(folder_name.clone())
+                        .or_default()
+                        .push(node.clone());
+                } else {
+                    // Individual node (not part of a folder)
+                    individual_nodes.push(node.clone());
+                }
             }
-
-            // Create configuration for each namespace group
-            for (namespace, nodes) in namespace_groups {
-                // Track the namespace
+            
+            // Process folder groups first - create a config for each folder using format_regular_config
+            for (folder_name, folder_nodes) in folder_groups {
+                if folder_nodes.is_empty() {
+                    continue;
+                }
+                
+                // Get the namespace from the first node (all nodes in a folder should have the same namespace)
+                let namespace = folder_nodes[0].namespace;
                 let namespace_str = namespace.to_string();
+                
+                // Track the namespace
                 let namespace_info = format::NamespaceInfo {
                     number: namespace_str.clone(),
-                    file_name: format!("opcua_browser_{}", namespace_str),
+                    file_name: format!("folder_{}", folder_name.replace(" ", "_").to_lowercase()),
                 };
-
-                // Check if this namespace is already in the list
-                if !namespace_numbers
-                    .iter()
-                    .any(|info| info.number == namespace_str)
-                {
+                
+                // Add to namespace list if not already there
+                if !namespace_numbers.iter().any(|info| info.number == namespace_str) {
                     namespace_numbers.push(namespace_info);
                 }
-
-                // Create configuration string for this namespace group
+                
+                // Create the nodes configuration string for this folder
                 let mut node_configs = Vec::new();
-
-                for node in nodes {
-                    // Extract the identifier and determine identifier_type based on the NodeId type
+                
+                // Default identifier type for the group (will be overridden if we have nodes)
+                let mut group_identifier_type = "i";
+                
+                for node in &folder_nodes {
+                    // Extract the identifier and determine identifier_type
                     let (identifier, identifier_type) = match &node.node_id.identifier {
                         // For String type identifiers (type "s")
                         opcua::types::Identifier::String(s) => (s.to_string(), "s"),
@@ -188,41 +202,128 @@ impl ConfigGenerator {
                         // For GUID identifiers (type "g")
                         opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
                         // For ByteString identifiers (type "b")
-                        opcua::types::Identifier::ByteString(bytes) => {
-                            (format!("{:?}", bytes), "b")
-                        }
+                        opcua::types::Identifier::ByteString(bytes) => (format!("{:?}", bytes), "b"),
+                        // For other types, use debug formatting as fallback
+                        _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
                     };
-
+                    
+                    // If this is the first node, use its identifier type for the group
+                    if node_configs.is_empty() {
+                        group_identifier_type = identifier_type;
+                    }
+                    
                     // Escape any quotes in the identifier for TOML format
                     let escaped_identifier = identifier.replace('"', "\\\"");
-
-                    let node_config = format!(
-                        "    # {{0}}\n    [[inputs.opcua.nodes]]\n      name = \"{}\"\n      namespace = \"{}\"\n      identifier_type = \"{}\"\n      identifier = \"{}\"\n      interval = \"{}ms\"\n",
-                        node.measurement_name,
-                        node.namespace,
-                        identifier_type,
-                        escaped_identifier,
-                        node.interval_ms
-                    );
-
-                    node_configs.push(node_config);
+                    
+                    // Format the node entry for the group
+                    node_configs.push(format!(
+                        "{{name=\"{}\", identifier=\"{}\"}}",
+                        node.display_name,
+                        escaped_identifier
+                    ));
                 }
-
-                // Create the full config for this namespace using format_browsed_config for the header
+                
+                // Join all node configs with commas and newlines for the group format
+                let nodes_str = node_configs.join(",\n        ");
+                
+                // Create a grouped config using format_regular_config
                 let opcua_config = format::OpcuaConfig {
                     ip: &self.config.ip,
                     username: &self.config.username,
                     password: &self.config.password,
                     is_listener: false,
-                    group_name: &format!("opcua_browser_ns{}", namespace),
-                    namespace_number: &namespace.to_string(),
+                    group_name: &folder_name,
+                    namespace_number: &namespace_str,
                     interval_ms: 1000, // Default interval
+                    identifier_type: group_identifier_type, // Use identifier type from the first node
                 };
-
-                let config_string =
-                    format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
-
+                
+                let config_string = format::format_regular_config(&opcua_config, &nodes_str);
                 config_strings.push(config_string);
+            }
+            
+            // Now handle individual nodes (not part of a folder)
+            if !individual_nodes.is_empty() {
+                // Group individual nodes by namespace
+                let mut namespace_groups: std::collections::HashMap<u16, Vec<SelectedOpcUaNode>> = std::collections::HashMap::new();
+                
+                for node in individual_nodes {
+                    namespace_groups
+                        .entry(node.namespace)
+                        .or_default()
+                        .push(node);
+                }
+                
+                // Create configuration for each namespace group of individual nodes
+                for (namespace, nodes) in namespace_groups {
+                    // Track the namespace
+                    let namespace_str = namespace.to_string();
+                    let namespace_info = format::NamespaceInfo {
+                        number: namespace_str.clone(),
+                        file_name: format!("opcua_browser_ns{}", namespace_str),
+                    };
+                    
+                    // Add to namespace list if not already there
+                    if !namespace_numbers.iter().any(|info| info.number == namespace_str) {
+                        namespace_numbers.push(namespace_info);
+                    }
+                    
+                    // Create individual node configurations
+                    let mut node_configs = Vec::new();
+                    
+                    // Default identifier type for this namespace group (will be overridden by first node)
+                    let mut group_identifier_type = "i";
+                    
+                    for node in nodes {
+                        // Extract the identifier and determine identifier_type
+                        let (identifier, identifier_type) = match &node.node_id.identifier {
+                            opcua::types::Identifier::String(ua_string) => {
+                                let value = if let Some(val) = &ua_string.value() {
+                                    val.clone()
+                                } else {
+                                    String::new()
+                                };
+                                (value, "s")
+                            },
+                            opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
+                            opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
+                            opcua::types::Identifier::ByteString(bytes) => (format!("{:?}", bytes), "b"),
+                            _ => (format!("{:?}", node.node_id.identifier), "s") // Default to string type
+                        };
+                        
+                        // If this is the first node, use its identifier type for the group
+                        if node_configs.is_empty() {
+                            group_identifier_type = identifier_type;
+                        }
+                        
+                        // Escape any quotes in the identifier for TOML format
+                        let escaped_identifier = identifier.replace('"', "\\\"");
+                        
+                        // Format individual node config
+                        let node_config = format!(
+                            "{{name=\"{}\", identifier=\"{}\"}}",
+                            node.measurement_name,
+                            escaped_identifier
+                        );
+                        
+                        node_configs.push(node_config);
+                    }
+                    
+                    // Create the full config for individual nodes using format_browsed_config
+                    let opcua_config = format::OpcuaConfig {
+                        ip: &self.config.ip,
+                        username: &self.config.username,
+                        password: &self.config.password,
+                        is_listener: false,
+                        group_name: &format!("opcua_browser_ns{}", namespace),
+                        namespace_number: &namespace.to_string(),
+                        interval_ms: 1000, // Default interval
+                        identifier_type: group_identifier_type, // Use identifier type from the first node
+                    };
+                    
+                    let config_string = format::format_regular_config(&opcua_config, &node_configs.join("\n"));
+                    config_strings.push(config_string);
+                }
             }
         }
 

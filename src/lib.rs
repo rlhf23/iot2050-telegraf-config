@@ -9,6 +9,7 @@ pub struct SelectedOpcUaNode {
     pub display_name: String,
     pub measurement_name: String,
     pub interval_ms: u32,
+    pub folder_name: Option<String>, // Optional folder name for grouping nodes
 }
 
 #[derive(Clone)]

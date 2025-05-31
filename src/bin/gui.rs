@@ -81,12 +81,46 @@ impl TelegrafApp {
             ui.horizontal(|ui| {
                 ui.add_space(indent);
 
-                // Only show checkboxes for variables that can be selected
-                if node.node_class == opcua::types::NodeClass::Variable {
+                // Determine if this is a folder-like node
+                let is_folder = node.node_class == opcua::types::NodeClass::Object 
+                    || node.node_class == opcua::types::NodeClass::ObjectType
+                    || (node.node_class == opcua::types::NodeClass::Variable 
+                        && (node.display_name.contains("DataBlocks") 
+                            || node.display_name.contains("Global") 
+                            || node.browse_name.contains("DataBlocks") 
+                            || node.browse_name.contains("Global")));
+                
+                // Show checkboxes for variables that can be selected and for folders
+                // Skip checkbox for the root node (at indent_level 0)
+                if (node.node_class == opcua::types::NodeClass::Variable || is_folder) && indent_level > 0 {
                     if ui.checkbox(&mut node.selected, "").changed() {
-                        // If a node is deselected, also deselect all its children
-                        if !node.selected {
+                        // For variables: If a node is deselected, also deselect all its children
+                        if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
                             self.deselect_children(node);
+                        }
+                        
+                        // For folders: When selected, ensure children are loaded
+                        if node.selected && is_folder && !node.children_loaded {
+                            // Clone to avoid borrow issues
+                            let node_clone = node.clone();
+                            
+                            // Create a new poller to load children
+                            if let Ok(poller) = OpcUaPoller::new(self.config.clone()) {
+                                match poller.load_node_children(&node_clone, indent_level) {
+                                    Ok(children) => {
+                                        // Update the node with loaded children
+                                        node.children = children;
+                                        node.children_loaded = true;
+                                        
+                                        // Force a redraw
+                                        ui.ctx().request_repaint();
+                                    }
+                                    Err(e) => {
+                                        // Log the error but don't display it in the UI to avoid disrupting the layout
+                                        eprintln!("Error loading folder children when selecting checkbox: {}", e);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -105,17 +139,10 @@ impl TelegrafApp {
                 };
 
                 // Check if this is a folder-like node that can have children
-                if node.node_class == opcua::types::NodeClass::Object
-                    || node.node_class == opcua::types::NodeClass::ObjectType
-                    || (node.node_class == opcua::types::NodeClass::Variable
-                        && (node.display_name.contains("DataBlocks")
-                            || node.display_name.contains("Global")
-                            || node.browse_name.contains("DataBlocks")
-                            || node.browse_name.contains("Global")))
-                {
-                    let label =
-                        format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
-
+                if is_folder {
+                    
+                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+                    
                     // Use collapsing header to show node and its children
                     let header = ui.collapsing(label, |ui| {
                         // Show additional node information
@@ -203,43 +230,141 @@ impl TelegrafApp {
 
     // Add selected nodes to the configuration
     fn add_selected_nodes_to_config(&mut self) {
-        let mut new_selected_nodes = Vec::new();
+        // Clear any existing selections first
+        self.config.selected_opcua_nodes.clear();
+        
         // Clone the nodes to avoid borrowing issues
         let nodes_clone = self.opcua_nodes.clone();
-        Self::collect_selected_nodes(&nodes_clone, &mut new_selected_nodes);
-
-        // Add new nodes to the configuration
-        for node in new_selected_nodes {
-            // Check if this node is already in the config
-            let is_duplicate = self
-                .config
-                .selected_opcua_nodes
-                .iter()
-                .any(|existing| existing.node_id == node.node_id);
-
-            if !is_duplicate {
-                // Create a new SelectedOpcUaNode
+        
+        // 1. Collect all selected folders
+        let mut selected_folders = Vec::new();
+        Self::collect_selected_folder_nodes(&nodes_clone, &mut selected_folders);
+        
+        // 2. For each selected folder, collect all variable nodes inside
+        for folder in selected_folders {
+            // Create a group name from the folder display name
+            let group_name = folder.display_name.clone();
+            
+            // Collect all variables from the folder recursively
+            let mut folder_variables = Vec::new();
+            Self::collect_all_variables_in_folder(&folder, &mut folder_variables);
+            
+            // Add each variable with the folder name for grouping
+            for var_node in folder_variables {
+                // DEBUG: Print complete node information for inspection
+                // println!("\n==== FOLDER NODE DEBUG INFO ====");
+                // println!("Node ID: {:?}", var_node.node_id);
+                // println!("Namespace: {}", var_node.node_id.namespace);
+                // println!("Browse Name: {}", var_node.browse_name);
+                // println!("Display Name: {}", var_node.display_name);
+                // println!("Node Class: {:?}", var_node.node_class);
+                // println!("Data Type: {:?}", var_node.data_type);
+                // println!("Description: {:?}", var_node.description);
+                // println!("Folder: {}", group_name);
+                // println!("==============================\n");
+                
                 let selected_node = SelectedOpcUaNode {
-                    node_id: node.node_id.clone(),
-                    namespace: node.node_id.namespace,
-                    browse_name: node.browse_name.clone(),
-                    display_name: node.display_name.clone(),
-                    measurement_name: node.display_name.clone().replace(" ", "_").to_lowercase(),
+                    node_id: var_node.node_id.clone(),
+                    namespace: var_node.node_id.namespace,
+                    browse_name: var_node.browse_name.clone(),
+                    display_name: var_node.display_name.clone(),
+                    measurement_name: var_node.display_name.clone().replace(" ", "_").to_lowercase(),
                     interval_ms: 1000, // Default interval
+                    folder_name: Some(group_name.clone()), // Set the folder name for grouping
                 };
-
+                
                 self.config.selected_opcua_nodes.push(selected_node);
             }
         }
+        
+        // 3. Add individually selected variables (not from folders)
+        let mut selected_variables = Vec::new();
+        Self::collect_selected_variable_nodes(&nodes_clone, &mut selected_variables);
+        
+        for var_node in selected_variables {
+            // DEBUG: Print complete node information for inspection
+            // println!("\n==== INDIVIDUAL NODE DEBUG INFO ====");
+            // println!("Node ID: {:?}", var_node.node_id);
+            // println!("Namespace: {}", var_node.node_id.namespace);
+            // println!("Browse Name: {}", var_node.browse_name);
+            // println!("Display Name: {}", var_node.display_name);
+            // println!("Node Class: {:?}", var_node.node_class);
+            // println!("Data Type: {:?}", var_node.data_type);
+            // println!("Description: {:?}", var_node.description);
+            // println!("Folder: None (individual node)");
+            // println!("==============================\n");
+            
+            let selected_node = SelectedOpcUaNode {
+                node_id: var_node.node_id.clone(),
+                namespace: var_node.node_id.namespace,
+                browse_name: var_node.browse_name.clone(),
+                display_name: var_node.display_name.clone(),
+                measurement_name: var_node.display_name.clone().replace(" ", "_").to_lowercase(),
+                interval_ms: 1000, // Default interval
+                folder_name: None, // Not part of a folder group
+            };
+            
+            self.config.selected_opcua_nodes.push(selected_node);
+        }
     }
-
-    // Collect all selected nodes into a flat vector - made static to avoid self reference issues
+    
+    // Helper function to determine if a node is a folder
+    fn is_folder_node(node: &OpcUaNode) -> bool {
+        node.node_class == opcua::types::NodeClass::Object 
+        || node.node_class == opcua::types::NodeClass::ObjectType
+        || (node.node_class == opcua::types::NodeClass::Variable 
+            && (node.display_name.contains("DataBlocks") 
+                || node.display_name.contains("Global") 
+                || node.browse_name.contains("DataBlocks") 
+                || node.browse_name.contains("Global")))
+    }
+    
+    // Collect only the variable nodes that are selected (for individual selection)
+    fn collect_selected_variable_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
+        for node in nodes {
+            if node.selected && node.node_class == opcua::types::NodeClass::Variable && !Self::is_folder_node(node) {
+                result.push(node.clone());
+            }
+            
+            // Still check children regardless of parent selection state
+            Self::collect_selected_variable_nodes(&node.children, result);
+        }
+    }
+    
+    // Collect only the folder nodes that are selected (for folder-based configuration)
+    fn collect_selected_folder_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
+        for node in nodes {
+            if node.selected && Self::is_folder_node(node) {
+                result.push(node.clone());
+            }
+            
+            // Check children recursively
+            Self::collect_selected_folder_nodes(&node.children, result);
+        }
+    }
+    
+    // Collect all variable nodes within a folder, regardless of their selection state
+    fn collect_all_variables_in_folder(folder: &OpcUaNode, result: &mut Vec<OpcUaNode>) {
+        for child in &folder.children {
+            if child.node_class == opcua::types::NodeClass::Variable && !Self::is_folder_node(child) {
+                result.push(child.clone());
+            }
+            
+            // Recursively collect from subfolders
+            if Self::is_folder_node(child) {
+                Self::collect_all_variables_in_folder(child, result);
+            }
+        }
+    }
+    
+    // Original method kept for backward compatibility
     fn collect_selected_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
             if node.selected {
                 result.push(node.clone());
             }
-            // Still check children even if parent is selected
+            
+            // Still check children regardless of parent selection state
             Self::collect_selected_nodes(&node.children, result);
         }
     }
