@@ -81,7 +81,7 @@ impl OpcUaPoller {
         xml_files: &[String],
     ) -> Result<HashMap<String, u16>, TelegrafError> {
         // Connect to the OPC UA server using the configured IP
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {
@@ -210,8 +210,14 @@ impl OpcUaPoller {
         use std::net::{TcpStream, ToSocketAddrs};
         use std::time::Duration;
 
-        // Try to resolve the address
-        let addr = format!("{}:4840", ip);
+        // If IP already contains port, use it directly; otherwise add default port
+        let addr = if ip.contains(':') {
+            ip.to_string()
+        } else {
+            // If no port specified, use default OPC UA port
+            format!("{}:4840", ip)
+        };
+        
         let socket_addrs = addr.to_socket_addrs().map_err(|e| {
             TelegrafError::OpcUaConnectionError(format!(
                 "Could not resolve OPC UA server address: {}",
@@ -318,7 +324,7 @@ impl OpcUaPoller {
     /// This now uses lazy loading to avoid performance issues with large node structures
     pub fn browse_complete_structure(&self) -> Result<Vec<OpcUaNode>, TelegrafError> {
         // Connect to the OPC UA server using the configured IP
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {
@@ -692,7 +698,7 @@ impl OpcUaPoller {
     /// This is used by the GUI to implement lazy loading
     pub fn load_node_children(&self, node: &OpcUaNode, depth: usize) -> Result<Vec<OpcUaNode>, TelegrafError> {
         // Connect to the OPC UA server
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
         
         // Check if the server is reachable
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {

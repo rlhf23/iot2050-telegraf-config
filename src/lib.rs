@@ -139,12 +139,54 @@ impl TelegrafConfig {
             ));
         }
 
+        // Check if we have IP:PORT format
+        let (ip_part, port_part) = if self.ip.contains(':') {
+            // Find the last colon (in case there are colons in the IP, like in IPv6)
+            // For IPv4, there will only be one colon separating IP and port
+            let last_colon_pos = self.ip.rfind(':').unwrap();
+            let ip_addr = &self.ip[0..last_colon_pos];
+            let port = &self.ip[last_colon_pos + 1..];
+            (ip_addr, Some(port))
+        } else {
+            // No port specified
+            (self.ip.as_str(), None)
+        };
+
+        // Check if IP is empty
+        if ip_part.is_empty() {
+            return Err(crate::error::TelegrafError::ValidationError(
+                "IP address cannot be empty".to_string(),
+            ));
+        }
+
+        // Validate IP portion
+        self.validate_ip_portion(ip_part)?;
+
+        // If we have a port, validate it
+        if let Some(port) = port_part {
+            // Validate that the port is a valid number
+            match port.parse::<u16>() {
+                Ok(_) => {} // Valid port
+                Err(_) => {
+                    return Err(crate::error::TelegrafError::ValidationError(format!(
+                        "Invalid port '{}' in IP address. Port must be a number between 0-65535",
+                        port
+                    )));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Helper function to validate just the IP portion
+    fn validate_ip_portion(&self, ip: &str) -> Result<(), crate::error::TelegrafError> {
         // Split by dots and check that we have exactly 4 parts
-        let parts: Vec<&str> = self.ip.split('.').collect();
+        let parts: Vec<&str> = ip.split('.').collect();
         if parts.len() != 4 {
             return Err(crate::error::TelegrafError::ValidationError(format!(
                 "Invalid IP address format for '{}', must have exactly 4 parts separated by dots",
-                self.ip
+                ip
             )));
         }
 
@@ -154,7 +196,7 @@ impl TelegrafConfig {
             if part.is_empty() {
                 return Err(crate::error::TelegrafError::ValidationError(format!(
                     "Invalid IP address format for '{}', empty segment found",
-                    self.ip
+                    ip
                 )));
             }
 
@@ -162,7 +204,7 @@ impl TelegrafConfig {
             if !part.chars().all(|c| c.is_ascii_digit()) {
                 return Err(crate::error::TelegrafError::ValidationError(format!(
                     "Invalid IP address format for '{}', segment '{}' contains non-digit characters",
-                    self.ip, part
+                    ip, part
                 )));
             }
 
@@ -172,7 +214,7 @@ impl TelegrafConfig {
                 Err(_) => {
                     return Err(crate::error::TelegrafError::ValidationError(format!(
                         "Invalid IP address format for '{}', segment '{}' must be between 0-255",
-                        self.ip, part
+                        ip, part
                     )));
                 }
             }
@@ -262,19 +304,8 @@ impl TelegrafConfig {
         let has_dots = hostname.contains('.');
 
         if only_digits_and_dots && has_dots {
-            // Create a temporary config with this hostname as the IP for validation
-            let temp_config = TelegrafConfig {
-                ip: hostname.to_string(),
-                ..self.clone()
-            };
-
-            // Use our existing IP validation logic
-            if let Err(e) = temp_config.validate_ip() {
-                return Err(crate::error::TelegrafError::HostFormatError(format!(
-                    "Invalid IP format in IOT host: {}",
-                    e
-                )));
-            }
+            // Validate IP portion directly
+            self.validate_ip_portion(hostname)?;
         }
         // If not an IP-like pattern or validation passed, allow other hostname formats (DNS names, etc.)
 
