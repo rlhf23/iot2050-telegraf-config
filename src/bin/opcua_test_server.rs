@@ -5,13 +5,13 @@ use std::time::Duration;
 use std::{env, thread};
 
 use clap::{Arg, Command};
-use sie_generate_config::backend::opcua_test_server::{OpcUaTestServer, ping_server};
+use sie_generate_config::backend::opcua_test_server::{ping_server, OpcUaTestServer};
 use sie_generate_config::error::TelegrafError;
 
 fn main() -> Result<(), TelegrafError> {
     // Initialize logging
     opcua::console_logging::init();
-    
+
     // Parse command-line arguments
     let matches = Command::new("OPC UA Test Server")
         .version("1.0.0")
@@ -80,12 +80,12 @@ fn main() -> Result<(), TelegrafError> {
     // Verify the server is running by pinging it
     let endpoint_url = server.endpoint_url();
     println!("Server started at endpoint: {}", endpoint_url);
-    
+
     // Wait for the server to fully initialize
     // The errors about discovery server connection are normal and can be ignored
-    println!("Waiting for server to initialize completely...");
-    thread::sleep(Duration::from_secs(3));
-    
+    println!("Waiting for server to initialize...");
+    thread::sleep(Duration::from_secs(1));
+
     // Try to ping the server
     if ping_server(endpoint_url) {
         println!("Server is reachable and ready to accept connections");
