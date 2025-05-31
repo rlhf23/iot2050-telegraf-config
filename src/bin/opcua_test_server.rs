@@ -1,107 +1,109 @@
-use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
-use std::thread;
+use opcua::server::prelude::*;
+use opcua::types::{NodeId};
 
-use clap::{Arg, Command};
-use sie_generate_config::backend::opcua_test_server::{ping_server, OpcUaTestServer};
 use sie_generate_config::error::TelegrafError;
 
 fn main() -> Result<(), TelegrafError> {
     // Initialize logging
     opcua::console_logging::init();
 
-    // Parse command-line arguments
-    let matches = Command::new("OPC UA Test Server")
-        .version("1.0.0")
-        .about("A simple OPC UA test server for testing applications")
-        .arg(
-            Arg::new("address")
-                .short('a')
-                .long("address")
-                .help("The network address to bind to")
-                .default_value("127.0.0.1"),
-        )
-        .arg(
-            Arg::new("port")
-                .short('p')
-                .long("port")
-                .help("The port number to bind to")
-                .default_value("4840"),
-        )
-        .get_matches();
+    let address = "127.0.0.1";
+    let port = 4840;
 
-    // Get the address and port from the command-line arguments
-    let address = matches.get_one::<String>("address").unwrap();
-    let port = matches
-        .get_one::<String>("port")
-        .unwrap()
-        .parse::<u16>()
-        .unwrap_or_else(|_| {
-            eprintln!("Invalid port number");
-            exit(1);
-        });
+        // Create a new server instance for the thread using the same configuration
+        let server_builder = ServerBuilder::new_sample()
+            .application_name("OPC UA Test Server")
+            .application_uri("urn:opcua-test-server")
+            .product_uri("urn:opcua-test-server:product")
+            .host_and_port(address, port);
 
-    println!("Starting OPC UA test server at {}:{}", address, port);
+        // Build the server
+        let mut server = match server_builder.server() {
+            Some(s) => s,
+            None => {
+                return Err(TelegrafError::OpcUaClientError(
+                    "Failed to create server for thread".to_string(),
+                ))
+            }
+        };
+        let ns = {
+            let address_space = server.address_space();
+            let mut address_space = address_space.write();
+            address_space
+                .register_namespace("urn:opcua-test-server")
+                .unwrap()
+        };
+    
+        // Add some variables of our own
+        add_example_variables(&mut server, ns);
+println!("Starting OPC UA test server at {}:{}", address, port);
+        server.run();
 
-    // Create a new test server
-    let mut server = match OpcUaTestServer::new(address, port) {
-        Ok(server) => server,
-        Err(e) => {
-            eprintln!("Failed to create OPC UA test server: {}", e);
-            exit(1);
-        }
-    };
+Ok(())
 
-    // Initialize the server with test nodes
-    // if let Err(e) = server.init() {
-    //     eprintln!("Failed to initialize OPC UA test server: {}", e);
-    //     exit(1);
-    // }
-
-    // server.add_example_variables(&mut server.server, 2);
-
-    // Create a flag for graceful shutdown
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    // Set up Ctrl+C handler for graceful shutdown
-    ctrlc::set_handler(move || {
-        println!("\nReceived Ctrl+C, shutting down...");
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl+C handler");
-
-    // Start the server
-    if let Err(e) = server.start() {
-        eprintln!("Failed to start OPC UA test server: {}", e);
-        exit(1);
-    }
-
-    // Verify the server is running by pinging it
-    let endpoint_url = server.endpoint_url();
-    println!("Server started at endpoint: {}", endpoint_url);
-
-    // Wait for the server to fully initialize
-    // The errors about discovery server connection are normal and can be ignored
-    println!("Waiting for server to initialize...");
-    thread::sleep(Duration::from_secs(1));
-
-    // Try to ping the server
-    if ping_server(endpoint_url) {
-        println!("Server is reachable and ready to accept connections");
-    } else {
-        eprintln!("Warning: Server might not be reachable");
-    }
-
-    println!("Press Ctrl+C to stop the server");
-
-    // Keep the server running until Ctrl+C
-    while running.load(Ordering::SeqCst) {
-        thread::sleep(Duration::from_secs(1));
-    }
-
-    println!("OPC UA test server shutting down");
-    Ok(())
 }
+
+pub fn add_example_variables(server: &mut Server, ns: u16) {
+        // These will be the node ids of the new variables
+        let v1_node = NodeId::new(ns, "v1");
+        let v2_node = NodeId::new(ns, "v2");
+        let v3_node = NodeId::new(ns, "v3");
+        let v4_node = NodeId::new(ns, "v4");
+    
+        let address_space = server.address_space();
+    
+        // The address space is guarded so obtain a lock to change it
+        {
+            let mut address_space = address_space.write();
+    
+            // Create a sample folder under objects folder
+            let sample_folder_id = address_space
+                .add_folder("Sample", "Sample", &NodeId::objects_folder_id())
+                .unwrap();
+
+    
+            // Add some variables to our sample folder. Values will be overwritten by the timer
+            let _ = address_space.add_variables(
+                vec![
+                    Variable::new(&v1_node, "v1", "v1", 0_i32),
+                    Variable::new(&v2_node, "v2", "v2", false),
+                    Variable::new(&v3_node, "v3", "v3", UAString::from("")),
+                    Variable::new(&v4_node, "v4", "v4", 0f64),
+                ],
+                &sample_folder_id,
+            );
+        }
+            {
+            let mut address_space = address_space.write();
+            let test_folder = address_space
+                .add_folder("TestFolder", "TestFolder", &NodeId::objects_folder_id())
+                .unwrap();
+            // Create integer variable
+            let var1 = Variable::new(
+                &NodeId::new(ns, "IntVar"),
+                "IntVar",
+                "Integer Variable",
+                42_i32,
+            );
+
+            // Create string variable
+            let var2 = Variable::new(
+                &NodeId::new(ns, "StringVar"),
+                "StringVar",
+                "String Variable",
+                "Hello OPC UA!",
+            );
+
+            // Create boolean variable
+            let var3 = Variable::new(
+                &NodeId::new(ns, "BoolVar"),
+                "BoolVar",
+                "Boolean Variable",
+                true,
+            );
+
+            // Add all variables to the test folder
+            let _ = address_space.add_variables(vec![var1, var2, var3], &test_folder);
+        }
+
+    }
