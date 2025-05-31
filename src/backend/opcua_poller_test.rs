@@ -4,7 +4,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use tempfile::tempdir;
 
-use super::opcua_poller::OpcUaPoller;
 use crate::error::TelegrafError;
 use crate::TelegrafConfig;
 

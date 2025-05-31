@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use opcua::server::prelude::*;
-use opcua::types::{NodeId, Variant};
+use opcua::types::{DateTime, NodeId, Variant};
 
 use crate::error::TelegrafError;
 
@@ -127,7 +127,7 @@ impl OpcUaTestServer {
         let ns = {
             let address_space = self.server.address_space();
             let mut address_space = address_space.write();
-            match address_space.register_namespace("urn:test-server") {
+            match address_space.register_namespace("urn:opcua-test-server") {
                 Ok(ns) => ns,
                 Err(_) => {
                     return Err(TelegrafError::OpcUaClientError(
@@ -136,7 +136,17 @@ impl OpcUaTestServer {
                 }
             }
         };
+        let static_folder_id = {
+            let address_space = self.server.address_space();
+            let mut address_space = address_space.write();
+            address_space
+                .add_folder("Static", "Static", &NodeId::objects_folder_id())
+                .unwrap()
+        };
 
+        println!("Namespace registered: {}", ns.clone());
+
+        Self::add_static_scalar_variables(&mut self.server, ns, &static_folder_id);
         // Create a test folder
         {
             let address_space = self.server.address_space();
@@ -198,26 +208,151 @@ impl OpcUaTestServer {
         Ok(())
     }
 
-    fn init2(&mut self) -> Result<(), TelegrafError> {
-        //... after server is set up
-        // let mut address_space = self.server.address_space().write();
+    const SCALAR_TYPES: [DataTypeId; 14] = [
+    DataTypeId::Boolean,
+    DataTypeId::Byte,
+    DataTypeId::SByte,
+    DataTypeId::Int16,
+    DataTypeId::UInt16,
+    DataTypeId::Int32,
+    DataTypeId::UInt32,
+    DataTypeId::Int64,
+    DataTypeId::UInt64,
+    DataTypeId::Float,
+    DataTypeId::Double,
+    DataTypeId::String,
+    DataTypeId::DateTime,
+    DataTypeId::Guid,
+    //    DataTypeId::ByteString, DataTypeId::Duration, DataTypeId::Integer, DataTypeId::LocaleId,
+    //    DataTypeId::LocalizedText, DataTypeId::NodeId, DataTypeId::Number, DataTypeId::QualifiedName,
+    //    DataTypeId::Time, DataTypeId::UInteger, DataTypeId::UtcTime, DataTypeId::XmlElement,
+    //    DataTypeId::Variant, DataTypeId::Decimal, DataTypeId::ImageBMP,
+    //    DataTypeId::ImageGIF, DataTypeId::ImageJPG, DataTypeId::ImagePNG,
+];
+pub fn scalar_node_id(ns: u16, id: DataTypeId, is_dynamic: bool, is_array: bool) -> NodeId {
+    let mut name = Self::scalar_name(id).to_string();
+    if is_dynamic {
+        name.push_str("Dynamic");
+    }
+    if is_array {
+        name.push_str("Array");
+    }
+    NodeId::new(ns, name)
+}
+pub fn scalar_name(id: DataTypeId) -> &'static str {
+    match id {
+        DataTypeId::Boolean => "Boolean",
+        DataTypeId::Byte => "Byte",
+        DataTypeId::SByte => "SByte",
+        DataTypeId::Int16 => "Int16",
+        DataTypeId::UInt16 => "UInt16",
+        DataTypeId::Int32 => "Int32",
+        DataTypeId::UInt32 => "UInt32",
+        DataTypeId::Int64 => "Int64",
+        DataTypeId::UInt64 => "UInt64",
+        DataTypeId::Float => "Float",
+        DataTypeId::Double => "Double",
+        DataTypeId::String => "String",
+        DataTypeId::DateTime => "DateTime",
+        DataTypeId::Guid => "Guid",
+
+        DataTypeId::ByteString => "ByteString",
+        DataTypeId::Duration => "Duration",
+        DataTypeId::Integer => "Integer",
+        DataTypeId::LocaleId => "LocaleId",
+        DataTypeId::LocalizedText => "LocalizedText",
+        DataTypeId::NodeId => "NodeId",
+        DataTypeId::Number => "Number",
+        DataTypeId::QualifiedName => "QualifiedName",
+        DataTypeId::UInteger => "UInteger",
+        DataTypeId::UtcTime => "UtcTime",
+        DataTypeId::XmlElement => "XmlElement",
+        DataTypeId::Decimal => "Decimal",
+        DataTypeId::ImageBMP => "ImageBMP",
+        DataTypeId::ImageGIF => "ImageGIF",
+        DataTypeId::ImageJPG => "ImageJPG",
+        DataTypeId::ImagePNG => "ImagePNG",
+
+        _ => panic!(),
+    }
+}
+pub fn scalar_default_value(id: DataTypeId) -> Variant {
+    match id {
+        DataTypeId::Boolean => false.into(),
+        DataTypeId::Byte => 0u8.into(),
+        DataTypeId::SByte => 0i8.into(),
+        DataTypeId::Int16 => 0i16.into(),
+        DataTypeId::UInt16 => 0u16.into(),
+        DataTypeId::Int32 => 0i32.into(),
+        DataTypeId::UInt32 => 0u32.into(),
+        DataTypeId::Int64 => 0i64.into(),
+        DataTypeId::UInt64 => 0u64.into(),
+        DataTypeId::Float => 0f32.into(),
+        DataTypeId::Double => 0f64.into(),
+        DataTypeId::String => "".into(),
+        DataTypeId::DateTime => DateTime::default().into(),
+        DataTypeId::Guid => Guid::default().into(),
+
+        DataTypeId::ByteString => ByteString::default().into(),
+        DataTypeId::Duration => 0f64.into(),
+        DataTypeId::LocaleId => "".into(),
+        DataTypeId::LocalizedText => LocalizedText::default().into(),
+        DataTypeId::NodeId => NodeId::null().into(),
+        DataTypeId::QualifiedName => QualifiedName::null().into(),
+        DataTypeId::UtcTime => DateTime::epoch().into(),
+        DataTypeId::XmlElement => Variant::XmlElement(XmlElement::default()),
+        DataTypeId::ImageBMP => ByteString::default().into(),
+        DataTypeId::ImageGIF => ByteString::default().into(),
+        DataTypeId::ImageJPG => ByteString::default().into(),
+        DataTypeId::ImagePNG => ByteString::default().into(),
+
+        _ => panic!(),
+    }
+}
+    pub fn add_static_scalar_variables(server: &mut Server, ns: u16, static_folder_id: &NodeId) {
+        // The address space is guarded so obtain a lock to change it
+        let address_space = server.address_space();
+        let mut address_space = address_space.write();
+    
+        // Create a folder under static folder
+        let folder_id = address_space
+            .add_folder("Scalar", "Scalar", static_folder_id)
+            .unwrap();
+    
+        for sn in Self::SCALAR_TYPES.iter() {
+            let name = Self::scalar_name(*sn);
+            let node_id = Self::scalar_node_id(ns, *sn, false, false);
+            VariableBuilder::new(&node_id, name, name)
+                .data_type(sn)
+                .value(Self::scalar_default_value(*sn))
+                .organized_by(&folder_id)
+                .writable()
+                .insert(&mut address_space);
+        }
+    }
+
+    pub fn init2(&mut self) -> Result<(), TelegrafError> {
         let binding = self.server.address_space();
         let mut address_space = binding.write();
-        // This is a convenience helper
+        
+        // Add a folder under objects folder
         let folder_id = address_space
             .add_folder("Variables", "Variables", &NodeId::objects_folder_id())
             .unwrap();
     
-        // Build a variable
+        // Build a variable using the correct namespace
         let node_id = NodeId::new(2, "MyVar");
         VariableBuilder::new(&node_id, "MyVar", "MyVar")
             .organized_by(&folder_id)
             .value(0u8)
             .insert(&mut address_space);
+            
+        // Create another variable
         let now = DateTime::now();
         let value = 123.456;
         let node_id = NodeId::new(2, "myvalue");
         let _ = address_space.set_variable_value(node_id, value, &now, &now);
+        
         Ok(())
     }
 

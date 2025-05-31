@@ -1,7 +1,6 @@
 use clap::{Arg, ArgAction, Command};
 use sie_generate_config::{
     backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
-    error::TelegrafError,
     TelegrafConfig,
 };
 use std::collections::HashMap;

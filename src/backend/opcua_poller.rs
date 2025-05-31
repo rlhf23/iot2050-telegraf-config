@@ -527,7 +527,7 @@ impl OpcUaPoller {
                                         let child_node_id = reference.node_id.node_id.clone();
                                         
                                         // Create the node
-                                        let mut node = OpcUaNode::new(
+                                        let node = OpcUaNode::new(
                                             child_node_id.clone(),
                                             browse_name.clone(),
                                             display_name.clone(),
@@ -621,7 +621,7 @@ impl OpcUaPoller {
                             let node_class = reference.node_class;
                             let child_node_id = reference.node_id.node_id.clone();
 
-                            let mut node = OpcUaNode::new(
+                            let node = OpcUaNode::new(
                                 child_node_id.clone(),
                                 browse_name.clone(),
                                 display_name.clone(),

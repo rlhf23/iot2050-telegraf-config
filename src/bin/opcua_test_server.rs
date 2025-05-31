@@ -2,7 +2,7 @@ use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{env, thread};
+use std::thread;
 
 use clap::{Arg, Command};
 use sie_generate_config::backend::opcua_test_server::{ping_server, OpcUaTestServer};
