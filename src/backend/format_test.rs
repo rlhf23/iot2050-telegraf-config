@@ -123,12 +123,13 @@ mod tests {
         file.write_all(xml_content.as_bytes())?;
 
         let config = OpcuaConfig {
-            ip: "192.168.1.100",
+            ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
             is_listener: false,
             group_name: "",
             namespace_number: "2",
+            identifier_type: "i",
             interval_ms: 1000,
         };
 
@@ -177,12 +178,13 @@ mod tests {
         file.write_all(xml_content.as_bytes())?;
 
         let config = OpcuaConfig {
-            ip: "192.168.1.100",
+            ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
             is_listener: false,
             group_name: "",
             namespace_number: "2",
+            identifier_type: "i",
             interval_ms: 1000,
         };
 
@@ -221,12 +223,13 @@ mod tests {
         file.write_all(xml_content.as_bytes())?;
 
         let config = OpcuaConfig {
-            ip: "192.168.1.100",
+            ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
             is_listener: false,
             group_name: "",
             namespace_number: "2",
+            identifier_type: "i",
             interval_ms: 1000,
         };
 

@@ -4,7 +4,6 @@ use std::io::Write;
 use std::path::PathBuf;
 use tempfile::tempdir;
 
-use super::opcua_poller::OpcUaPoller;
 use crate::error::TelegrafError;
 use crate::TelegrafConfig;
 
@@ -29,6 +28,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            selected_opcua_nodes: Vec::new(),
         }
     }
 

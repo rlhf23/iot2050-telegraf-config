@@ -24,7 +24,8 @@ pub struct OpcuaConfig<'a> {
     // Group settings
     pub group_name: &'a str,
     pub namespace_number: &'a str,
-    pub interval_ms: u64, // Store as u64 and format when needed
+    pub interval_ms: u64,         // Store as u64 and format when needed
+    pub identifier_type: &'a str, // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
 }
 
 impl OpcuaConfig<'_> {
@@ -166,14 +167,14 @@ fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     }
 }
 
-fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
 
     format!(
         r#"
 [[inputs.opcua]]
   name = "opcua"
-  endpoint = "opc.tcp://{}:4840"
+  endpoint = "opc.tcp://{}"
   connect_timeout = "300s"
   request_timeout = "10s"
   session_timeout = "5m"
@@ -190,7 +191,7 @@ fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     [[inputs.opcua.group]]
       name = "{}"
       namespace = "{}"
-      identifier_type = "i"
+      identifier_type = "{}"
       nodes = [
         {}
       ]
@@ -201,6 +202,7 @@ fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         interval,
         config.group_name,
         config.namespace_number,
+        config.identifier_type,
         nodes_str
     )
 }
@@ -212,7 +214,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         r#"
 [[inputs.opcua_listener]]
   name = "opcua_listener"
-  endpoint = "opc.tcp://{}:4840"
+  endpoint = "opc.tcp://{}"
   connect_fail_behavior = "ignore"
   connect_timeout = "300s"
   request_timeout = "10s"
@@ -229,7 +231,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     [[inputs.opcua_listener.group]]
       name = "{}"
       namespace = "{}"
-      identifier_type = "i"
+      identifier_type = "{}"
       sampling_interval = "{}"
       nodes = [
         {}
@@ -240,8 +242,36 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         config.password,
         config.group_name,
         config.namespace_number,
+        config.identifier_type,
         interval,
         nodes_str
+    )
+}
+
+pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+    let interval = config.get_interval_string();
+
+    format!(
+        r#"
+[[inputs.opcua]]
+  name = "opcua"
+  endpoint = "opc.tcp://{}"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  session_timeout = "5m"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "source"
+  client_trace = false
+  interval = "{}" 
+    {}
+    "#,
+        config.ip, config.username, config.password, interval, nodes_str
     )
 }
 
@@ -250,9 +280,8 @@ pub fn parse_xml(
     xml_file: &str,
     namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> Result<String, TelegrafError> {
-    let xml = std::fs::read_to_string(xml_file)
-        .map_err(|e| TelegrafError::IoError(e))?;
-    
+    let xml = std::fs::read_to_string(xml_file).map_err(|e| TelegrafError::IoError(e))?;
+
     let doc = Document::parse(&xml)
         .map_err(|e| TelegrafError::ConfigError(format!("Invalid XML format: {}", e)))?;
 

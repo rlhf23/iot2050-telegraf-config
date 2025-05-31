@@ -1,8 +1,5 @@
-use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use tempfile::tempdir;
 
 // Check if we're running in a CI environment
 fn is_ci_environment() -> bool {

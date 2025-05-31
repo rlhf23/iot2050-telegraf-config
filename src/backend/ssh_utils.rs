@@ -618,7 +618,7 @@ pub fn check_service_status(
     let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
 
     // Determine the health endpoint based on service type
-    let endpoint = match service_type {
+    let _endpoint = match service_type {
         ServiceType::InfluxDB => "health",
         ServiceType::Prometheus => "api/v1/status/config",
     };

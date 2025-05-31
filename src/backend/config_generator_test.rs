@@ -35,7 +35,7 @@ mod tests {
     fn create_test_config(folder: PathBuf) -> TelegrafConfig {
         TelegrafConfig {
             folder: folder.clone(),
-            ip: "192.168.1.1".to_string(),
+            ip: "192.168.1.1:4840".to_string(),
             username: "user".to_string(),
             password: "pass".to_string(),
             iot_host: "192.168.1.2:22".to_string(),
@@ -47,6 +47,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            selected_opcua_nodes: Vec::new(),
         }
     }
 
@@ -97,7 +98,7 @@ mod tests {
         non_xml_file.write_all(b"This is not an XML file").unwrap();
 
         let config = create_test_config(dir.path().to_path_buf());
-        let generator = ConfigGenerator::new(config).unwrap();
+        let _generator = ConfigGenerator::new(config).unwrap();
 
         let xml_files = ConfigGenerator::discover_xml_files(&dir.path().to_path_buf());
 
@@ -237,7 +238,7 @@ mod tests {
         let mut generator = ConfigGenerator::new(config).unwrap();
 
         // Set a custom IP for this file
-        let custom_ip = "10.20.30.40";
+        let custom_ip = "10.20.30.40:4840";
         generator.set_file_config(
             xml_path_str.clone(),
             "2".to_string(),
@@ -253,7 +254,7 @@ mod tests {
         let config_content = result.unwrap();
 
         // Verify the custom IP is used instead of the default
-        assert!(config_content.contains(&format!("endpoint = \"opc.tcp://{}:4840\"", custom_ip)));
+        assert!(config_content.contains(&format!("endpoint = \"opc.tcp://{}\"", custom_ip)));
         assert!(!config_content.contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
     }
 

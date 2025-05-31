@@ -1,6 +1,6 @@
-use crate::{error::TelegrafError, TelegrafConfig};
+use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::Write;
 
 #[cfg(test)]
@@ -138,11 +138,192 @@ impl ConfigGenerator {
                 group_name: "", // This will be determined in parse_xml
                 namespace_number: &file_config.namespace,
                 interval_ms: file_config.interval_ms,
+                identifier_type: "i", // Default to numeric identifier
             };
 
             let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
             config_strings.push(config_string);
+        }
+
+        // Generate configuration for selected OPC UA nodes from browser if available
+        if !self.config.selected_opcua_nodes.is_empty() {
+            // First, separate nodes into folder groups and individual nodes
+            let mut folder_groups: std::collections::HashMap<String, Vec<SelectedOpcUaNode>> =
+                std::collections::HashMap::new();
+            let mut individual_nodes: Vec<SelectedOpcUaNode> = Vec::new();
+
+            for node in &self.config.selected_opcua_nodes {
+                if let Some(folder_name) = &node.folder_name {
+                    // Add to folder group
+                    folder_groups
+                        .entry(folder_name.clone())
+                        .or_default()
+                        .push(node.clone());
+                } else {
+                    // Individual node (not part of a folder)
+                    individual_nodes.push(node.clone());
+                }
+            }
+
+            // Process folder groups first - create a config for each folder using format_regular_config
+            for (folder_name, folder_nodes) in folder_groups {
+                if folder_nodes.is_empty() {
+                    continue;
+                }
+
+                // Get the namespace from the first node (all nodes in a folder should have the same namespace)
+                let namespace = folder_nodes[0].namespace;
+                let namespace_str = namespace.to_string();
+
+                // Track the namespace
+                let namespace_info = format::NamespaceInfo {
+                    number: namespace_str.clone(),
+                    file_name: format!("folder_{}", folder_name.replace(" ", "_").to_lowercase()),
+                };
+
+                // Add to namespace list if not already there
+                if !namespace_numbers
+                    .iter()
+                    .any(|info| info.number == namespace_str)
+                {
+                    namespace_numbers.push(namespace_info);
+                }
+
+                // Create the nodes configuration string for this folder
+                let mut node_configs = Vec::new();
+
+                // Default identifier type for the group (will be overridden if we have nodes)
+                let mut group_identifier_type = "i";
+
+                for node in &folder_nodes {
+                    // Extract the identifier and determine identifier_type
+                    let (identifier, identifier_type) = match &node.node_id.identifier {
+                        opcua::types::Identifier::String(s) => (s.to_string(), "s"),
+                        opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
+                        opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
+                        opcua::types::Identifier::ByteString(bytes) => {
+                            (format!("{:?}", bytes), "b")
+                        }
+                        _ => (format!("{:?}", node.node_id.identifier), "s"), // Default to string type
+                    };
+
+                    // If this is the first node, use its identifier type for the group
+                    if node_configs.is_empty() {
+                        group_identifier_type = identifier_type;
+                    }
+
+                    // Escape any quotes in the identifier for TOML format
+                    let escaped_identifier = identifier.replace('"', "\\\"");
+
+                    // Format the node entry for the group
+                    node_configs.push(format!(
+                        "{{name=\"{}\", identifier=\"{}\"}}",
+                        node.display_name, escaped_identifier
+                    ));
+                }
+
+                // Join all node configs with commas and newlines for the group format
+                let nodes_str = node_configs.join(",\n        ");
+
+                // Create a grouped config using format_regular_config
+                let opcua_config = format::OpcuaConfig {
+                    ip: &self.config.ip,
+                    username: &self.config.username,
+                    password: &self.config.password,
+                    is_listener: false,
+                    group_name: &folder_name,
+                    namespace_number: &namespace_str,
+                    interval_ms: 1000,                      // Default interval
+                    identifier_type: group_identifier_type, // Use identifier type from the first node
+                };
+
+                let config_string = format::format_regular_config(&opcua_config, &nodes_str);
+                config_strings.push(config_string);
+            }
+
+            // Now handle individual nodes (not part of a folder)
+            if !individual_nodes.is_empty() {
+                // Group individual nodes by namespace
+                let mut namespace_groups: std::collections::HashMap<u16, Vec<SelectedOpcUaNode>> =
+                    std::collections::HashMap::new();
+
+                for node in individual_nodes {
+                    namespace_groups
+                        .entry(node.namespace)
+                        .or_default()
+                        .push(node);
+                }
+
+                // Create configuration for each namespace group of individual nodes
+                for (namespace, nodes) in namespace_groups {
+                    // Track the namespace
+                    let namespace_str = namespace.to_string();
+                    let namespace_info = format::NamespaceInfo {
+                        number: namespace_str.clone(),
+                        file_name: format!("opcua_browser_ns{}", namespace_str),
+                    };
+
+                    // Add to namespace list if not already there
+                    if !namespace_numbers
+                        .iter()
+                        .any(|info| info.number == namespace_str)
+                    {
+                        namespace_numbers.push(namespace_info);
+                    }
+
+                    // Create individual node configurations
+                    let mut node_configs = Vec::new();
+
+                    // Default identifier type for this namespace group (will be overridden by first node)
+                    let mut group_identifier_type = "i";
+
+                    for node in nodes {
+                        // Extract the identifier and determine identifier_type
+                        let (identifier, identifier_type) = match &node.node_id.identifier {
+                            opcua::types::Identifier::String(s) => (s.to_string(), "s"),
+                            opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
+                            opcua::types::Identifier::Guid(guid) => (format!("{:?}", guid), "g"),
+                            opcua::types::Identifier::ByteString(bytes) => {
+                                (format!("{:?}", bytes), "b")
+                            }
+                            _ => (format!("{:?}", node.node_id.identifier), "s"), // Default to string type
+                        };
+
+                        // If this is the first node, use its identifier type for the group
+                        if node_configs.is_empty() {
+                            group_identifier_type = identifier_type;
+                        }
+
+                        // Escape any quotes in the identifier for TOML format
+                        let escaped_identifier = identifier.replace('"', "\\\"");
+
+                        // Format individual node config
+                        let node_config = format!(
+                            "{{name=\"{}\", identifier=\"{}\"}}",
+                            node.measurement_name, escaped_identifier
+                        );
+
+                        node_configs.push(node_config);
+                    }
+
+                    // Create the full config for individual nodes using format_browsed_config
+                    let opcua_config = format::OpcuaConfig {
+                        ip: &self.config.ip,
+                        username: &self.config.username,
+                        password: &self.config.password,
+                        is_listener: false,
+                        group_name: &format!("opcua_browser_ns{}", namespace),
+                        namespace_number: &namespace.to_string(),
+                        interval_ms: 1000,                      // Default interval
+                        identifier_type: group_identifier_type, // Use identifier type from the first node
+                    };
+
+                    let config_string =
+                        format::format_regular_config(&opcua_config, &node_configs.join("\n"));
+                    config_strings.push(config_string);
+                }
+            }
         }
 
         // Get the influx token if not already set (only needed for InfluxDB output)
@@ -197,7 +378,7 @@ impl ConfigGenerator {
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
         // Ensure we have an InfluxDB token
         // Get token from config if available, otherwise it will be read from /etc/default/telegraf
-        let influx_token = self.config.influx_token.as_deref();
+        let _influx_token = self.config.influx_token.as_deref();
 
         ssh_utils::backup_influxdb(
             &self.config.iot_host,
@@ -249,13 +430,7 @@ impl ConfigGenerator {
         )
     }
 
-    /// Generic method to check if a service is responding
-    pub fn check_influxdb_status(
-        &self,
-        service_url: &str,
-        service_type: ssh_utils::ServiceType,
-        timeout_seconds: u64,
-    ) -> Result<bool, TelegrafError> {
+    pub fn check_influxdb_status(&self) -> Result<bool, TelegrafError> {
         ssh_utils::check_influxdb_status(
             &self.config.iot_host,
             &self.config.iot_username,

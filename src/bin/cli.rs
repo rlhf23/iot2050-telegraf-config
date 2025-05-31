@@ -1,11 +1,9 @@
 use clap::{Arg, ArgAction, Command};
 use sie_generate_config::{
     backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
-    error::TelegrafError,
     TelegrafConfig,
 };
 use std::collections::HashMap;
-use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -210,6 +208,7 @@ fn main() {
                 .to_string(),
         ),
         include_test_inputs: matches.get_flag("test_inputs"),
+        selected_opcua_nodes: Vec::new(),
     };
 
     // For operations that don't need full config setup
