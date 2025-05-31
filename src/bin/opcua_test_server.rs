@@ -1,5 +1,6 @@
 use opcua::server::prelude::*;
 use opcua::types::NodeId;
+use std::collections::HashMap;
 
 use sie_generate_config::error::TelegrafError;
 
@@ -34,11 +35,85 @@ fn main() -> Result<(), TelegrafError> {
             .unwrap()
     };
 
-    // Add some variables of our own
-    add_example_variables(&mut server, ns);
+    // Load and parse XML to create nodes
+    match load_nodes_from_xml(&mut server) {
+        Ok(_) => println!("Successfully loaded nodes from XML"),
+        Err(e) => {
+            println!("Failed to load nodes from XML: {}. Using fallback nodes.", e);
+            add_example_variables(&mut server, ns);
+        }
+    }
     println!("Starting OPC UA test server at {}:{}", address, port);
     server.run();
 
+    Ok(())
+}
+
+fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
+    let xml_content = std::fs::read_to_string("tests/sample_db.xml")
+        .map_err(|e| TelegrafError::FileError(format!("Failed to read XML file: {}", e)))?;
+    
+    let doc = roxmltree::Document::parse(&xml_content)
+        .map_err(|e| TelegrafError::FileError(format!("Failed to parse XML: {}", e)))?;
+    
+    // Parse namespace URIs
+    let mut namespaces = HashMap::new();
+    if let Some(namespace_uris) = doc.descendants().find(|n| n.tag_name().name() == "NamespaceUris") {
+        for (index, uri_node) in namespace_uris.children().enumerate() {
+            if uri_node.tag_name().name() == "Uri" {
+                if let Some(uri) = uri_node.text() {
+                    namespaces.insert(index + 1, uri.to_string());
+                }
+            }
+        }
+    }
+    
+    // Register namespaces and get their IDs
+    let mut namespace_ids = HashMap::new();
+    let address_space = server.address_space();
+    {
+        let mut address_space = address_space.write();
+        for (_, uri) in &namespaces {
+            let ns_id = address_space.register_namespace(uri).unwrap();
+            namespace_ids.insert(uri.clone(), ns_id);
+        }
+    }
+    
+    // Create ServerInterfaces folder
+    let server_interfaces_id = {
+        let mut address_space = address_space.write();
+        address_space
+            .add_folder("ServerInterfaces", "ServerInterfaces", &NodeId::objects_folder_id())
+            .unwrap()
+    };
+    
+    // Find Sample_DB namespace ID
+    let sample_db_ns = namespace_ids.get("http://Sample_DB")
+        .copied()
+        .unwrap_or(2);
+    
+    // Create Sample_DB folder under ServerInterfaces
+    let sample_db_id = {
+        let mut address_space = address_space.write();
+        let sample_db_node_id = NodeId::new(sample_db_ns, 1u32);
+        address_space
+            .add_folder_with_id(sample_db_node_id, "Sample_DB", "Sample_DB", &server_interfaces_id)
+            .unwrap()
+    };
+    
+    // Create REAL variables under Sample_DB
+    {
+        let mut address_space = address_space.write();
+        let variables = vec![
+            Variable::new(&NodeId::new(sample_db_ns, 2u32), "Real_1", "Real_1", 0.0f32),
+            Variable::new(&NodeId::new(sample_db_ns, 3u32), "Real_2", "Real_2", 0.0f32),
+            Variable::new(&NodeId::new(sample_db_ns, 4u32), "Real_3", "Real_3", 0.0f32),
+            Variable::new(&NodeId::new(sample_db_ns, 5u32), "Real_4", "Real_4", 0.0f32),
+            Variable::new(&NodeId::new(sample_db_ns, 6u32), "Real_5", "Real_5", 0.0f32),
+        ];
+        address_space.add_variables(variables, &sample_db_id)?;
+    }
+    
     Ok(())
 }
 
