@@ -196,15 +196,7 @@ impl ConfigGenerator {
                     // Extract the identifier and determine identifier_type
                     let (identifier, identifier_type) = match &node.node_id.identifier {
                         // For String type identifiers (type "s")
-                        opcua::types::Identifier::String(ua_string) => {
-                            // Need to extract the actual String from UAString
-                            let value = if let Some(val) = &ua_string.value() {
-                                val.clone()
-                            } else {
-                                String::new()
-                            };
-                            (value, "s")
-                        },
+                        opcua::types::Identifier::String(s) => (s.to_string(), "s"),
                         // For numeric identifiers (type "i")
                         opcua::types::Identifier::Numeric(i) => (i.to_string(), "i"),
                         // For GUID identifiers (type "g")
@@ -387,7 +379,7 @@ impl ConfigGenerator {
     pub fn backup_influx(&self) -> Result<(), TelegrafError> {
         // Ensure we have an InfluxDB token
         // Get token from config if available, otherwise it will be read from /etc/default/telegraf
-        let influx_token = self.config.influx_token.as_deref();
+        let _influx_token = self.config.influx_token.as_deref();
 
         ssh_utils::backup_influxdb(
             &self.config.iot_host,
@@ -439,12 +431,7 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn check_influxdb_status(
-        &self,
-        service_url: &str,
-        service_type: ssh_utils::ServiceType,
-        timeout_seconds: u64,
-    ) -> Result<bool, TelegrafError> {
+    pub fn check_influxdb_status(&self) -> Result<bool, TelegrafError> {
         ssh_utils::check_influxdb_status(
             &self.config.iot_host,
             &self.config.iot_username,

@@ -8,7 +8,7 @@ use opcua::{
     core::comms::url::is_opc_ua_binary_url,
     sync::*,
     types::{
-        AttributeId, ByteString, BrowseDescription, BrowseDescriptionResultMask, BrowseDirection,
+        AttributeId, BrowseDescription, BrowseDescriptionResultMask, BrowseDirection, ByteString,
         EndpointDescription, MessageSecurityMode, NodeClass, NodeId, ReferenceTypeId,
         UserTokenPolicy, Variant,
     },
@@ -81,7 +81,7 @@ impl OpcUaPoller {
         xml_files: &[String],
     ) -> Result<HashMap<String, u16>, TelegrafError> {
         // Connect to the OPC UA server using the configured IP
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {
@@ -210,8 +210,14 @@ impl OpcUaPoller {
         use std::net::{TcpStream, ToSocketAddrs};
         use std::time::Duration;
 
-        // Try to resolve the address
-        let addr = format!("{}:4840", ip);
+        // If IP already contains port, use it directly; otherwise add default port
+        let addr = if ip.contains(':') {
+            ip.to_string()
+        } else {
+            // If no port specified, use default OPC UA port
+            format!("{}:4840", ip)
+        };
+
         let socket_addrs = addr.to_socket_addrs().map_err(|e| {
             TelegrafError::OpcUaConnectionError(format!(
                 "Could not resolve OPC UA server address: {}",
@@ -275,17 +281,16 @@ impl OpcUaPoller {
                 TelegrafError::ConfigError("Failed to create OPC UA client".to_string())
             })?;
 
-        let endpoint: EndpointDescription = (
-            discovery_url,
-            "Basic256Sha256",
-            MessageSecurityMode::Sign,
-            UserTokenPolicy::anonymous(),
-        )
-            .into();
-
         // Connect to server with appropriate credentials
         let session = {
             if !self.config.username.is_empty() && !self.config.password.is_empty() {
+                let endpoint: EndpointDescription = (
+                    discovery_url,
+                    "Basic256Sha256",
+                    MessageSecurityMode::Sign,
+                    UserTokenPolicy::anonymous(),
+                )
+                    .into();
                 client.connect_to_endpoint(
                     endpoint,
                     IdentityToken::UserName(
@@ -294,6 +299,13 @@ impl OpcUaPoller {
                     ),
                 )
             } else {
+                let endpoint: EndpointDescription = (
+                    discovery_url,
+                    "None",
+                    MessageSecurityMode::None,
+                    UserTokenPolicy::anonymous(),
+                )
+                    .into();
                 client.connect_to_endpoint(endpoint, IdentityToken::Anonymous)
             }
         }
@@ -311,7 +323,7 @@ impl OpcUaPoller {
     /// This now uses lazy loading to avoid performance issues with large node structures
     pub fn browse_complete_structure(&self) -> Result<Vec<OpcUaNode>, TelegrafError> {
         // Connect to the OPC UA server using the configured IP
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {
@@ -326,7 +338,7 @@ impl OpcUaPoller {
         const MAX_BROWSE_DEPTH: usize = 12;
         // Very large folders might not show all items since we're skipping continuation points
         // This prevents hangs in the OPC UA client when browsing large structures
-        
+
         // Start browsing from the Objects folder with depth tracking
         let objects_folder = NodeId::objects_folder_id();
         // With lazy loading, we only browse the top level initially
@@ -359,83 +371,89 @@ impl OpcUaPoller {
 
         // Execute initial browse request
         let browse_results = session_read.browse(&[browse_desc]);
-        
+
         // Process the initial browse results
         if let Ok(Some(ref results)) = browse_results {
             for result in results {
                 // Process references if present
                 if let Some(refs) = &result.references {
-                        // Process each reference
-                        for reference in refs {
-                            // Extract node info
-                            let browse_name = reference.browse_name.name.to_string();
-                            let display_name = reference.display_name.text.to_string();
-                            let node_class = reference.node_class;
-                            let child_node_id = reference.node_id.node_id.clone();
+                    // Process each reference
+                    for reference in refs {
+                        // Extract node info
+                        let browse_name = reference.browse_name.name.to_string();
+                        let display_name = reference.display_name.text.to_string();
+                        let node_class = reference.node_class;
+                        let child_node_id = reference.node_id.node_id.clone();
 
-                            // Create the node - use clones to keep original values for later use
-                            let mut node = OpcUaNode::new(
-                                child_node_id.clone(),
-                                browse_name.clone(),
-                                display_name.clone(),
-                                node_class,
+                        // Create the node - use clones to keep original values for later use
+                        let mut node = OpcUaNode::new(
+                            child_node_id.clone(),
+                            browse_name.clone(),
+                            display_name.clone(),
+                            node_class,
+                        );
+
+                        // For variables, get the data type
+                        if node_class == NodeClass::Variable {
+                            // Create read value IDs for the attributes we want
+                            let read_value_ids = [
+                                opcua::types::ReadValueId {
+                                    node_id: child_node_id.clone(),
+                                    attribute_id: AttributeId::DataType as u32,
+                                    index_range: opcua::types::UAString::null(),
+                                    data_encoding: opcua::types::QualifiedName::null(),
+                                },
+                                opcua::types::ReadValueId {
+                                    node_id: child_node_id.clone(),
+                                    attribute_id: AttributeId::Description as u32,
+                                    index_range: opcua::types::UAString::null(),
+                                    data_encoding: opcua::types::QualifiedName::null(),
+                                },
+                            ];
+                            // Read the attributes
+                            let read_results = session_read.read(
+                                &read_value_ids,
+                                opcua::types::TimestampsToReturn::Neither,
+                                0.0, // max_age (0 = latest value)
                             );
 
-                            // For variables, get the data type
-                            if node_class == NodeClass::Variable {
-                                // Create read value IDs for the attributes we want
-                                let read_value_ids = [
-                                    opcua::types::ReadValueId {
-                                        node_id: child_node_id.clone(),
-                                        attribute_id: AttributeId::DataType as u32,
-                                        index_range: opcua::types::UAString::null(),
-                                        data_encoding: opcua::types::QualifiedName::null(),
-                                    },
-                                    opcua::types::ReadValueId {
-                                        node_id: child_node_id.clone(),
-                                        attribute_id: AttributeId::Description as u32,
-                                        index_range: opcua::types::UAString::null(),
-                                        data_encoding: opcua::types::QualifiedName::null(),
-                                    },
-                                ];
-                                // Read the attributes
-                                let read_results = session_read.read(
-                                    &read_value_ids,
-                                    opcua::types::TimestampsToReturn::Neither,
-                                    0.0, // max_age (0 = latest value)
-                                );
-
-                                if let Ok(read_results) = read_results {
-                                    let mut attrs = std::collections::HashMap::new();
-                                    for (i, result) in read_results.iter().enumerate() {
-                                        if let Some(status) = &result.status {
-                                            if status.is_good() {
-                                                let attr_id = if i == 0 {
-                                                    AttributeId::DataType
-                                                } else {
-                                                    AttributeId::Description
-                                                };
-                                                attrs.insert(attr_id, result.value.clone());
-                                            }
+                            if let Ok(read_results) = read_results {
+                                let mut attrs = std::collections::HashMap::new();
+                                for (i, result) in read_results.iter().enumerate() {
+                                    if let Some(status) = &result.status {
+                                        if status.is_good() {
+                                            let attr_id = if i == 0 {
+                                                AttributeId::DataType
+                                            } else {
+                                                AttributeId::Description
+                                            };
+                                            attrs.insert(attr_id, result.value.clone());
                                         }
                                     }
+                                }
 
-                                    // Extract data type
-                                    if let Some(data_type) = attrs.get(&AttributeId::DataType) {
-                                        if let Some(value) = data_type {
-                                            if let Variant::NodeId(data_type_id) = value {
-                                                // Convert NodeId to string representation for data type
-                                                // Use a more readable format for better display
-                                                node.data_type = Some(format!("{:?}", data_type_id));
-                                                
-                                                // Handle special variable types that might need additional browsing
-                                                if node.display_name.contains("Icon") {
-                                                    // For variables that are icons, make the display name more descriptive
-                                                    // by combining the browse name and data type
-                                                    if !node.browse_name.is_empty() && node.browse_name != "%icon" {
-                                                        node.display_name = format!("{} ({})", node.browse_name, data_type_id.to_string());
-                                                    }
+                                // Extract data type
+                                if let Some(data_type) = attrs.get(&AttributeId::DataType) {
+                                    if let Some(value) = data_type {
+                                        if let Variant::NodeId(data_type_id) = value {
+                                            // Convert NodeId to string representation for data type
+                                            // Use a more readable format for better display
+                                            node.data_type = Some(format!("{:?}", data_type_id));
+
+                                            // Handle special variable types that might need additional browsing
+                                            if node.display_name.contains("Icon") {
+                                                // For variables that are icons, make the display name more descriptive
+                                                // by combining the browse name and data type
+                                                if !node.browse_name.is_empty()
+                                                    && node.browse_name != "%icon"
+                                                {
+                                                    node.display_name = format!(
+                                                        "{} ({})",
+                                                        node.browse_name,
+                                                        data_type_id.to_string()
+                                                    );
                                                 }
+                                            }
                                         }
                                     }
                                 }
@@ -444,69 +462,75 @@ impl OpcUaPoller {
                                     if let Some(value) = desc {
                                         if let Variant::LocalizedText(lt) = value {
                                             node.description = Some(lt.text.to_string());
-                                            }
                                         }
                                     }
                                 }
                             }
+                        }
 
-                            // Determine whether node could have children based on node class and depth
-                            let should_browse_children = match node_class {
-                                // Never browse methods
-                                NodeClass::Method => false,
-                                // Always browse objects and folders regardless of their name
-                                NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
-                                // For variables, check if it might be a folder-like variable that should be browsed
-                                NodeClass::Variable => {
-                                    // Special case for known folder-like variables
-                                    // DataBlocksGlobal and similar folders need special handling
-                                    if node.display_name.contains("DataBlocks") || 
-                                       node.display_name.contains("Global") ||
-                                       node.browse_name.contains("DataBlocks") ||
-                                       node.browse_name.contains("Global") {
-                                        current_depth < max_depth
-                                    } else {
-                                        false
-                                    }
-                                },
-                                // For other node types, browse if we haven't reached max depth
-                                _ => current_depth < max_depth,
-                            };
-
-                            // Mark as having children if it should
-                            if should_browse_children {
-                                // Only browse children if explicitly requested
-                                if load_children {
-                                    // Recursively browse with incremented depth
-                                    let children = self.browse_nodes(session, &child_node_id, current_depth + 1, max_depth, true)?;
-                                    node.children = children;
-                                    node.children_loaded = true;
+                        // Determine whether node could have children based on node class and depth
+                        let should_browse_children = match node_class {
+                            // Never browse methods
+                            NodeClass::Method => false,
+                            // Always browse objects and folders regardless of their name
+                            NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
+                            // For variables, check if it might be a folder-like variable that should be browsed
+                            NodeClass::Variable => {
+                                // Special case for known folder-like variables
+                                // DataBlocksGlobal and similar folders need special handling
+                                if node.display_name.contains("DataBlocks")
+                                    || node.display_name.contains("Global")
+                                    || node.browse_name.contains("DataBlocks")
+                                    || node.browse_name.contains("Global")
+                                {
+                                    current_depth < max_depth
+                                } else {
+                                    false
                                 }
                             }
+                            // For other node types, browse if we haven't reached max depth
+                            _ => current_depth < max_depth,
+                        };
 
-                            nodes.push(node);
+                        // Mark as having children if it should
+                        if should_browse_children {
+                            // Only browse children if explicitly requested
+                            if load_children {
+                                // Recursively browse with incremented depth
+                                let children = self.browse_nodes(
+                                    session,
+                                    &child_node_id,
+                                    current_depth + 1,
+                                    max_depth,
+                                    true,
+                                )?;
+                                node.children = children;
+                                node.children_loaded = true;
+                            }
+                        }
+
+                        nodes.push(node);
                     }
-                    
                 }
-                
+
                 // Check for continuation point (if it exists)
                 if !result.continuation_point.is_empty() {
                     // For lazy loading, process continuation points
                     // We'll process all continuation points immediately rather than creating placeholder nodes
                     let mut continuation_points = vec![result.continuation_point.clone()];
                     let mut max_continuations = 5; // Limit to prevent infinite loops
-                    
+
                     // Process continuation points with a safety limit
                     while !continuation_points.is_empty() && max_continuations > 0 {
                         // Call browse_next with the continuation points
                         let browse_next_result = session_read.browse_next(
                             false, // don't release continuation points yet
-                            &continuation_points
+                            &continuation_points,
                         );
-                        
+
                         // Clear the current continuation points
                         continuation_points.clear();
-                        
+
                         // Process the continuation point results
                         if let Ok(Some(next_results)) = browse_next_result {
                             for next_result in next_results {
@@ -518,61 +542,65 @@ impl OpcUaPoller {
                                         let display_name = reference.display_name.text.to_string();
                                         let node_class = reference.node_class;
                                         let child_node_id = reference.node_id.node_id.clone();
-                                        
+
                                         // Create the node
-                                        let mut node = OpcUaNode::new(
+                                        let node = OpcUaNode::new(
                                             child_node_id.clone(),
                                             browse_name.clone(),
                                             display_name.clone(),
                                             node_class,
                                         );
-                                        
+
                                         // For variables, get the data type (simplified version)
                                         if node_class == NodeClass::Variable {
                                             // Here we could add variable-specific handling
                                         }
-                                        
+
                                         // Determine whether node could have children
                                         let should_browse_children = match node_class {
                                             NodeClass::Method => false,
-                                            NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
+                                            NodeClass::Object | NodeClass::ObjectType => {
+                                                current_depth < max_depth
+                                            }
                                             NodeClass::Variable => {
-                                                if node.display_name.contains("DataBlocks") || 
-                                                   node.display_name.contains("Global") ||
-                                                   node.browse_name.contains("DataBlocks") ||
-                                                   node.browse_name.contains("Global") {
+                                                if node.display_name.contains("DataBlocks")
+                                                    || node.display_name.contains("Global")
+                                                    || node.browse_name.contains("DataBlocks")
+                                                    || node.browse_name.contains("Global")
+                                                {
                                                     current_depth < max_depth
                                                 } else {
                                                     false
                                                 }
-                                            },
+                                            }
                                             _ => current_depth < max_depth,
                                         };
-                                        
+
                                         // Only set the flag, don't browse
                                         if should_browse_children {
                                             // Set the flag to indicate it has children (will be loaded on demand)
                                             // But don't recursively browse them now
                                         }
-                                        
+
                                         nodes.push(node);
                                     }
                                 }
-                                
+
                                 // Handle the next continuation point
                                 if !next_result.continuation_point.is_empty() {
-                                    continuation_points.push(next_result.continuation_point.clone());
+                                    continuation_points
+                                        .push(next_result.continuation_point.clone());
                                 }
                             }
                         } else {
                             // Error or no results from browse_next, break the loop
                             break;
                         }
-                        
+
                         // Decrement our safety counter
                         max_continuations -= 1;
                     }
-                    
+
                     // Release any remaining continuation points
                     if !continuation_points.is_empty() {
                         let _ = session_read.browse_next(true, &continuation_points);
@@ -596,7 +624,7 @@ impl OpcUaPoller {
         let mut max_continuations = 5; // Limit to prevent infinite loops
 
         let mut nodes = Vec::new();
-        
+
         // Get a read lock on the session
         let session_read = session.read();
 
@@ -614,36 +642,39 @@ impl OpcUaPoller {
                             let node_class = reference.node_class;
                             let child_node_id = reference.node_id.node_id.clone();
 
-                            let mut node = OpcUaNode::new(
+                            let node = OpcUaNode::new(
                                 child_node_id.clone(),
                                 browse_name.clone(),
                                 display_name.clone(),
                                 node_class,
                             );
-                            
+
                             // Determine whether node could have children based on node class and depth
                             let should_browse_children = match node_class {
                                 // Never browse methods
                                 NodeClass::Method => false,
                                 // Always browse objects and folders regardless of their name
-                                NodeClass::Object | NodeClass::ObjectType => current_depth < max_depth,
+                                NodeClass::Object | NodeClass::ObjectType => {
+                                    current_depth < max_depth
+                                }
                                 // For variables, check if it might be a folder-like variable that should be browsed
                                 NodeClass::Variable => {
                                     // Special case for known folder-like variables
                                     // DataBlocksGlobal and similar folders need special handling
-                                    if node.display_name.contains("DataBlocks") || 
-                                       node.display_name.contains("Global") ||
-                                       node.browse_name.contains("DataBlocks") ||
-                                       node.browse_name.contains("Global") {
+                                    if node.display_name.contains("DataBlocks")
+                                        || node.display_name.contains("Global")
+                                        || node.browse_name.contains("DataBlocks")
+                                        || node.browse_name.contains("Global")
+                                    {
                                         current_depth < max_depth
                                     } else {
                                         false
                                     }
-                                },
+                                }
                                 // For other node types, browse if we haven't reached max depth
                                 _ => current_depth < max_depth,
                             };
-                            
+
                             // Just mark node as potentially having children, don't browse now
                             if should_browse_children {
                                 // Not loading children now
@@ -680,34 +711,43 @@ impl OpcUaPoller {
 
         Ok(nodes)
     }
-    
+
     /// Public method to load a node's children on demand
     /// This is used by the GUI to implement lazy loading
-    pub fn load_node_children(&self, node: &OpcUaNode, depth: usize) -> Result<Vec<OpcUaNode>, TelegrafError> {
+    pub fn load_node_children(
+        &self,
+        node: &OpcUaNode,
+        depth: usize,
+    ) -> Result<Vec<OpcUaNode>, TelegrafError> {
         // Connect to the OPC UA server
-        let discovery_url = format!("opc.tcp://{}:4840/", self.config.ip);
-        
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
+
         // Check if the server is reachable
         if let Err(e) = self.check_server_connectivity(&self.config.ip) {
             return Err(e);
         }
-        
+
         // Connect to the server
         let session = self.connect_to_server(&discovery_url)?;
-        
+
         // Define a maximum browsing depth to prevent going too deep
         const MAX_BROWSE_DEPTH: usize = 12;
-        
+
         // Check if this is a continuation point node
         if node.has_more_children && node.continuation_point.is_some() {
             // Load more items using the continuation point
-            return self.browse_nodes_on_demand(&session, node.continuation_point.clone().unwrap(), depth, MAX_BROWSE_DEPTH);
+            return self.browse_nodes_on_demand(
+                &session,
+                node.continuation_point.clone().unwrap(),
+                depth,
+                MAX_BROWSE_DEPTH,
+            );
         }
-        
+
         // Otherwise, browse the node's children
         self.browse_nodes(&session, &node.node_id, depth, MAX_BROWSE_DEPTH, true)
     }
-    
+
     /// Helper function to check if a node is a placeholder for loading more items
     pub fn is_load_more_node(node: &OpcUaNode) -> bool {
         node.has_more_children && node.browse_name == "__more_items__"

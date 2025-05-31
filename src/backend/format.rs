@@ -271,11 +271,7 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   interval = "{}" 
     {}
     "#,
-        config.ip,
-        config.username,
-        config.password,
-        interval,
-        nodes_str
+        config.ip, config.username, config.password, interval, nodes_str
     )
 }
 

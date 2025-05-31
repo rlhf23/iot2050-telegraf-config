@@ -127,15 +127,15 @@ impl TelegrafApp {
 
                 // Node display - show different icons based on node type
                 let node_icon = match node.node_class {
-                    opcua::types::NodeClass::Object => "📁 ",
-                    opcua::types::NodeClass::Variable => "🔢 ",
-                    opcua::types::NodeClass::Method => "⚙️ ",
-                    opcua::types::NodeClass::ObjectType => "📋 ",
-                    opcua::types::NodeClass::VariableType => "📊 ",
-                    opcua::types::NodeClass::ReferenceType => "🔗 ",
-                    opcua::types::NodeClass::DataType => "📝 ",
-                    opcua::types::NodeClass::View => "👁️ ",
-                    _ => "❓ ",
+                    opcua::types::NodeClass::Object => "[O] ",
+                    opcua::types::NodeClass::Variable => "[V] ",
+                    opcua::types::NodeClass::Method => "[M] ",
+                    opcua::types::NodeClass::ObjectType => "[T] ",
+                    opcua::types::NodeClass::VariableType => "[VT] ",
+                    opcua::types::NodeClass::ReferenceType => "[R] ",
+                    opcua::types::NodeClass::DataType => "[D] ",
+                    opcua::types::NodeClass::View => "[~] ",
+                    _ => "[?] ",
                 };
 
                 // Check if this is a folder-like node that can have children
@@ -152,7 +152,7 @@ impl TelegrafApp {
                         if let Some(description) = &node.description {
                             ui.label(format!("Description: {}", description));
                         }
-                        
+
                         // Check if children need to be loaded
                         if !node.children_loaded && node.children.is_empty() {
                             // Show loading indicator
@@ -160,10 +160,10 @@ impl TelegrafApp {
                                 ui.spinner();
                                 ui.label("Loading children...");
                             });
-                            
+
                             // Clone to avoid borrow issues
                             let node_clone = node.clone();
-                            
+
                             // Create a new poller to load children
                             if let Ok(poller) = OpcUaPoller::new(self.config.clone()) {
                                 match poller.load_node_children(&node_clone, indent_level) {
@@ -171,7 +171,7 @@ impl TelegrafApp {
                                         // Update the node with loaded children
                                         node.children = children;
                                         node.children_loaded = true;
-                                        
+
                                         // Force a redraw
                                         ui.ctx().request_repaint();
                                     }
@@ -185,7 +185,7 @@ impl TelegrafApp {
                             self.render_node_tree(ui, &mut node.children, indent_level + 1);
                         }
                     });
-                    
+
                     // If the header is expanded, we don't need to show the hover text
                     if !header.fully_open() {
                         header.header_response.on_hover_text(format!(
@@ -1024,7 +1024,7 @@ impl eframe::App for TelegrafApp {
                                         let result = if is_prometheus {
                                             generator.check_service_status(service_url.as_str(), ServiceType::Prometheus, 5)
                                         } else {
-                                            generator.check_influxdb_status(service_url.as_str(), ServiceType::InfluxDB, 5)
+                                            generator.check_influxdb_status()
                                         };
 
                                         match result {
