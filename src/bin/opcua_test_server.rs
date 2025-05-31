@@ -55,10 +55,12 @@ fn main() -> Result<(), TelegrafError> {
     };
 
     // Initialize the server with test nodes
-    if let Err(e) = server.init() {
-        eprintln!("Failed to initialize OPC UA test server: {}", e);
-        exit(1);
-    }
+    // if let Err(e) = server.init() {
+    //     eprintln!("Failed to initialize OPC UA test server: {}", e);
+    //     exit(1);
+    // }
+
+    // server.add_example_variables(&mut server.server, 2);
 
     // Create a flag for graceful shutdown
     let running = Arc::new(AtomicBool::new(true));
