@@ -1,6 +1,7 @@
 /target
 *.env
 /pki
+/pki-server
 !README.md
 
 # Generated configuration files

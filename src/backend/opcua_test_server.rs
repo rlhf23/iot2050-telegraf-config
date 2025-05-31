@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration;
 
 use opcua::server::prelude::*;
-use opcua::types::{DataValue, DateTime, NodeId, Variant};
+use opcua::types::{NodeId, Variant};
 
 use crate::error::TelegrafError;
 
@@ -24,6 +24,9 @@ impl OpcUaTestServer {
         opcua::console_logging::init();
 
         let endpoint_url = format!("opc.tcp://{}:{}", address, port);
+        let endpoint_path = "./";
+        let sample_user_id = "test";
+        let user_token_ids = [sample_user_id];
 
         // Use the sample server configuration which is preconfigured with correct settings
         // This is recommended in the documentation for testing purposes
@@ -31,7 +34,73 @@ impl OpcUaTestServer {
             .application_name("OPC UA Test Server")
             .application_uri("urn:opcua-test-server")
             .product_uri("urn:opcua-test-server:product")
-            .host_and_port(address, port);
+            .create_sample_keypair(true)
+            .host_and_port("os", port)
+            .pki_dir("./pki-server")
+            .discovery_server_url(None)
+            .user_token(sample_user_id, ServerUserToken::user_pass("user", "pass"))
+            .endpoints(
+                [
+                    (
+                        "none",
+                        endpoint_path,
+                        SecurityPolicy::None,
+                        MessageSecurityMode::None,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic128rsa15_sign",
+                        endpoint_path,
+                        SecurityPolicy::Basic128Rsa15,
+                        MessageSecurityMode::Sign,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic128rsa15_sign_encrypt",
+                        endpoint_path,
+                        SecurityPolicy::Basic128Rsa15,
+                        MessageSecurityMode::SignAndEncrypt,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic256_sign",
+                        endpoint_path,
+                        SecurityPolicy::Basic256,
+                        MessageSecurityMode::Sign,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic256_sign_encrypt",
+                        endpoint_path,
+                        SecurityPolicy::Basic256,
+                        MessageSecurityMode::SignAndEncrypt,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic256sha256_sign",
+                        endpoint_path,
+                        SecurityPolicy::Basic256Sha256,
+                        MessageSecurityMode::Sign,
+                        &user_token_ids,
+                    ),
+                    (
+                        "basic256sha256_sign_encrypt",
+                        endpoint_path,
+                        SecurityPolicy::Basic256Sha256,
+                        MessageSecurityMode::SignAndEncrypt,
+                        &user_token_ids,
+                    ),
+                ]
+                .iter()
+                .map(|v| {
+                    (
+                        v.0.to_string(),
+                        ServerEndpoint::from((v.1, v.2, v.3, &v.4[..])),
+                    )
+                })
+                .collect(),
+            )
+;
 
         // Build the server
         let server = match server_builder.server() {

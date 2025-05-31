@@ -275,10 +275,17 @@ impl OpcUaPoller {
                 TelegrafError::ConfigError("Failed to create OPC UA client".to_string())
             })?;
 
+        // let endpoint: EndpointDescription = (
+        //     discovery_url,
+        //     "Basic256Sha256",
+        //     MessageSecurityMode::Sign,
+        //     UserTokenPolicy::anonymous(),
+        // )
+        //     .into();
         let endpoint: EndpointDescription = (
             discovery_url,
-            "Basic256Sha256",
-            MessageSecurityMode::Sign,
+            "None",
+            MessageSecurityMode::None,
             UserTokenPolicy::anonymous(),
         )
             .into();
