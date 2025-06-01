@@ -159,7 +159,7 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
     
     // Create ServerInterfaces object if it doesn't exist
     let server_interfaces_id = if let Some(existing_id) = created_objects.get("ns=1;s=ServerInterfaces") {
-        *existing_id
+        existing_id.clone()
     } else if let Some((browse_name, display_name)) = objects.get("ns=1;s=ServerInterfaces") {
         let server_interfaces_id = {
             let mut address_space = address_space.write();
@@ -167,7 +167,7 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
                 .add_folder(browse_name, display_name, &NodeId::objects_folder_id())
                 .unwrap()
         };
-        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id);
+        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id.clone());
         server_interfaces_id
     } else {
         // Create default ServerInterfaces if not found in XML
@@ -177,7 +177,7 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
                 .add_folder("ServerInterfaces", "ServerInterfaces", &NodeId::objects_folder_id())
                 .unwrap()
         };
-        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id);
+        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id.clone());
         server_interfaces_id
     };
     
