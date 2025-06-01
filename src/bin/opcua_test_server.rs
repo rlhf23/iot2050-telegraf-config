@@ -198,7 +198,7 @@ fn parse_node_id(node_id_str: &str) -> Result<NodeId, TelegrafError> {
                     .map_err(|_| TelegrafError::ConfigError(format!("Invalid numeric ID in NodeId: {}", node_id_str)))?;
                 return Ok(NodeId::new(namespace, id));
             } else if let Some(id_str) = id_part.strip_prefix("s=") {
-                return Ok(NodeId::new(namespace, id_str));
+                return Ok(NodeId::new(namespace, id_str.to_string()));
             }
         }
     }
