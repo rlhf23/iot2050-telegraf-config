@@ -5,7 +5,7 @@ use sie_generate_config::{
         ConfigGenerator, ServiceType,
     },
     error::{TelegrafError, XmlFileValidation},
-    SelectedOpcUaNode, TelegrafConfig,
+    TelegrafConfig,
 };
 
 #[derive(Default)]

@@ -1,7 +1,7 @@
 use crate::error::TelegrafError;
 use ssh2::Session;
 use std::fs::File;
-use std::io::{Error as IoError, ErrorKind, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::thread;

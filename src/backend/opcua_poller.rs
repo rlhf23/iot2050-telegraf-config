@@ -321,27 +321,26 @@ impl OpcUaPoller {
 
     /// Browse all nodes in the OPC UA server starting from the root node
     /// This now uses lazy loading to avoid performance issues with large node structures
+    ///
+    /// Note: The returned nodes maintain a reference to the session that created them.
+    /// The session will be automatically closed when all nodes are dropped.
     pub fn browse_complete_structure(&self) -> Result<Vec<OpcUaNode>, TelegrafError> {
-        // Connect to the OPC UA server using the configured IP
         let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
-        // Check if the server is reachable before attempting connection
-        if let Err(e) = self.check_server_connectivity(&self.config.ip) {
-            return Err(e);
-        }
+        // Check server connectivity first
+        self.check_server_connectivity(&self.config.ip)?;
 
-        // Connect to the server using our helper method
+        // Connect to server
         let session = self.connect_to_server(&discovery_url)?;
 
-        // Define a maximum browsing depth to prevent going too deep
-        // Adjust this value based on your requirements
+        // Define max browse depth
         const MAX_BROWSE_DEPTH: usize = 12;
-        // Very large folders might not show all items since we're skipping continuation points
-        // This prevents hangs in the OPC UA client when browsing large structures
 
-        // Start browsing from the Objects folder with depth tracking
+        // Start browsing from the Objects folder
         let objects_folder = NodeId::objects_folder_id();
-        // With lazy loading, we only browse the top level initially
+
+        // Perform the browsing operation
+        // The session is kept alive as long as the returned nodes are in use
         self.browse_nodes(&session, &objects_folder, 0, MAX_BROWSE_DEPTH, false)
     }
 
@@ -714,6 +713,9 @@ impl OpcUaPoller {
 
     /// Public method to load a node's children on demand
     /// This is used by the GUI to implement lazy loading
+    ///
+    /// Note: The returned nodes maintain a reference to the session that created them.
+    /// The session will be automatically closed when all nodes are dropped.
     pub fn load_node_children(
         &self,
         node: &OpcUaNode,
@@ -733,19 +735,20 @@ impl OpcUaPoller {
         // Define a maximum browsing depth to prevent going too deep
         const MAX_BROWSE_DEPTH: usize = 12;
 
-        // Check if this is a continuation point node
+        // Return the appropriate result based on whether we're continuing a browse or starting a new one
+        // The session is kept alive as long as the returned nodes are in use
         if node.has_more_children && node.continuation_point.is_some() {
             // Load more items using the continuation point
-            return self.browse_nodes_on_demand(
+            self.browse_nodes_on_demand(
                 &session,
                 node.continuation_point.clone().unwrap(),
                 depth,
                 MAX_BROWSE_DEPTH,
-            );
+            )
+        } else {
+            // Otherwise, browse the node's children
+            self.browse_nodes(&session, &node.node_id, depth, MAX_BROWSE_DEPTH, true)
         }
-
-        // Otherwise, browse the node's children
-        self.browse_nodes(&session, &node.node_id, depth, MAX_BROWSE_DEPTH, true)
     }
 
     /// Helper function to check if a node is a placeholder for loading more items
