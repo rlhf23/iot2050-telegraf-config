@@ -321,24 +321,24 @@ impl OpcUaPoller {
 
     /// Browse all nodes in the OPC UA server starting from the root node
     /// This now uses lazy loading to avoid performance issues with large node structures
-    /// 
+    ///
     /// Note: The returned nodes maintain a reference to the session that created them.
     /// The session will be automatically closed when all nodes are dropped.
     pub fn browse_complete_structure(&self) -> Result<Vec<OpcUaNode>, TelegrafError> {
         let discovery_url = format!("opc.tcp://{}/", self.config.ip);
-        
+
         // Check server connectivity first
         self.check_server_connectivity(&self.config.ip)?;
-        
+
         // Connect to server
         let session = self.connect_to_server(&discovery_url)?;
-        
+
         // Define max browse depth
         const MAX_BROWSE_DEPTH: usize = 12;
-        
+
         // Start browsing from the Objects folder
         let objects_folder = NodeId::objects_folder_id();
-        
+
         // Perform the browsing operation
         // The session is kept alive as long as the returned nodes are in use
         self.browse_nodes(&session, &objects_folder, 0, MAX_BROWSE_DEPTH, false)
@@ -713,7 +713,7 @@ impl OpcUaPoller {
 
     /// Public method to load a node's children on demand
     /// This is used by the GUI to implement lazy loading
-    /// 
+    ///
     /// Note: The returned nodes maintain a reference to the session that created them.
     /// The session will be automatically closed when all nodes are dropped.
     pub fn load_node_children(

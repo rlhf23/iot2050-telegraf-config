@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
@@ -8,12 +7,8 @@ use scopeguard;
 use sie_generate_config::backend::opcua_poller::OpcUaNode;
 
 use sie_generate_config::{
-    TelegrafConfig, 
-    SelectedOpcUaNode,
-    backend::{
-        opcua_poller::OpcUaPoller,
-        ConfigGenerator
-    }
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
+    SelectedOpcUaNode, TelegrafConfig,
 };
 
 // Check if we're running in a CI environment
@@ -87,14 +82,17 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create a ConfigGenerator
-    let mut generator = ConfigGenerator::new(test_config.clone())
-        .expect("Failed to create ConfigGenerator");
+    let mut generator =
+        ConfigGenerator::new(test_config.clone()).expect("Failed to create ConfigGenerator");
 
     // Get XML files from tests directory
     println!("Discovering XML files...");
     let xml_files = ConfigGenerator::discover_xml_files(&tests_dir);
     println!("Found {} XML files: {:?}", xml_files.len(), xml_files);
-    assert!(!xml_files.is_empty(), "No XML files found in tests directory");
+    assert!(
+        !xml_files.is_empty(),
+        "No XML files found in tests directory"
+    );
 
     // Configure each file with test values
     for file in &xml_files {
@@ -105,11 +103,15 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Generate the configuration using the discovered XML files
-    let config = generator.generate_config(&xml_files, &[])
+    let config = generator
+        .generate_config(&xml_files, &[])
         .expect("Failed to generate configuration");
 
     // Verify the configuration is not empty
-    assert!(!config.is_empty(), "Generated configuration should not be empty");
+    assert!(
+        !config.is_empty(),
+        "Generated configuration should not be empty"
+    );
 
     // Create a snapshot of the generated configuration
     let mut settings = insta::Settings::clone_current();
@@ -118,7 +120,10 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         insta::assert_snapshot!("cli_config_generation", &config);
     });
 
-    println!("Successfully generated configuration from {} XML files", xml_files.len());
+    println!(
+        "Successfully generated configuration from {} XML files",
+        xml_files.len()
+    );
     Ok(())
 }
 // Helper to get the path to our binaries
@@ -154,27 +159,34 @@ fn start_opcua_server(port: u16) -> std::process::Child {
     let mut server = Command::new(get_bin_path("opcua_test_server"))
         .arg("--port")
         .arg(port.to_string())
-        .stdout(Stdio::piped())  // Capture stdout for debugging
-        .stderr(Stdio::piped())  // Capture stderr for debugging
+        .stdout(Stdio::piped()) // Capture stdout for debugging
+        .stderr(Stdio::piped()) // Capture stderr for debugging
         .spawn()
         .expect("Failed to start OPC UA test server");
 
     // Give the server time to start up
     println!("Waiting for server to start...");
     thread::sleep(Duration::from_secs(3));
-    
+
     // Verify the server is still running
     if let Ok(Some(status)) = server.try_wait() {
-        let output = server.wait_with_output()
+        let output = server
+            .wait_with_output()
             .expect("Failed to get server output");
-        
-        println!("Server process exited unexpectedly with status: {:?}", status);
+
+        println!(
+            "Server process exited unexpectedly with status: {:?}",
+            status
+        );
         println!("Server stdout: {}", String::from_utf8_lossy(&output.stdout));
         println!("Server stderr: {}", String::from_utf8_lossy(&output.stderr));
-        
-        panic!("Server process exited unexpectedly with status: {:?}", status);
+
+        panic!(
+            "Server process exited unexpectedly with status: {:?}",
+            status
+        );
     }
-    
+
     server
 }
 
@@ -196,10 +208,10 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a test configuration
     let test_config = TelegrafConfig {
-        ip: format!("127.0.0.1:{}", port),  // Use the same port as the server
-        username: "".to_string(),         // Anonymous access
-        password: "".to_string(),         // Anonymous access
-        iot_host: "".to_string(),        // Not needed for this test
+        ip: format!("127.0.0.1:{}", port), // Use the same port as the server
+        username: "".to_string(),          // Anonymous access
+        password: "".to_string(),          // Anonymous access
+        iot_host: "".to_string(),          // Not needed for this test
         iot_username: "".to_string(),
         iot_password: "".to_string(),
         token_folder: std::env::temp_dir(),
@@ -213,34 +225,43 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
-    let poller = OpcUaPoller::new(test_config)
-        .map_err(|e| {
-            eprintln!("Failed to create OpcUaPoller: {}", e);
-            e
-        })?;
+    let poller = OpcUaPoller::new(test_config).map_err(|e| {
+        eprintln!("Failed to create OpcUaPoller: {}", e);
+        e
+    })?;
 
     // Get the top-level nodes from the OPC UA server
-    let mut nodes = poller.browse_complete_structure()
+    let mut nodes = poller
+        .browse_complete_structure()
         .expect("Failed to browse server structure");
-    
+
     // Now load children for each top-level node, similar to how the GUI does it
     println!("\nLoading children for top-level nodes...");
     for i in 0..nodes.len() {
         if nodes[i].is_folder_node() && !nodes[i].children_loaded {
-            println!("Loading children for node: {} ({:?})", nodes[i].display_name, nodes[i].node_class);
+            println!(
+                "Loading children for node: {} ({:?})",
+                nodes[i].display_name, nodes[i].node_class
+            );
             match poller.load_node_children(&nodes[i], 1) {
                 Ok(children) => {
                     nodes[i].children = children;
                     nodes[i].children_loaded = true;
-                    
+
                     // For the ServerInterfaces folder, try to load its children too
                     if nodes[i].display_name == "ServerInterfaces" {
                         for j in 0..nodes[i].children.len() {
-                            if nodes[i].children[j].is_folder_node() && !nodes[i].children[j].children_loaded {
-                                println!("Loading children for node: {} ({:?})", 
-                                    nodes[i].children[j].display_name, 
-                                    nodes[i].children[j].node_class);
-                                if let Ok(grand_children) = poller.load_node_children(&nodes[i].children[j], 2) {
+                            if nodes[i].children[j].is_folder_node()
+                                && !nodes[i].children[j].children_loaded
+                            {
+                                println!(
+                                    "Loading children for node: {} ({:?})",
+                                    nodes[i].children[j].display_name,
+                                    nodes[i].children[j].node_class
+                                );
+                                if let Ok(grand_children) =
+                                    poller.load_node_children(&nodes[i].children[j], 2)
+                                {
                                     nodes[i].children[j].children = grand_children;
                                     nodes[i].children[j].children_loaded = true;
                                 }
@@ -248,38 +269,48 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                Err(e) => println!("Error loading children for node {}: {}", nodes[i].display_name, e),
+                Err(e) => println!(
+                    "Error loading children for node {}: {}",
+                    nodes[i].display_name, e
+                ),
             }
         }
     }
-    
+
     // Print the node structure for debugging
     println!("\nNode structure from OPC UA server (after loading children):");
     for node in &nodes {
         print_node_structure(node, 0);
     }
-    
-    println!("Found {} children for node {}", nodes[0].children.len(), nodes[0].display_name);
-    
+
+    println!(
+        "Found {} children for node {}",
+        nodes[0].children.len(),
+        nodes[0].display_name
+    );
+
     // Try to find the Sample_DB node
     let sample_db_node = nodes.iter().find(|node| node.display_name == "Sample_DB");
-    
+
     match sample_db_node {
         Some(node) => {
             println!("Found Sample_DB node with {} children", node.children.len());
-            
+
             // Print the first few children for debugging
             for (i, child) in node.children.iter().enumerate().take(5) {
-                println!("Child {}: {} ({} - {:?})", i, child.display_name, child.browse_name, child.node_class);
+                println!(
+                    "Child {}: {} ({} - {:?})",
+                    i, child.display_name, child.browse_name, child.node_class
+                );
             }
-        },
+        }
         None => println!("Warning: Could not find Sample_DB node in server structure"),
     }
-    
+
     println!("OPC UA server test completed successfully");
-    
+
     Ok(())
-    
+
     // The server will be killed by the _server_guard when it goes out of scope
 }
 
@@ -295,7 +326,7 @@ fn print_node_structure(node: &OpcUaNode, depth: usize) {
         node.node_id,
         node.children.len()
     );
-    
+
     // Print first few children if there are many
     let max_children = 5;
     for (i, child) in node.children.iter().enumerate() {
@@ -331,14 +362,14 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     // Create a test configuration
     let test_config = TelegrafConfig {
         ip: format!("127.0.0.1:{}", port),
-        username: "".to_string(),         // Anonymous access
-        password: "".to_string(),         // Anonymous access
-        iot_host: format!("127.0.0.1:{}", port),  // Use the OPC UA server port for testing
+        username: "".to_string(),                // Anonymous access
+        password: "".to_string(),                // Anonymous access
+        iot_host: format!("127.0.0.1:{}", port), // Use the OPC UA server port for testing
         iot_username: "test".to_string(),
         iot_password: "test".to_string(),
         token_folder: std::env::temp_dir(),
         bucket_name: "test_bucket".to_string(),
-        influx_token: Some("dummy_token".to_string()),  // Add a dummy token for testing
+        influx_token: Some("dummy_token".to_string()), // Add a dummy token for testing
         listener_files: vec![],
         output_format: None,
         include_test_inputs: false,
@@ -352,25 +383,34 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get the top-level nodes from the OPC UA server
     let mut nodes = poller.browse_complete_structure()?;
-    
+
     // Now load children for each top-level node, similar to how the GUI does it
     println!("\nLoading children for top-level nodes...");
     for i in 0..nodes.len() {
         if nodes[i].is_folder_node() && !nodes[i].children_loaded {
-            println!("Loading children for node: {} ({:?})", nodes[i].display_name, nodes[i].node_class);
+            println!(
+                "Loading children for node: {} ({:?})",
+                nodes[i].display_name, nodes[i].node_class
+            );
             match poller.load_node_children(&nodes[i], 1) {
                 Ok(children) => {
                     nodes[i].children = children;
                     nodes[i].children_loaded = true;
-                    
+
                     // For the ServerInterfaces folder, try to load its children too
                     if nodes[i].display_name == "ServerInterfaces" {
                         for j in 0..nodes[i].children.len() {
-                            if nodes[i].children[j].is_folder_node() && !nodes[i].children[j].children_loaded {
-                                println!("Loading children for node: {} ({:?})", 
-                                    nodes[i].children[j].display_name, 
-                                    nodes[i].children[j].node_class);
-                                if let Ok(grand_children) = poller.load_node_children(&nodes[i].children[j], 2) {
+                            if nodes[i].children[j].is_folder_node()
+                                && !nodes[i].children[j].children_loaded
+                            {
+                                println!(
+                                    "Loading children for node: {} ({:?})",
+                                    nodes[i].children[j].display_name,
+                                    nodes[i].children[j].node_class
+                                );
+                                if let Ok(grand_children) =
+                                    poller.load_node_children(&nodes[i].children[j], 2)
+                                {
                                     nodes[i].children[j].children = grand_children;
                                     nodes[i].children[j].children_loaded = true;
                                 }
@@ -378,19 +418,22 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                Err(e) => println!("Error loading children for node {}: {}", nodes[i].display_name, e),
+                Err(e) => println!(
+                    "Error loading children for node {}: {}",
+                    nodes[i].display_name, e
+                ),
             }
         }
     }
-    
+
     // Print the node structure for debugging
     println!("\nNode structure from OPC UA server (after loading children):");
     for node in &nodes {
         print_node_structure(node, 0);
     }
-    
+
     println!("Found {} top-level nodes in server structure", nodes.len());
-    
+
     // Print the node structure for debugging
     fn print_node_structure(node: &OpcUaNode, depth: usize) {
         let indent = "  ".repeat(depth);
@@ -403,15 +446,15 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             node.node_id,
             node.children.len()
         );
-        
+
         // Print first few children if there are many
         let child_count = node.children.len();
         let children_to_show = 5.min(child_count);
-        
+
         for child in node.children.iter().take(children_to_show) {
             print_node_structure(child, depth + 1);
         }
-        
+
         if child_count > children_to_show {
             println!(
                 "{}... and {} more children",
@@ -420,16 +463,16 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
     }
-    
+
     println!("Node structure (first 5 children per node):");
     for (i, node) in nodes.iter().enumerate() {
         println!("\nNode {}:", i);
         print_node_structure(node, 1);
     }
-    
+
     // Select the first few variable nodes for monitoring
     let mut selected_nodes = Vec::new();
-    
+
     // Helper function to recursively find variable nodes
     fn find_variable_nodes(nodes: &[crate::OpcUaNode], selected: &mut Vec<SelectedOpcUaNode>) {
         for node in nodes {
@@ -440,20 +483,20 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
                     browse_name: node.browse_name.clone(),
                     display_name: node.display_name.clone(),
                     measurement_name: node.display_name.clone().to_lowercase().replace(' ', "_"),
-                    interval_ms: 1000,  // 1 second interval
+                    interval_ms: 1000, // 1 second interval
                     folder_name: Some("test_folder".to_string()),
                 });
-                
+
                 // Stop if we've found enough nodes
                 if selected.len() >= 5 {
                     return;
                 }
             }
-            
+
             // Recursively check children
             if !node.children.is_empty() {
                 find_variable_nodes(&node.children, selected);
-                
+
                 // Stop if we've found enough nodes
                 if selected.len() >= 5 {
                     return;
@@ -461,7 +504,7 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     // Helper function to extract numeric identifier from a node
     fn get_numeric_id(node: &SelectedOpcUaNode) -> u32 {
         match &node.node_id.identifier {
@@ -469,7 +512,7 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             _ => 0, // Default to 0 for non-numeric identifiers
         }
     }
-    
+
     // Helper function to find a node by display name recursively
     fn find_node_by_name<'a>(nodes: &'a [OpcUaNode], name: &str) -> Option<&'a OpcUaNode> {
         for node in nodes {
@@ -493,19 +536,19 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             collect_node_names(child, names);
         }
     }
-    
+
     let mut all_node_names = Vec::new();
     for node in &nodes {
         collect_node_names(node, &mut all_node_names);
     }
-    
+
     for name in all_node_names.iter().take(20) {
         println!("- {}", name);
     }
     if all_node_names.len() > 20 {
         println!("... and {} more nodes", all_node_names.len() - 20);
     }
-    
+
     // Try to find the Sample_DB folder with test variables
     println!("\nLooking for ServerInterfaces node...");
     if let Some(server_interfaces) = find_node_by_name(&nodes, "ServerInterfaces") {
@@ -516,27 +559,32 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
             // Collect all variable nodes under Sample_DB
             let mut variable_nodes = Vec::new();
             OpcUaNode::collect_all_variables_in_folder(sample_db, &mut variable_nodes);
-            
+
             // Convert to SelectedOpcUaNode
-            for var_node in variable_nodes.into_iter().take(5) { // Limit to 5 variables
+            for var_node in variable_nodes.into_iter().take(5) {
+                // Limit to 5 variables
                 selected_nodes.push(SelectedOpcUaNode {
                     node_id: var_node.node_id.clone(),
                     namespace: var_node.node_id.namespace,
                     browse_name: var_node.browse_name.clone(),
                     display_name: var_node.display_name.clone(),
-                    measurement_name: var_node.display_name.clone().to_lowercase().replace(' ', "_"),
+                    measurement_name: var_node
+                        .display_name
+                        .clone()
+                        .to_lowercase()
+                        .replace(' ', "_"),
                     interval_ms: 1000,
                     folder_name: Some("sample_db".to_string()),
                 });
             }
         }
     }
-    
+
     // If we still didn't find any variable nodes, try to find any nodes at all as fallback
     if selected_nodes.is_empty() {
         println!("No variable nodes found in Sample_DB, trying to find any nodes...");
         find_variable_nodes(&nodes, &mut selected_nodes);
-        
+
         // If still nothing, just take the first few nodes we can find
         if selected_nodes.is_empty() {
             for node in nodes.iter().take(5) {
@@ -554,40 +602,46 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Make sure we found some nodes to test with
-    assert!(!selected_nodes.is_empty(), "No variable nodes found to test with");
-    
+    assert!(
+        !selected_nodes.is_empty(),
+        "No variable nodes found to test with"
+    );
+
     // Sort nodes by their numeric ID for consistent ordering
     let mut sorted_nodes = selected_nodes.clone();
     sorted_nodes.sort_by_key(|node| get_numeric_id(node));
-    
+
     // Create a config with our selected nodes (now sorted)
     let mut config_with_nodes = test_config;
     config_with_nodes.selected_opcua_nodes = sorted_nodes.clone();
-    
+
     // Clone the nodes before moving config_with_nodes
     let selected_nodes_clone = sorted_nodes.clone();
-    
+
     // Create a ConfigGenerator
-    let config_generator = ConfigGenerator::new(config_with_nodes)
-        .expect("Failed to create ConfigGenerator");
-    
+    let config_generator =
+        ConfigGenerator::new(config_with_nodes).expect("Failed to create ConfigGenerator");
+
     // Generate the configuration
-    let config = config_generator.generate_config(&[], &[])
+    let config = config_generator
+        .generate_config(&[], &[])
         .expect("Failed to generate configuration");
-    
+
     // Verify the configuration is not empty and contains expected sections
-    assert!(!config.is_empty(), "Generated configuration should not be empty");
-    
+    assert!(
+        !config.is_empty(),
+        "Generated configuration should not be empty"
+    );
+
     // Check for common OPC UA configuration sections
     assert!(
-        config.contains("[[inputs.opcua]]") || 
-        config.contains("[[inputs.opcua_client]]"),
+        config.contains("[[inputs.opcua]]") || config.contains("[[inputs.opcua_client]]"),
         "Configuration should contain OPC UA input section"
     );
-    
+
     // Print the configuration for debugging
     println!("Generated configuration:\n{}", config);
-    
+
     // Create a snapshot of the generated configuration
     // This will create/update snapshots in tests/__snapshots__
     let mut settings = insta::Settings::clone_current();
@@ -595,17 +649,19 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     settings.bind(|| {
         insta::assert_snapshot!("opcua_config_generation", &config);
     });
-    
-    println!("Successfully generated configuration for {} nodes", selected_nodes_clone.len());
-    
+
+    println!(
+        "Successfully generated configuration for {} nodes",
+        selected_nodes_clone.len()
+    );
+
     // Clean up the generated telegraf.conf file if it exists
     let config_path = std::env::current_dir()?.join("telegraf.conf");
     if config_path.exists() {
         println!("Cleaning up test telegraf.conf file");
-        std::fs::remove_file(&config_path).map_err(|e| {
-            format!("Failed to clean up telegraf.conf: {}", e)
-        })?;
+        std::fs::remove_file(&config_path)
+            .map_err(|e| format!("Failed to clean up telegraf.conf: {}", e))?;
     }
-    
+
     Ok(())
 }

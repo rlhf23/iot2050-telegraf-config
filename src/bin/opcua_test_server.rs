@@ -2,7 +2,6 @@ use clap::Parser;
 use opcua::server::prelude::*;
 use opcua::types::NodeId;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 
 use sie_generate_config::error::TelegrafError;
@@ -14,11 +13,11 @@ struct Args {
     /// IP address to bind to (default: 127.0.0.1)
     #[arg(short, long, default_value = "127.0.0.1")]
     address: String,
-    
+
     /// Port to listen on (default: 4840)
     #[arg(short, long, default_value_t = 4840)]
     port: u16,
-    
+
     /// Path to XML file with nodes to load (default: tests/sample_db.xml)
     #[arg(short, long, default_value = "tests/sample_db.xml")]
     nodes: PathBuf,
@@ -27,10 +26,10 @@ struct Args {
 fn main() -> Result<(), TelegrafError> {
     // Parse command line arguments
     let args = Args::parse();
-    
+
     // Initialize logging
     opcua::console_logging::init();
-    
+
     let port = args.port;
 
     // Create a new server instance for the thread using the same configuration
@@ -39,8 +38,8 @@ fn main() -> Result<(), TelegrafError> {
         .application_uri("urn:opcua-test-server")
         .product_uri("urn:opcua-test-server:product")
         .host_and_port(&args.address, port);
-        
-    let address = args.address.clone();  // Clone for later use in println!
+
+    let address = args.address.clone(); // Clone for later use in println!
 
     // Build the server
     let mut server = match server_builder.server() {
@@ -75,20 +74,21 @@ fn main() -> Result<(), TelegrafError> {
         println!("No nodes loaded from XML, adding example variables");
         add_example_variables(&mut server, ns);
     }
-    
+
     // Set up Ctrl-C handler for clean shutdown
     ctrlc::set_handler(move || {
         println!("\nShutting down OPC UA server...");
         std::process::exit(0);
-    }).expect("Error setting Ctrl-C handler");
-    
+    })
+    .expect("Error setting Ctrl-C handler");
+
     // Run the server (this will block until Ctrl-C)
     println!("Starting OPC UA server at {}:{}", address, port);
     println!("OPC UA server running. Press Ctrl-C to stop.");
     server.run();
-    
+
     println!("OPC UA server stopped");
-    
+
     Ok(())
 }
 
