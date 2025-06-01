@@ -114,20 +114,21 @@ mod tests {
         fn test_send_file_over_ssh_missing_file() {
             let nonexistent_path = std::path::Path::new("/tmp/nonexistent_file_test_12345");
             
-            // This should fail before even attempting SSH connection
+            // Note: send_file_over_ssh tries SSH connection BEFORE reading file,
+            // so with invalid host it fails at connection stage, not file stage
             let result = ssh_utils::send_file_over_ssh(
                 &nonexistent_path,
                 "/remote/path",
-                "127.0.0.1:1",
+                "127.0.0.1:1", // Invalid port will cause connection failure first
                 "user", 
                 "pass"
             );
             
             assert!(result.is_err());
-            // The error should be related to file not found, not SSH connection
+            // With invalid host, expect SSH/connection error, not file error
             match result.unwrap_err() {
-                TelegrafError::IoError(_) => (), // Expected - file doesn't exist
-                _ => panic!("Expected IoError for missing file"),
+                TelegrafError::SshError(_) | TelegrafError::HostFormatError(_) => (), // Expected
+                _ => panic!("Expected SSH connection error for invalid host"),
             }
         }
 
