@@ -7,7 +7,7 @@
 //! 
 //! ```no_run
 //! use std::path::Path;
-//! use crate::backend::ssh_utils;
+//! use sie_generate_config::backend::ssh_utils;
 //! 
 //! // Send a configuration file to a remote device
 //! let result = ssh_utils::send_file_over_ssh(
@@ -60,7 +60,7 @@ impl Default for SshConfig {
 /// 
 /// # Examples
 /// ```
-/// # use crate::backend::ssh_utils::validate_host_format;
+/// # use sie_generate_config::backend::ssh_utils::validate_host_format;
 /// assert!(validate_host_format("192.168.1.2:22").is_ok());
 /// assert!(validate_host_format("invalid").is_err());
 /// ```
@@ -313,7 +313,7 @@ pub fn send_file_over_ssh(
 /// 
 /// # Examples
 /// ```no_run
-/// # use crate::backend::ssh_utils::execute_ssh_command;
+/// # use sie_generate_config::backend::ssh_utils::execute_ssh_command;
 /// # let session = todo!(); // Assume we have an established session
 /// let output = execute_ssh_command(&session, "ls -la")?;
 /// println!("Directory listing: {}", output);

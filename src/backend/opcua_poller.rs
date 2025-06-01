@@ -226,7 +226,7 @@ impl OpcUaPoller {
         })?;
 
         // Try connecting to the first resolved address with a timeout
-        for socket_addr in socket_addrs {
+        if let Some(socket_addr) = socket_addrs.next() {
             // Set a connect timeout of 3 seconds
             match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
                 Ok(_) => {
