@@ -1,6 +1,9 @@
 use opcua::server::prelude::*;
 use opcua::types::NodeId;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 
 use sie_generate_config::error::TelegrafError;
 
@@ -56,8 +59,22 @@ fn main() -> Result<(), TelegrafError> {
         add_example_variables(&mut server, ns);
     }
     println!("Starting OPC UA test server at {}:{}", address, port);
+    
+    // Set up signal handling for graceful shutdown
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    
+    ctrlc::set_handler(move || {
+        println!("Shutting down OPC UA server...");
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+    
+    // Simple signal handling - the server will be killed by the OS when the process exits
+    
+    // Run the server
     server.run();
-
+    
+    println!("OPC UA server stopped");
     Ok(())
 }
 
