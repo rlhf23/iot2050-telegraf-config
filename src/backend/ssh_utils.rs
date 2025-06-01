@@ -1,3 +1,24 @@
+//! SSH utilities for remote IoT device communication
+//! 
+//! This module provides functions for establishing SSH connections to IoT devices,
+//! transferring files, executing commands, and managing services like Telegraf.
+//! 
+//! # Examples
+//! 
+//! ```no_run
+//! use std::path::Path;
+//! use crate::backend::ssh_utils;
+//! 
+//! // Send a configuration file to a remote device
+//! let result = ssh_utils::send_file_over_ssh(
+//!     Path::new("telegraf.conf"),
+//!     "/etc/telegraf/telegraf.conf", 
+//!     "192.168.1.2:22",
+//!     "iotuser",
+//!     "password"
+//! );
+//! ```
+
 use crate::error::TelegrafError;
 use ssh2::Session;
 use std::fs::File;
@@ -7,7 +28,42 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// Helper function to validate host format (hostname:port)
+/// SSH connection configuration with separate timeout values
+#[derive(Debug, Clone)]
+pub struct SshConfig {
+    /// Timeout for establishing TCP connection (seconds)
+    pub connect_timeout: u64,
+    /// Timeout for SSH operations like file transfer, command execution (seconds)  
+    pub operation_timeout: u64,
+    /// Timeout for reading/writing data streams (seconds)
+    pub stream_timeout: u64,
+}
+
+impl Default for SshConfig {
+    fn default() -> Self {
+        Self {
+            connect_timeout: 10,
+            operation_timeout: 60,
+            stream_timeout: 30,
+        }
+    }
+}
+
+/// Validates that a host string follows the required hostname:port format
+/// 
+/// # Arguments
+/// * `host` - The host string to validate (e.g., "192.168.1.2:22")
+/// 
+/// # Returns
+/// * `Ok(())` if the host format is valid
+/// * `Err(TelegrafError::HostFormatError)` if the format is invalid
+/// 
+/// # Examples
+/// ```
+/// # use crate::backend::ssh_utils::validate_host_format;
+/// assert!(validate_host_format("192.168.1.2:22").is_ok());
+/// assert!(validate_host_format("invalid").is_err());
+/// ```
 fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
     // Check if the host string contains a colon (required for host:port format)
     if !host.contains(':') {
@@ -38,12 +94,22 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
     }
 }
 
-// Helper function to establish SSH connection with timeout
-fn connect_ssh_with_timeout(
+/// Establishes an SSH connection with configurable timeouts
+/// 
+/// # Arguments
+/// * `host` - The remote host in hostname:port format (e.g., "192.168.1.2:22")
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication  
+/// * `config` - SSH configuration containing timeout values
+/// 
+/// # Returns
+/// * `Ok(Session)` - Successfully established SSH session
+/// * `Err(TelegrafError)` - Connection failed with specific error details
+fn connect_ssh_with_config(
     host: &str,
     username: &str,
     password: &str,
-    timeout_seconds: u64,
+    config: &SshConfig,
 ) -> Result<Session, TelegrafError> {
     // First validate host format before attempting connection
     // Use the dedicated validation helper
@@ -53,8 +119,8 @@ fn connect_ssh_with_timeout(
     let host_with_port = host.to_string();
 
     println!(
-        "Connecting to {} with timeout of {} seconds",
-        host_with_port, timeout_seconds
+        "Connecting to {} with connect_timeout={}s, operation_timeout={}s, stream_timeout={}s",
+        host_with_port, config.connect_timeout, config.operation_timeout, config.stream_timeout
     );
 
     // Set up TCP connection with timeout
@@ -69,15 +135,15 @@ fn connect_ssh_with_timeout(
     };
 
     for socket_addr in socket_addrs {
-        match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(timeout_seconds)) {
+        match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(config.connect_timeout)) {
             Ok(tcp) => {
-                // Configure TCP stream
-                if let Err(e) = tcp.set_read_timeout(Some(Duration::from_secs(timeout_seconds))) {
+                // Configure TCP stream with stream timeout (separate from connection timeout)
+                if let Err(e) = tcp.set_read_timeout(Some(Duration::from_secs(config.stream_timeout))) {
                     println!("Failed to set read timeout: {}", e);
                     continue;
                 }
 
-                if let Err(e) = tcp.set_write_timeout(Some(Duration::from_secs(timeout_seconds))) {
+                if let Err(e) = tcp.set_write_timeout(Some(Duration::from_secs(config.stream_timeout))) {
                     println!("Failed to set write timeout: {}", e);
                     continue;
                 }
@@ -92,7 +158,8 @@ fn connect_ssh_with_timeout(
                 };
 
                 session.set_tcp_stream(tcp);
-                session.set_timeout((timeout_seconds * 1000).try_into().unwrap()); // Convert to milliseconds
+                // Use operation timeout for SSH session operations (convert to milliseconds)
+                session.set_timeout((config.operation_timeout * 1000).try_into().unwrap());
 
                 // Perform handshake and authentication
                 match session.handshake() {
@@ -127,6 +194,46 @@ fn connect_ssh_with_timeout(
     )))
 }
 
+/// Backward-compatible wrapper for connect_ssh_with_config using default timeouts
+/// 
+/// # Arguments  
+/// * `host` - The remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+/// * `timeout_seconds` - Timeout in seconds (used for all timeout types)
+/// 
+/// # Returns
+/// * `Ok(Session)` - Successfully established SSH session
+/// * `Err(TelegrafError)` - Connection failed with specific error details
+fn connect_ssh_with_timeout(
+    host: &str,
+    username: &str,
+    password: &str,
+    timeout_seconds: u64,
+) -> Result<Session, TelegrafError> {
+    let config = SshConfig {
+        connect_timeout: timeout_seconds,
+        operation_timeout: timeout_seconds,
+        stream_timeout: timeout_seconds,
+    };
+    connect_ssh_with_config(host, username, password, &config)
+}
+
+/// Sends a Telegraf configuration file to an IoT device and restarts the service
+/// 
+/// This is a convenience function that combines file transfer and service restart
+/// in a single operation for deploying Telegraf configurations.
+/// 
+/// # Arguments
+/// * `config_path` - Local path to the Telegraf configuration file
+/// * `remote_path` - Remote destination path for the configuration file
+/// * `iot_host` - IoT device host in hostname:port format
+/// * `iot_username` - SSH username for the IoT device
+/// * `iot_password` - SSH password for the IoT device
+/// 
+/// # Returns
+/// * `Ok(())` - Configuration deployed and service restarted successfully
+/// * `Err(TelegrafError)` - File transfer or service restart failed
 pub fn send_and_restart_telegraf(
     config_path: &Path,
     remote_path: &str,
@@ -149,8 +256,19 @@ pub fn send_and_restart_telegraf(
     Ok(())
 }
 
+/// Sends a file over SSH to a specified remote host using SCP
+/// 
+/// # Arguments
+/// * `local_path` - Path to the local file to transfer
+/// * `remote_path` - Destination path on the remote host
+/// * `remote_host` - Remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+/// 
+/// # Returns
+/// * `Ok(())` - File transferred successfully
+/// * `Err(TelegrafError)` - Connection failed or file transfer failed
 pub fn send_file_over_ssh(
-    // Sends a file over SSH to a specified remote host, path, and credentials
     local_path: &Path,
     remote_path: &str,
     remote_host: &str,
@@ -183,6 +301,23 @@ pub fn send_file_over_ssh(
     Ok(())
 }
 
+/// Executes a command on an established SSH session and returns the output
+/// 
+/// # Arguments
+/// * `session` - Active SSH session to execute the command on
+/// * `command` - Shell command to execute on the remote host
+/// 
+/// # Returns
+/// * `Ok(String)` - Command output if execution successful (exit status 0)
+/// * `Err(TelegrafError)` - Command failed or returned non-zero exit status
+/// 
+/// # Examples
+/// ```no_run
+/// # use crate::backend::ssh_utils::execute_ssh_command;
+/// # let session = todo!(); // Assume we have an established session
+/// let output = execute_ssh_command(&session, "ls -la")?;
+/// println!("Directory listing: {}", output);
+/// ```
 fn execute_ssh_command(session: &Session, command: &str) -> Result<String, TelegrafError> {
     let mut channel = session.channel_session()?;
     channel.exec(command)?;
@@ -384,23 +519,33 @@ pub fn backup_influxdb(
     Ok(())
 }
 
+/// Executes a command on a remote host via SSH
+/// 
+/// This is a convenience function that establishes an SSH connection,
+/// executes a command, and prints the output. For more control over
+/// the session lifecycle, use `connect_ssh_with_config` and `execute_ssh_command`.
+/// 
+/// # Arguments
+/// * `remote_host` - The remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication  
+/// * `command` - Shell command to execute on the remote host
+/// 
+/// # Returns
+/// * `Ok(())` - Command executed successfully
+/// * `Err(TelegrafError)` - Connection failed or command execution failed
 pub fn execute_command_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
     command: &str,
 ) -> Result<(), TelegrafError> {
-    // Connect to SSH with timeout (360 seconds)
+    // Connect to SSH with extended timeout for long-running commands (360 seconds)
     let session = connect_ssh_with_timeout(remote_host, username, password, 360)?;
 
-    let mut channel = session.channel_session()?;
-    channel.exec(command)?;
-    let mut s = String::new();
-    channel.read_to_string(&mut s)?;
-    println!("Command output: {}", s);
-    channel.send_eof()?;
-    channel.wait_eof()?;
-    channel.wait_close()?;
+    // Execute the command using the centralized execution function
+    let output = execute_ssh_command(&session, command)?;
+    println!("Command output: {}", output);
     println!("Command executed successfully.");
     Ok(())
 }
@@ -602,85 +747,81 @@ pub enum ServiceType {
 }
 
 /// Checks if a service (InfluxDB or Prometheus) is responding
+/// 
+/// # Arguments
+/// * `remote_host` - The remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+/// * `service_url` - Service URL (currently unused, kept for API compatibility)
+/// * `service_type` - Type of service to check
+/// * `timeout_seconds` - Timeout for the SSH connection and command execution
+/// 
+/// # Returns
+/// * `Ok(true)` - Service is responding normally
+/// * `Ok(false)` - Service is not responding or returned an error
+/// * `Err(TelegrafError)` - SSH connection or command execution failed
 pub fn check_service_status(
     remote_host: &str,
     username: &str,
     password: &str,
-    service_url: &str,
+    _service_url: &str, // Kept for API compatibility but not used
     service_type: ServiceType,
     timeout_seconds: u64,
 ) -> Result<bool, TelegrafError> {
-    let service_name = match service_type {
-        ServiceType::InfluxDB => "InfluxDB",
-        ServiceType::Prometheus => "Prometheus",
-    };
-
-    println!("Checking {} status at {}", service_name, service_url);
-
-    // Connect to the remote host
-    let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
-
-    // Determine the health endpoint based on service type
-    let _endpoint = match service_type {
-        ServiceType::InfluxDB => "health",
-        ServiceType::Prometheus => "api/v1/status/config",
-    };
-
-    // Construct curl command to check service health endpoint
-    // Using curl with a timeout to prevent hanging
-    // let command = format!(
-    //     "curl -s -o /dev/null -w '%{{http_code}}' --connect-timeout {} {}/{}",
-    //     timeout_seconds,
-    //     service_url.trim_end_matches('/'), // Remove trailing slash if present
-    //     endpoint
-    // );
-    let command = "influx ping".to_string();
-
-    // Execute the command
-    let output = execute_ssh_command(&session, &command)?;
-
-    // Check if the HTTP status code is 200 (OK)
-    let is_healthy = output.trim() == "OK";
-
-    if is_healthy {
-        println!("{} is responding normally", service_name);
-    } else {
-        println!(
-            "{} is not responding or returned an error code: {}",
-            service_name,
-            output.trim()
-        );
+    match service_type {
+        ServiceType::InfluxDB => {
+            // Delegate to specialized InfluxDB status check
+            check_influxdb_status(remote_host, username, password, timeout_seconds)
+        }
+        ServiceType::Prometheus => {
+            // TODO: Implement proper Prometheus health check when needed
+            // For now, return an error indicating this is not implemented
+            Err(TelegrafError::SshError(crate::error::SshError::Other(
+                ssh2::Error::new(
+                    ssh2::ErrorCode::Session(-1),
+                    "Prometheus health check not yet implemented",
+                ),
+            )))
+        }
     }
-
-    Ok(is_healthy)
 }
 
+/// Checks if InfluxDB is responding on the remote host
+/// 
+/// # Arguments
+/// * `remote_host` - The remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+/// * `timeout_seconds` - Timeout for the SSH connection and command execution
+/// 
+/// # Returns
+/// * `Ok(true)` - InfluxDB is responding normally (returns "OK" to ping)
+/// * `Ok(false)` - InfluxDB is not responding or returned an error
+/// * `Err(TelegrafError)` - SSH connection or command execution failed
 pub fn check_influxdb_status(
     remote_host: &str,
     username: &str,
     password: &str,
     timeout_seconds: u64,
 ) -> Result<bool, TelegrafError> {
-    let service_name = "Influxdb".to_string();
-    println!("Checking {} status at {}", service_name, remote_host);
+    println!("Checking InfluxDB status at {}", remote_host);
 
     // Connect to the remote host
     let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
 
-    let command = "influx ping".to_string();
+    let command = "influx ping";
 
     // Execute the command
-    let output = execute_ssh_command(&session, &command)?;
+    let output = execute_ssh_command(&session, command)?;
 
-    // Check if the HTTP status code is 200 (OK)
+    // Check if InfluxDB responds with "OK"
     let is_healthy = output.trim() == "OK";
 
     if is_healthy {
-        println!("{} is responding normally", service_name);
+        println!("InfluxDB is responding normally");
     } else {
         println!(
-            "{} is not responding or returned an error code: {}",
-            service_name,
+            "InfluxDB is not responding or returned an error code: {}",
             output.trim()
         );
     }

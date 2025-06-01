@@ -1,4 +1,4 @@
-use crate::backend::ssh_utils;
+use crate::backend::ssh_utils::{self, SshConfig, ServiceType};
 use std::path::PathBuf;
 use tempfile::tempdir;
 
@@ -14,6 +14,36 @@ mod tests {
         let mut file = File::create(&file_path).unwrap();
         file.write_all(content.as_bytes()).unwrap();
         file_path
+    }
+
+    #[test]
+    fn test_ssh_config_default() {
+        let config = SshConfig::default();
+        assert_eq!(config.connect_timeout, 10);
+        assert_eq!(config.operation_timeout, 60);
+        assert_eq!(config.stream_timeout, 30);
+    }
+
+    #[test]
+    fn test_ssh_config_custom() {
+        let config = SshConfig {
+            connect_timeout: 5,
+            operation_timeout: 120,
+            stream_timeout: 45,
+        };
+        assert_eq!(config.connect_timeout, 5);
+        assert_eq!(config.operation_timeout, 120);
+        assert_eq!(config.stream_timeout, 45);
+    }
+
+    #[test]
+    fn test_service_type_debug() {
+        let influx = ServiceType::InfluxDB;
+        let prometheus = ServiceType::Prometheus;
+        
+        // Ensure Debug trait is implemented
+        assert!(format!("{:?}", influx).contains("InfluxDB"));
+        assert!(format!("{:?}", prometheus).contains("Prometheus"));
     }
 
     // We can't easily test actual SSH connections in unit tests
