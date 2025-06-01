@@ -3,7 +3,8 @@
 count = true
 line = true
 branch = true
-ignore-panics = true
+ignore-panics = false
+test-threads = 1
 
 # Reporting options
 out = ["Html", "Xml", "Json"]
