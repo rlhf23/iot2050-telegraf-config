@@ -1,0 +1,36 @@
+name: Windows Release Build
+
+on:
+  workflow_dispatch:  # Manual triggering from GitHub UI
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install vcpkg and OpenSSL
+        run: |
+          # Install vcpkg
+          git clone https://github.com/microsoft/vcpkg
+          .\vcpkg\bootstrap-vcpkg.bat
+          .\vcpkg\vcpkg install openssl:x64-windows
+          echo "VCPKG_ROOT=$pwd\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build
+        run: cargo build --verbose
+        env:
+          VCPKGRS_DYNAMIC: 1
+          VCPKG_ROOT: ${{ github.workspace }}\vcpkg
