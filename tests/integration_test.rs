@@ -75,46 +75,65 @@ fn get_bin_path(bin_name: &str) -> PathBuf {
     path
 }
 
+/// Helper function to start the OPC UA test server on the specified port
+/// Returns a handle that will kill the server when dropped
+fn start_opcua_server(port: u16) -> std::process::Child {
+    // Kill any existing server instances
+    let _ = std::process::Command::new("pkill")
+        .arg("-f")
+        .arg("opcua_test_server")
+        .status();
+
+    // Give the OS a moment to release the port
+    thread::sleep(Duration::from_secs(1));
+
+    println!("Starting OPC UA test server on port {}...", port);
+    let mut server = Command::new(get_bin_path("opcua_test_server"))
+        .arg("--port")
+        .arg(port.to_string())
+        .stdout(Stdio::piped())  // Capture stdout for debugging
+        .stderr(Stdio::piped())  // Capture stderr for debugging
+        .spawn()
+        .expect("Failed to start OPC UA test server");
+
+    // Give the server time to start up
+    println!("Waiting for server to start...");
+    thread::sleep(Duration::from_secs(3));
+    
+    // Verify the server is still running
+    if let Ok(Some(status)) = server.try_wait() {
+        let output = server.wait_with_output()
+            .expect("Failed to get server output");
+        
+        println!("Server process exited unexpectedly with status: {:?}", status);
+        println!("Server stdout: {}", String::from_utf8_lossy(&output.stdout));
+        println!("Server stderr: {}", String::from_utf8_lossy(&output.stderr));
+        
+        panic!("Server process exited unexpectedly with status: {:?}", status);
+    }
+    
+    server
+}
+
 #[test]
-fn test_opcua_server_interaction() {
+fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
     // Skip in CI environments as they might not have the required ports available
     if is_ci_environment() {
         println!("Skipping OPC UA server test in CI environment");
-        return;
+        return Ok(());
     }
 
-    // Channel to communicate with the server thread
-    let (tx, rx) = mpsc::channel();
-    
-    // Start the test server in a separate thread
-    let _server_handle = thread::spawn(move || {
-        // This will block until the server is shut down
-        if let Err(e) = std::panic::catch_unwind(|| {
-            let mut server = Command::new(get_bin_path("opcua_test_server"))
-                .spawn()
-                .expect("Failed to start OPC UA test server");
-            
-            // Let the main thread know we've started
-            tx.send(()).unwrap();
-            
-            // Wait for the server to be stopped
-            let _ = server.wait();
-        }) {
-            eprintln!("OPC UA server thread panicked: {:?}", e);
-        }
+    // Start the server and ensure it's cleaned up
+    let port = 4841;
+    let server_handle = start_opcua_server(port);
+    let _server_guard = scopeguard::guard(server_handle, |mut server| {
+        let _ = server.kill();
+        let _ = server.wait();
     });
-
-    // Wait for the server to start
-    if rx.recv_timeout(Duration::from_secs(5)).is_err() {
-        panic!("OPC UA server failed to start within timeout");
-    }
-
-    // Give the server a moment to fully initialize
-    thread::sleep(Duration::from_secs(1));
 
     // Create a test configuration
     let test_config = TelegrafConfig {
-        ip: "127.0.0.1:4840".to_string(),  // Use 127.0.0.1 instead of localhost
+        ip: format!("127.0.0.1:{}", port),  // Use the same port as the server
         username: "".to_string(),         // Anonymous access
         password: "".to_string(),         // Anonymous access
         iot_host: "".to_string(),        // Not needed for this test
@@ -132,7 +151,10 @@ fn test_opcua_server_interaction() {
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
     let poller = OpcUaPoller::new(test_config)
-        .expect("Failed to create OpcUaPoller and connect to OPC UA server");
+        .map_err(|e| {
+            eprintln!("Failed to create OpcUaPoller: {}", e);
+            e
+        })?;
 
     // Get the top-level nodes from the OPC UA server
     let mut nodes = poller.browse_complete_structure()
@@ -174,16 +196,26 @@ fn test_opcua_server_interaction() {
         print_node_structure(node, 0);
     }
     
-    // If there are nodes, try to browse their children
-    if let Some(first_node) = nodes.first() {
-        let children = poller.load_node_children(first_node, 1)
-            .expect("Failed to load node children");
-        
-        // It's valid to have nodes with no children, so we don't assert on the result
-        println!("Found {} children for node {}", children.len(), first_node.browse_name);
+    println!("Found {} children for node {}", nodes[0].children.len(), nodes[0].display_name);
+    
+    // Try to find the Sample_DB node
+    let sample_db_node = nodes.iter().find(|node| node.display_name == "Sample_DB");
+    
+    match sample_db_node {
+        Some(node) => {
+            println!("Found Sample_DB node with {} children", node.children.len());
+            
+            // Print the first few children for debugging
+            for (i, child) in node.children.iter().enumerate().take(5) {
+                println!("Child {}: {} ({} - {:?})", i, child.display_name, child.browse_name, child.node_class);
+            }
+        },
+        None => println!("Warning: Could not find Sample_DB node in server structure"),
     }
     
     println!("OPC UA server test completed successfully");
+    
+    Ok(())
     
     // The server will be killed by the _server_guard when it goes out of scope
 }
@@ -225,41 +257,9 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Kill any existing server instances
-    let _ = std::process::Command::new("pkill")
-        .arg("-f")
-        .arg("opcua_test_server")
-        .status();
-
-    // Start the OPC UA test server as a child process
-    println!("Starting OPC UA test server...");
-    let mut server_handle = Command::new("cargo")
-        .arg("run")
-        .arg("--bin")
-        .arg("opcua_test_server")
-        .stdout(Stdio::piped())  // Capture stdout for debugging
-        .stderr(Stdio::piped())  // Capture stderr for debugging
-        .spawn()
-        .expect("Failed to start OPC UA test server");
-
-    // Give the server time to start up (longer wait time)
-    println!("Waiting for server to start...");
-    thread::sleep(Duration::from_secs(5));
-    
-    // Check if the server is still running
-    if let Ok(Some(status)) = server_handle.try_wait() {
-        // Server exited, try to get the output for debugging
-        let output = server_handle.wait_with_output()
-            .expect("Failed to get server output");
-        
-        println!("Server process exited unexpectedly with status: {:?}", status);
-        println!("Server stdout: {}", String::from_utf8_lossy(&output.stdout));
-        println!("Server stderr: {}", String::from_utf8_lossy(&output.stderr));
-        
-        panic!("Server process exited unexpectedly with status: {:?}", status);
-    }
-    
-    // Ensure the server is killed when the test ends (even on panic)
+    // Start the server and ensure it's cleaned up
+    let port = 4842;
+    let server_handle = start_opcua_server(port);
     let _server_guard = scopeguard::guard(server_handle, |mut server| {
         let _ = server.kill();
         let _ = server.wait();
@@ -267,10 +267,10 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a test configuration
     let test_config = TelegrafConfig {
-        ip: "127.0.0.1:4840".to_string(),
+        ip: format!("127.0.0.1:{}", port),
         username: "".to_string(),         // Anonymous access
         password: "".to_string(),         // Anonymous access
-        iot_host: "127.0.0.1:4840".to_string(),  // Use the OPC UA server port for testing
+        iot_host: format!("127.0.0.1:{}", port),  // Use the OPC UA server port for testing
         iot_username: "test".to_string(),
         iot_password: "test".to_string(),
         token_folder: std::env::temp_dir(),

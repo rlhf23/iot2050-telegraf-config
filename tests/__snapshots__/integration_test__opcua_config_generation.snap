@@ -46,7 +46,7 @@ expression: "&config"
 
 [[inputs.opcua]]
   name = "opcua"
-  endpoint = "opc.tcp://127.0.0.1:4840"
+  endpoint = "opc.tcp://127.0.0.1:4842"
   connect_timeout = "300s"
   request_timeout = "10s"
   session_timeout = "5m"

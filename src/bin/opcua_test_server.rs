@@ -1,25 +1,46 @@
+use clap::Parser;
 use opcua::server::prelude::*;
 use opcua::types::NodeId;
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::RwLock;
+use std::net::{IpAddr, Ipv4Addr};
+use std::path::PathBuf;
 
 use sie_generate_config::error::TelegrafError;
 
+/// Simple OPC UA test server for integration testing
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// IP address to bind to (default: 127.0.0.1)
+    #[arg(short, long, default_value = "127.0.0.1")]
+    address: String,
+    
+    /// Port to listen on (default: 4840)
+    #[arg(short, long, default_value_t = 4840)]
+    port: u16,
+    
+    /// Path to XML file with nodes to load (default: tests/sample_db.xml)
+    #[arg(short, long, default_value = "tests/sample_db.xml")]
+    nodes: PathBuf,
+}
+
 fn main() -> Result<(), TelegrafError> {
+    // Parse command line arguments
+    let args = Args::parse();
+    
     // Initialize logging
     opcua::console_logging::init();
-
-    let address = "127.0.0.1";
-    let port = 4840;
+    
+    let port = args.port;
 
     // Create a new server instance for the thread using the same configuration
     let server_builder = ServerBuilder::new_sample()
         .application_name("OPC UA Test Server")
         .application_uri("urn:opcua-test-server")
         .product_uri("urn:opcua-test-server:product")
-        .host_and_port(address, port);
+        .host_and_port(&args.address, port);
+        
+    let address = args.address.clone();  // Clone for later use in println!
 
     // Build the server
     let mut server = match server_builder.server() {
@@ -38,27 +59,22 @@ fn main() -> Result<(), TelegrafError> {
             .unwrap()
     };
 
-    // Load and parse XML files to create nodes
-    let xml_files = ["tests/sample_db.xml"];
-
+    // Load and parse XML file to create nodes
     let mut any_loaded = false;
-    for xml_file in &xml_files {
-        match load_nodes_from_xml(&mut server, xml_file) {
-            Ok(_) => {
-                println!("Successfully loaded nodes from {}", xml_file);
-                any_loaded = true;
-            }
-            Err(e) => {
-                println!("Failed to load nodes from {}: {}", xml_file, e);
-            }
+    match load_nodes_from_xml(&mut server, &args.nodes.to_string_lossy()) {
+        Ok(_) => {
+            println!("Successfully loaded nodes from {}", args.nodes.display());
+            any_loaded = true;
+        }
+        Err(e) => {
+            println!("Failed to load nodes from {}: {}", args.nodes.display(), e);
         }
     }
 
     if !any_loaded {
-        println!("No XML files could be loaded. Using fallback nodes.");
+        println!("No nodes loaded from XML, adding example variables");
         add_example_variables(&mut server, ns);
     }
-    println!("Starting OPC UA test server at {}:{}", address, port);
     
     // Set up Ctrl-C handler for clean shutdown
     ctrlc::set_handler(move || {
@@ -67,6 +83,7 @@ fn main() -> Result<(), TelegrafError> {
     }).expect("Error setting Ctrl-C handler");
     
     // Run the server (this will block until Ctrl-C)
+    println!("Starting OPC UA server at {}:{}", address, port);
     println!("OPC UA server running. Press Ctrl-C to stop.");
     server.run();
     
