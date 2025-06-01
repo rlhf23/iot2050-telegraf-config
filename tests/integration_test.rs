@@ -57,7 +57,70 @@ fn test_cli_basics() {
     assert!(help_output.status.success(), "Help command should succeed");
     println!("Verified that the CLI executable can run with --help");
 }
+#[test]
+fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
+    // Skip test in CI environment if needed
+    if is_ci_environment() {
+        println!("Skipping CLI config generation test in CI environment");
+        return Ok(());
+    }
 
+    // Get the path to the tests directory
+    let tests_dir = std::env::current_dir()?.join("tests");
+
+    // Setup test configuration
+    let test_config = TelegrafConfig {
+        ip: "127.0.0.1:4840".to_string(),
+        username: "".to_string(),
+        password: "".to_string(),
+        iot_host: "192.168.1.2:22".to_string(),
+        iot_username: "test".to_string(),
+        iot_password: "test".to_string(),
+        token_folder: std::env::temp_dir(),
+        bucket_name: "test_bucket".to_string(),
+        influx_token: Some("dummy_token".to_string()),
+        listener_files: vec![],
+        output_format: None,
+        include_test_inputs: true,
+        selected_opcua_nodes: vec![],
+        folder: tests_dir.clone(),
+    };
+
+    // Create a ConfigGenerator
+    let mut generator = ConfigGenerator::new(test_config.clone())
+        .expect("Failed to create ConfigGenerator");
+
+    // Get XML files from tests directory
+    println!("Discovering XML files...");
+    let xml_files = ConfigGenerator::discover_xml_files(&tests_dir);
+    println!("Found {} XML files: {:?}", xml_files.len(), xml_files);
+    assert!(!xml_files.is_empty(), "No XML files found in tests directory");
+
+    // Configure each file with test values
+    for file in &xml_files {
+        // Use namespace 1 for testing (or extract from filename if possible)
+        let namespace = 1;
+        let interval_ms = 1000; // 1 second
+        generator.set_file_config(file.clone(), namespace.to_string(), interval_ms, None);
+    }
+
+    // Generate the configuration using the discovered XML files
+    let config = generator.generate_config(&xml_files, &[])
+        .expect("Failed to generate configuration");
+
+    // Verify the configuration is not empty
+    assert!(!config.is_empty(), "Generated configuration should not be empty");
+
+    // Create a snapshot of the generated configuration
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path("__snapshots__");
+    settings.bind(|| {
+        insta::assert_snapshot!("cli_config_generation", &config);
+    });
+
+    println!("Successfully generated configuration from {} XML files", xml_files.len());
+    Ok(())
+}
 // Helper to get the path to our binaries
 fn get_bin_path(bin_name: &str) -> PathBuf {
     let mut path = std::env::current_exe().expect("Failed to get current exe path");
