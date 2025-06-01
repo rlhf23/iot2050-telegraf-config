@@ -60,21 +60,18 @@ fn main() -> Result<(), TelegrafError> {
     }
     println!("Starting OPC UA test server at {}:{}", address, port);
     
-    // Set up signal handling for graceful shutdown
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-    
+    // Set up Ctrl-C handler for clean shutdown
     ctrlc::set_handler(move || {
-        println!("Shutting down OPC UA server...");
-        r.store(false, Ordering::SeqCst);
+        println!("\nShutting down OPC UA server...");
+        std::process::exit(0);
     }).expect("Error setting Ctrl-C handler");
     
-    // Simple signal handling - the server will be killed by the OS when the process exits
-    
-    // Run the server
+    // Run the server (this will block until Ctrl-C)
+    println!("OPC UA server running. Press Ctrl-C to stop.");
     server.run();
     
     println!("OPC UA server stopped");
+    
     Ok(())
 }
 
