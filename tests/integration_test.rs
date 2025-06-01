@@ -534,5 +534,15 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     });
     
     println!("Successfully generated configuration for {} nodes", selected_nodes_clone.len());
+    
+    // Clean up the generated telegraf.conf file if it exists
+    let config_path = std::env::current_dir()?.join("telegraf.conf");
+    if config_path.exists() {
+        println!("Cleaning up test telegraf.conf file");
+        std::fs::remove_file(&config_path).map_err(|e| {
+            format!("Failed to clean up telegraf.conf: {}", e)
+        })?;
+    }
+    
     Ok(())
 }
