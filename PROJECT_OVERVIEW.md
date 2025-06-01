@@ -11,17 +11,31 @@ iot2050-telegraf-config/
 │   │   ├── mod.rs            # Main backend module definition
 │   │   ├── format.rs         # Configuration format handling
 │   │   ├── opcua_poller.rs   # OPC UA server connection/polling
-│   │   └── ssh_utils.rs      # SSH communication with IoT devices
-│   ├── bin/                  # Executable entry points
+│   │   ├── ssh_utils.rs      # SSH communication with IoT devices
+│   │   └── *_test.rs         # Unit tests for backend modules
+│   ├── bin/                  # Executable entry points and test tools
 │   │   ├── cli.rs            # Command-line interface
-│   │   └── gui.rs            # Graphical user interface
+│   │   ├── gui.rs            # Graphical user interface
+│   │   ├── opcua_client_test.rs  # OPC UA client test tool
+│   │   └── opcua_test_server.rs  # OPC UA test server
 │   ├── lib.rs                # Core library functionality and TelegrafConfig
-│   └── error.rs              # Error types and handling
-├── tests/                    # Integration tests
-│   ├── integration_test.rs   # Integration test suite
+│   ├── error.rs              # Error types and handling
+│   └── *_test.rs             # Library unit tests
+├── pki/                      # PKI certificates for testing
+├── pki-server/               # Server certificates for testing
+├── .github/                  # GitHub Actions workflows and templates
+├── tests/                    # Integration tests and test data
 │   └── *.xml                 # Test XML files
 ├── build.rs                  # Build script for environment variables
 ├── Cargo.toml                # Project dependencies and configuration
+├── Cargo.lock                # Dependency lock file
+├── flake.nix                 # Nix flake configuration
+├── flake.lock                # Nix dependency lock
+├── .env.example              # Example environment variables
+├── .codecov.yml              # Code coverage configuration
+├── .tarpaulin.toml           # Test coverage settings
+├── run_coverage.sh           # Test coverage script (bash)
+├── run_coverage.fish         # Test coverage script (fish)
 └── README.md                 # User documentation
 ```
 
@@ -134,26 +148,64 @@ These can be customized using a `.env` file and are integrated via the `build.rs
 
 ## Testing Approach
 
-1. Unit tests for individual modules (with _test.rs suffix)
-2. Integration tests in `tests/` directory
-3. Test coverage monitoring via cargo-tarpaulin
-4. XML sample files for testing configuration generation
+1. **Unit Tests**: Co-located with source files using `_test.rs` suffix
+   - Backend modules have corresponding test files in `src/backend/`
+   - Library tests are in `lib_test.rs`
+   - Error handling tests are in `error_test.rs`
+
+2. **Test Tools**:
+   - `opcua_test_server.rs`: Standalone OPC UA test server
+   - `opcua_client_test.rs`: Tool for testing OPC UA client functionality
+
+3. **Test Coverage**:
+   - Uses `cargo-tarpaulin` for code coverage
+   - Coverage configuration in `.tarpaulin.toml`
+   - Run coverage with `run_coverage.sh` or `run_coverage.fish`
+   - Integrated with Codecov (`.codecov.yml`)
+
+4. **Test Data**:
+   - XML sample files in `tests/` directory
+   - PKI certificates in `pki/` and `pki-server/` for secure testing
 
 ## Build and Deployment
 
-The project uses Rust's Cargo build system with the following profiles:
+The project supports multiple build and deployment methods:
 
+### Cargo Build System
 - Development: `cargo build`
-- Release: `cargo build --release` (with size optimizations)
+- Release: `cargo build --release` (with optimizations)
+- Test: `cargo test`
 - Windows builds include OpenSSL vendoring
+
+### Nix Support
+- Development shell: `nix develop`
+- Build with Nix: `nix build`
+- Run tests: `nix flake check`
+
+### CI/CD
+- GitHub Actions workflows in `.github/workflows/`
+- Automated testing on push/pull requests
+- Code coverage reporting to Codecov
 
 ## Dependencies
 
-Key dependencies include:
+### Main Dependencies
 - `clap`: Command-line argument parsing
 - `eframe`: GUI framework
 - `roxmltree`: XML parsing
 - `ssh2`: SSH client functionality
-- `opcua`: OPC UA client
+- `opcua`: OPC UA client implementation
 - `tokio`: Async runtime
-- `thiserror`: Error handling
+- `thiserror`: Error handling utilities
+- `dotenv`: Environment variable management
+- `serde`: Serialization/deserialization
+- `anyhow`: Flexible error handling
+- `log`/`env_logger`: Logging infrastructure
+
+### Development Dependencies
+- `assert_cmd`: Command assertion for testing
+- `predicates`: Test assertions
+- `tempfile`: Temporary file handling in tests
+- `mockall`: Mocking for unit tests
+- `cargo-tarpaulin`: Code coverage
+- `nix`: Nix package manager integration
