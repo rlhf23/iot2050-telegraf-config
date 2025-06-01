@@ -218,7 +218,7 @@ impl TelegrafApp {
     fn add_selected_nodes_to_config(&mut self) {
         // Clear any existing selections first
         self.config.selected_opcua_nodes.clear();
-        
+
         // Use the new utility function to convert selected nodes to configuration
         let selected_nodes = OpcUaNode::convert_selected_nodes_to_config(&self.opcua_nodes);
         self.config.selected_opcua_nodes = selected_nodes;

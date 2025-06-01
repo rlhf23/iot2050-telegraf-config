@@ -1,8 +1,8 @@
+use opcua::types::{NodeClass, NodeId};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use opcua::types::{NodeClass, NodeId};
 use tempfile::tempdir;
 
 use super::*;
@@ -26,7 +26,7 @@ mod tests {
             node_class,
         )
     }
-    
+
     // Helper to create a test config
     fn create_test_config() -> TelegrafConfig {
         TelegrafConfig {
@@ -46,13 +46,11 @@ mod tests {
             selected_opcua_nodes: Vec::new(),
         }
     }
-    
 
-    
     // Tests for OpcUaNode implementation
     mod opcua_node_tests {
         use super::*;
-        
+
         #[test]
         fn test_new_node() {
             let node = OpcUaNode::new(
@@ -61,7 +59,7 @@ mod tests {
                 "Test Node".to_string(),
                 NodeClass::Variable,
             );
-            
+
             assert_eq!(node.browse_name, "TestNode");
             assert_eq!(node.display_name, "Test Node");
             assert_eq!(node.node_class, NodeClass::Variable);
@@ -70,59 +68,59 @@ mod tests {
             assert!(!node.has_more_children);
             assert!(node.continuation_point.is_none());
         }
-        
+
         #[test]
         fn test_node_selection() {
             let mut node = create_test_node(1, "TestNode", NodeClass::Variable);
-            
+
             // Test initial state
             assert!(!node.selected);
-            
+
             // Test selection
             node.selected = true;
             assert!(node.selected);
         }
-        
+
         #[test]
         fn test_is_folder_node() {
             let folder_node = create_test_node(1, "Folder", NodeClass::Object);
             let var_node = create_test_node(2, "Variable", NodeClass::Variable);
-            
+
             assert!(folder_node.is_folder_node());
             assert!(!var_node.is_folder_node());
         }
-        
+
         #[test]
         fn test_deselect_children() {
             let mut parent = create_test_node(1, "Parent", NodeClass::Object);
             let mut child1 = create_test_node(2, "Child1", NodeClass::Variable);
             let mut child2 = create_test_node(3, "Child2", NodeClass::Variable);
-            
+
             parent.selected = true;
             child1.selected = true;
             child2.selected = true;
-            
+
             parent.children = vec![child1, child2];
             parent.deselect_children();
-            
+
             for child in &parent.children {
                 assert!(!child.selected);
             }
         }
     }
-    
+
     // Tests for OpcUaPoller implementation
     mod opcua_poller_tests {
         use super::*;
-        
+
         #[test]
         fn test_new_poller() {
             let config = create_test_config();
             let poller = OpcUaPoller::new(config);
-            
+
             // Should succeed with valid config
             assert!(poller.is_ok());
-            
+
             // Test that we can use the poller
             if let Ok(poller) = poller {
                 // Test that we can get namespace info (will fail to connect, but should return an error)
@@ -130,28 +128,27 @@ mod tests {
                 assert!(result.is_err()); // Should fail to connect to OPC UA server
             }
         }
-        
+
         #[test]
         fn test_browse_complete_structure() {
             let config = create_test_config();
             let poller = OpcUaPoller::new(config).unwrap();
-            
+
             // This will fail to connect to a real OPC UA server, but we can test the error case
             let result = poller.browse_complete_structure();
             assert!(result.is_err());
         }
-        
+
         #[test]
         fn test_invalid_ip() {
             let mut config = create_test_config();
             config.ip = "invalid-ip".to_string();
-            
+
             let result = OpcUaPoller::new(config);
             // The error could be either ConfigError or OpcUaClientError
             assert!(result.is_err());
         }
     }
-
 
     // Test node collection with various selection scenarios
     #[test]
@@ -160,46 +157,49 @@ mod tests {
         let mut root = create_test_node(1, "Root", NodeClass::Object);
         let mut folder1 = create_test_node(2, "Folder1", NodeClass::Object);
         let mut folder2 = create_test_node(3, "Folder2", NodeClass::Object);
-        
+
         // Create variables with different selection states
         let mut var1 = create_test_node(4, "Var1", NodeClass::Variable);
         var1.selected = true;
-        
+
         let var2 = create_test_node(5, "Var2", NodeClass::Variable);
         let mut var3 = create_test_node(6, "Var3", NodeClass::Variable);
         var3.selected = true;
-        
+
         // Build the hierarchy
         folder1.children = vec![var1, var2];
         folder2.children = vec![var3];
         root.children = vec![folder1, folder2];
-        
+
         // Test 1: Collect all selected nodes (including folders)
         let mut selected = Vec::new();
         OpcUaNode::collect_selected_nodes(&[root.clone()], &mut selected);
         assert_eq!(selected.len(), 2, "Should find both selected variables");
         assert_eq!(selected[0].browse_name, "Var1");
         assert_eq!(selected[1].browse_name, "Var3");
-        
+
         // Test 2: Collect only selected variable nodes
         let mut var_nodes = Vec::new();
         OpcUaNode::collect_selected_variable_nodes(&[root.clone()], &mut var_nodes);
         assert_eq!(var_nodes.len(), 2, "Should find both selected variables");
-        
+
         // Test 3: Collect all variables from a specific folder
         let mut folder_vars = Vec::new();
         if let Some(folder) = root.children.get(0) {
             OpcUaNode::collect_all_variables_in_folder(folder, &mut folder_vars);
         }
         assert_eq!(folder_vars.len(), 2, "Should find all variables in folder1");
-        
+
         // Test 4: Deselect all children and verify
         root.deselect_children();
         let mut after_deselect = Vec::new();
         OpcUaNode::collect_selected_nodes(&[root], &mut after_deselect);
-        assert!(after_deselect.is_empty(), "No nodes should be selected after deselect_all");
+        assert!(
+            after_deselect.is_empty(),
+            "No nodes should be selected after deselect_all"
+        );
     }
-    
+
     // Test node conversion to config with various node types and properties
     #[test]
     fn test_node_conversion() {
@@ -208,71 +208,84 @@ mod tests {
         var_node.node_id = NodeId::new(2, "TestNode");
         var_node.display_name = "Test Node".to_string();
         var_node.selected = true;
-        
+
         // Test with an object node that has children
         let mut obj_node = create_test_node(2, "ParentNode", NodeClass::Object);
         obj_node.node_id = NodeId::new(2, "Parent");
         obj_node.display_name = "Parent Node".to_string();
         obj_node.selected = true;
-        
+
         let mut child1 = create_test_node(3, "Child1", NodeClass::Variable);
         child1.node_id = NodeId::new(2, "Child1");
         child1.display_name = "Child 1".to_string();
         child1.selected = true;
-        
+
         let child2 = create_test_node(4, "Child2", NodeClass::Variable);
         obj_node.children = vec![child1, child2];
-        
+
         // Convert to config format
         let config_nodes = OpcUaNode::convert_selected_nodes_to_config(&[var_node, obj_node]);
-        
+
         // Debug output to help diagnose test failures
         println!("Converted nodes ({}):", config_nodes.len());
         for (i, node) in config_nodes.iter().enumerate() {
-            println!("  {}: {} (browse_name={}, display_name={}, folder={:?})", 
-                   i, node.node_id, node.browse_name, node.display_name, node.folder_name);
+            println!(
+                "  {}: {} (browse_name={}, display_name={}, folder={:?})",
+                i, node.node_id, node.browse_name, node.display_name, node.folder_name
+            );
         }
-        
+
         // Verify we have at least the variable nodes we expect
         // The exact number might vary based on implementation, but we should have at least 2 nodes
-        assert!(config_nodes.len() >= 2, "Expected at least 2 nodes (TestNode and Child1)");
-        
+        assert!(
+            config_nodes.len() >= 2,
+            "Expected at least 2 nodes (TestNode and Child1)"
+        );
+
         // Verify the variable node properties
-        let var_config = config_nodes.iter()
+        let var_config = config_nodes
+            .iter()
             .find(|n| n.browse_name == "TestNode")
             .expect("TestNode not found in converted nodes");
-            
+
         // Verify the node ID format matches the expected OPC UA string format
-        assert!(var_config.node_id.to_string().contains("TestNode"), 
-               "Node ID should contain 'TestNode', got: {}", 
-               var_config.node_id);
+        assert!(
+            var_config.node_id.to_string().contains("TestNode"),
+            "Node ID should contain 'TestNode', got: {}",
+            var_config.node_id
+        );
         assert_eq!(var_config.namespace, 2);
         assert_eq!(var_config.display_name, "Test Node");
         assert_eq!(var_config.measurement_name, "test_node");
         assert_eq!(var_config.interval_ms, 1000);
-        assert!(var_config.folder_name.is_none(), 
-               "Top-level node should not have a folder name, got: {:?}", 
-               var_config.folder_name);
-        
+        assert!(
+            var_config.folder_name.is_none(),
+            "Top-level node should not have a folder name, got: {:?}",
+            var_config.folder_name
+        );
+
         // Verify the child node has the correct folder name
-        let child_config = config_nodes.iter()
+        let child_config = config_nodes
+            .iter()
             .find(|n| n.browse_name == "Child1")
             .expect("Child1 not found in converted nodes");
-            
-        assert!(child_config.node_id.to_string().contains("Child1"), 
-               "Child1 node ID should contain 'Child1', got: {}", 
-               child_config.node_id);
-        
+
+        assert!(
+            child_config.node_id.to_string().contains("Child1"),
+            "Child1 node ID should contain 'Child1', got: {}",
+            child_config.node_id
+        );
+
         // The folder_name should be the display name of the parent node
         assert_eq!(
-            child_config.folder_name, 
+            child_config.folder_name,
             Some("Parent Node".to_string()),
             "Child node should have parent folder name"
         );
-        
+
         // We don't need to verify parent nodes as the poller doesn't use them directly
     }
-    
+
     // Test node collection with complex hierarchies
     #[test]
     fn test_complex_node_hierarchy() {
@@ -282,32 +295,40 @@ mod tests {
         let mut folder2 = create_test_node(3, "Folder2", NodeClass::Object);
         let var1 = create_test_node(4, "Var1", NodeClass::Variable);
         let var2 = create_test_node(5, "Var2", NodeClass::Variable);
-        
+
         // Build the hierarchy
         folder2.children = vec![var1, var2];
         folder1.children = vec![folder2];
         root.children = vec![folder1];
-        
+
         // Test collecting all variable nodes
         let mut all_vars = Vec::new();
         OpcUaNode::collect_all_variables_in_folder(&root, &mut all_vars);
-        assert_eq!(all_vars.len(), 2, "Should find all variable nodes in the hierarchy");
+        assert_eq!(
+            all_vars.len(),
+            2,
+            "Should find all variable nodes in the hierarchy"
+        );
         assert_eq!(all_vars[0].browse_name, "Var1");
         assert_eq!(all_vars[1].browse_name, "Var2");
-        
+
         // Test with selective node selection
         if let Some(folder2) = root.children[0].children.get_mut(0) {
             if let Some(var1) = folder2.children.get_mut(0) {
                 var1.selected = true;
             }
         }
-        
+
         let mut selected_vars = Vec::new();
         OpcUaNode::collect_selected_variable_nodes(&[root], &mut selected_vars);
-        assert_eq!(selected_vars.len(), 1, "Should only find selected variable nodes");
+        assert_eq!(
+            selected_vars.len(),
+            1,
+            "Should only find selected variable nodes"
+        );
         assert_eq!(selected_vars[0].browse_name, "Var1");
     }
-    
+
     // Test error handling and edge cases
     #[test]
     fn test_error_handling() {
@@ -318,25 +339,33 @@ mod tests {
             ("256.256.256.256", "out of range IP"),
             ("localhost:70000", "invalid port"),
         ];
-        
+
         for (invalid_ip, case_name) in test_cases {
             let mut config = create_test_config();
             config.ip = invalid_ip.to_string();
             let result = OpcUaPoller::new(config);
-            assert!(result.is_err(), "Should fail with {}: {}", case_name, invalid_ip);
+            assert!(
+                result.is_err(),
+                "Should fail with {}: {}",
+                case_name,
+                invalid_ip
+            );
         }
-        
+
         // Test with empty node list
         let empty_nodes: Vec<OpcUaNode> = Vec::new();
         let empty_config = OpcUaNode::convert_selected_nodes_to_config(&empty_nodes);
         assert!(empty_config.is_empty(), "Should handle empty node list");
-        
+
         // Test with unselected nodes
         let unselected_node = create_test_node(1, "Unselected", NodeClass::Variable);
         let unselected_config = OpcUaNode::convert_selected_nodes_to_config(&[unselected_node]);
-        assert!(unselected_config.is_empty(), "Should not include unselected nodes");
+        assert!(
+            unselected_config.is_empty(),
+            "Should not include unselected nodes"
+        );
     }
-    
+
     // Test node display and string representation
     #[test]
     fn test_node_display() {
@@ -346,26 +375,35 @@ mod tests {
         node.display_name = "Display Name".to_string();
         node.data_type = Some("Double".to_string());
         node.description = Some("Test Description".to_string());
-        
+
         // Verify node properties are accessible
         assert_eq!(node.browse_name, "TestNode");
         assert_eq!(node.display_name, "Display Name");
         assert_eq!(node.node_class, NodeClass::Variable);
         assert_eq!(node.data_type, Some("Double".to_string()));
         assert_eq!(node.description, Some("Test Description".to_string()));
-        
+
         // Test node ID string representation
         let node_id_str = node.node_id.to_string();
-        assert!(node_id_str.contains("TestNode"), "Node ID should contain node identifier");
-        
+        assert!(
+            node_id_str.contains("TestNode"),
+            "Node ID should contain node identifier"
+        );
+
         // Test node type detection
-        assert!(!node.is_folder_node(), "Variable node should not be a folder");
-        
+        assert!(
+            !node.is_folder_node(),
+            "Variable node should not be a folder"
+        );
+
         // Create a folder node and test
         let folder_node = create_test_node(2, "Folder", NodeClass::Object);
-        assert!(folder_node.is_folder_node(), "Object node should be a folder");
+        assert!(
+            folder_node.is_folder_node(),
+            "Object node should be a folder"
+        );
     }
-    
+
     // Test that the mapping between XML file names and namespaces works correctly
     #[test]
     fn test_namespace_mapping() {

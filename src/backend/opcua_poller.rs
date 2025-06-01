@@ -758,13 +758,13 @@ impl OpcUaPoller {
 impl OpcUaNode {
     /// Helper function to determine if a node is a folder-like node
     pub fn is_folder_node(&self) -> bool {
-        self.node_class == opcua::types::NodeClass::Object 
-        || self.node_class == opcua::types::NodeClass::ObjectType
-        || (self.node_class == opcua::types::NodeClass::Variable 
-            && (self.display_name.contains("DataBlocks") 
-                || self.display_name.contains("Global") 
-                || self.browse_name.contains("DataBlocks") 
-                || self.browse_name.contains("Global")))
+        self.node_class == opcua::types::NodeClass::Object
+            || self.node_class == opcua::types::NodeClass::ObjectType
+            || (self.node_class == opcua::types::NodeClass::Variable
+                && (self.display_name.contains("DataBlocks")
+                    || self.display_name.contains("Global")
+                    || self.browse_name.contains("DataBlocks")
+                    || self.browse_name.contains("Global")))
     }
 
     /// Deselect all children of a node recursively
@@ -778,48 +778,51 @@ impl OpcUaNode {
     /// Collect only the variable nodes that are selected (for individual selection)
     pub fn collect_selected_variable_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
-            if node.selected && node.node_class == opcua::types::NodeClass::Variable && !node.is_folder_node() {
+            if node.selected
+                && node.node_class == opcua::types::NodeClass::Variable
+                && !node.is_folder_node()
+            {
                 result.push(node.clone());
             }
-            
+
             // Still check children regardless of parent selection state
             Self::collect_selected_variable_nodes(&node.children, result);
         }
     }
-    
+
     /// Collect only the folder nodes that are selected (for folder-based configuration)
     pub fn collect_selected_folder_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
             if node.selected && node.is_folder_node() {
                 result.push(node.clone());
             }
-            
+
             // Check children recursively
             Self::collect_selected_folder_nodes(&node.children, result);
         }
     }
-    
+
     /// Collect all variable nodes within a folder, regardless of their selection state
     pub fn collect_all_variables_in_folder(folder: &OpcUaNode, result: &mut Vec<OpcUaNode>) {
         for child in &folder.children {
             if child.node_class == opcua::types::NodeClass::Variable && !child.is_folder_node() {
                 result.push(child.clone());
             }
-            
+
             // Recursively collect from subfolders
             if child.is_folder_node() {
                 Self::collect_all_variables_in_folder(child, result);
             }
         }
     }
-    
+
     /// Original method kept for backward compatibility
     pub fn collect_selected_nodes(nodes: &[OpcUaNode], result: &mut Vec<OpcUaNode>) {
         for node in nodes {
             if node.selected {
                 result.push(node.clone());
             }
-            
+
             // Still check children regardless of parent selection state
             Self::collect_selected_nodes(&node.children, result);
         }
@@ -829,20 +832,20 @@ impl OpcUaNode {
     /// Returns a vector of SelectedOpcUaNode that can be added to the configuration
     pub fn convert_selected_nodes_to_config(nodes: &[OpcUaNode]) -> Vec<crate::SelectedOpcUaNode> {
         let mut result = Vec::new();
-        
+
         // 1. Collect all selected folders
         let mut selected_folders = Vec::new();
         Self::collect_selected_folder_nodes(nodes, &mut selected_folders);
-        
+
         // 2. For each selected folder, collect all variable nodes inside
         for folder in selected_folders {
             // Create a group name from the folder display name
             let group_name = folder.display_name.clone();
-            
+
             // Collect all variables from the folder recursively
             let mut folder_variables = Vec::new();
             Self::collect_all_variables_in_folder(&folder, &mut folder_variables);
-            
+
             // Add each variable with the folder name for grouping
             for var_node in folder_variables {
                 let selected_node = crate::SelectedOpcUaNode {
@@ -850,33 +853,41 @@ impl OpcUaNode {
                     namespace: var_node.node_id.namespace,
                     browse_name: var_node.browse_name.clone(),
                     display_name: var_node.display_name.clone(),
-                    measurement_name: var_node.display_name.clone().replace(" ", "_").to_lowercase(),
-                    interval_ms: 1000, // Default interval
+                    measurement_name: var_node
+                        .display_name
+                        .clone()
+                        .replace(" ", "_")
+                        .to_lowercase(),
+                    interval_ms: 1000,                     // Default interval
                     folder_name: Some(group_name.clone()), // Set the folder name for grouping
                 };
-                
+
                 result.push(selected_node);
             }
         }
-        
+
         // 3. Add individually selected variables (not from folders)
         let mut selected_variables = Vec::new();
         Self::collect_selected_variable_nodes(nodes, &mut selected_variables);
-        
+
         for var_node in selected_variables {
             let selected_node = crate::SelectedOpcUaNode {
                 node_id: var_node.node_id.clone(),
                 namespace: var_node.node_id.namespace,
                 browse_name: var_node.browse_name.clone(),
                 display_name: var_node.display_name.clone(),
-                measurement_name: var_node.display_name.clone().replace(" ", "_").to_lowercase(),
+                measurement_name: var_node
+                    .display_name
+                    .clone()
+                    .replace(" ", "_")
+                    .to_lowercase(),
                 interval_ms: 1000, // Default interval
                 folder_name: None, // Not part of a folder group
             };
-            
+
             result.push(selected_node);
         }
-        
+
         result
     }
 }

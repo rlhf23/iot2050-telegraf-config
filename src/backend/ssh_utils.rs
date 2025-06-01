@@ -68,8 +68,6 @@ fn connect_ssh_with_timeout(
         }
     };
 
-    let mut last_error = IoError::new(ErrorKind::Other, "Failed to connect to any address");
-
     for socket_addr in socket_addrs {
         match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(timeout_seconds)) {
             Ok(tcp) => {
@@ -102,31 +100,30 @@ fn connect_ssh_with_timeout(
                         Ok(_) => return Ok(session),
                         Err(e) => {
                             println!("Authentication failed: {}", e);
-                            return Err(TelegrafError::SshError(format!(
-                                "Authentication failed: {}",
-                                e
+                            return Err(TelegrafError::SshError(crate::error::SshError::Auth(
+                                crate::error::SshAuthError::InvalidCredentials(e),
                             )));
                         }
                     },
                     Err(e) => {
                         println!("Handshake failed: {}", e);
-                        last_error =
-                            IoError::new(ErrorKind::Other, format!("Handshake failed: {}", e));
                         continue;
                     }
                 }
             }
             Err(e) => {
                 println!("Connection timeout: {}", e);
-                last_error = e;
+                // Connection failed, try next address
             }
         }
     }
 
     // If we get here, all connection attempts failed
-    Err(TelegrafError::SshError(format!(
-        "Connection failed: {}",
-        last_error
+    Err(TelegrafError::SshError(crate::error::SshError::Connection(
+        crate::error::SshConnectionError::NetworkUnreachable(ssh2::Error::new(
+            ssh2::ErrorCode::Session(-1),
+            "Connection failed",
+        )),
     )))
 }
 
@@ -354,7 +351,10 @@ pub fn backup_influxdb(
 
         // Parse the token from the output (format: token=value)
         let token_value = output.trim().strip_prefix("INFLUX_TOKEN=").ok_or_else(|| {
-            TelegrafError::SshError("Token not found in /etc/default/telegraf".into())
+            TelegrafError::SshError(crate::error::SshError::Other(ssh2::Error::new(
+                ssh2::ErrorCode::Session(-1),
+                "Token not found in /etc/default/telegraf",
+            )))
         })?;
 
         token_value.to_string()
@@ -565,9 +565,12 @@ pub fn get_telegraf_logs(
         }
 
         println!("Log file not found in standard locations!");
-        return Err(TelegrafError::SshError(
-            "Telegraf log file not found at expected locations".to_string(),
-        ));
+        return Err(TelegrafError::SshError(crate::error::SshError::Other(
+            ssh2::Error::new(
+                ssh2::ErrorCode::Session(-1),
+                "Telegraf log file not found at expected locations",
+            ),
+        )));
     }
 
     // Get last n lines from telegraf log with non-interactive sudo

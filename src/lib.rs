@@ -345,4 +345,6 @@ pub mod backend;
 pub mod error;
 
 #[cfg(test)]
+mod error_test;
+#[cfg(test)]
 mod lib_test;
