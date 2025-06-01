@@ -399,6 +399,14 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
+    // Helper function to extract numeric identifier from a node
+    fn get_numeric_id(node: &SelectedOpcUaNode) -> u32 {
+        match &node.node_id.identifier {
+            opcua::types::Identifier::Numeric(id) => *id,
+            _ => 0, // Default to 0 for non-numeric identifiers
+        }
+    }
+    
     // Helper function to find a node by display name recursively
     fn find_node_by_name<'a>(nodes: &'a [OpcUaNode], name: &str) -> Option<&'a OpcUaNode> {
         for node in nodes {
@@ -485,12 +493,16 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     // Make sure we found some nodes to test with
     assert!(!selected_nodes.is_empty(), "No variable nodes found to test with");
     
-    // Create a config with our selected nodes
+    // Sort nodes by their numeric ID for consistent ordering
+    let mut sorted_nodes = selected_nodes.clone();
+    sorted_nodes.sort_by_key(|node| get_numeric_id(node));
+    
+    // Create a config with our selected nodes (now sorted)
     let mut config_with_nodes = test_config;
-    config_with_nodes.selected_opcua_nodes = selected_nodes.clone();
+    config_with_nodes.selected_opcua_nodes = sorted_nodes.clone();
     
     // Clone the nodes before moving config_with_nodes
-    let selected_nodes_clone = selected_nodes.clone();
+    let selected_nodes_clone = sorted_nodes.clone();
     
     // Create a ConfigGenerator
     let config_generator = ConfigGenerator::new(config_with_nodes)
