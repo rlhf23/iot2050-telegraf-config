@@ -817,16 +817,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
-name = "colored"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf2150cce219b664a8a70df7a1f933836724b503f8a413af9365b4dcc4d90b8"
-dependencies = [
- "lazy_static",
- "windows-sys 0.48.0",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1077,6 +1067,7 @@ dependencies = [
  "objc2-foundation 0.2.2",
  "parking_lot 0.12.3",
  "percent-encoding 2.3.1",
+ "pollster",
  "profiling",
  "raw-window-handle",
  "static_assertions",
@@ -1084,6 +1075,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "web-time",
+ "wgpu",
  "winapi",
  "windows-sys 0.59.0",
  "winit",
@@ -2692,12 +2684,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "owo-colors"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caff54706df99d2a78a5a4e3455ff45448d81ef1bb63c22cd14052ca0e993a3f"
-
-[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3274,14 +3260,12 @@ dependencies = [
  "bytes",
  "chrono",
  "clap",
- "colored",
  "ctrlc",
  "dotenv",
  "eframe",
  "insta",
  "opcua",
  "openssl",
- "owo-colors",
  "rfd",
  "roxmltree",
  "scopeguard",
@@ -4118,6 +4102,7 @@ dependencies = [
  "document-features",
  "js-sys",
  "log",
+ "naga",
  "parking_lot 0.12.3",
  "profiling",
  "raw-window-handle",
@@ -4166,6 +4151,7 @@ dependencies = [
  "arrayvec",
  "ash",
  "bitflags 2.8.0",
+ "block",
  "bytemuck",
  "cfg_aliases",
  "core-graphics-types",

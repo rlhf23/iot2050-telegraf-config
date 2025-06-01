@@ -1029,19 +1029,21 @@ impl eframe::App for TelegrafApp {
 }
 
 fn main() -> eframe::Result<()> {
-    // let native_options = eframe::NativeOptions {
-    //     viewport: Some(egui::vec2(800.0, 1000.0)),
-    //     ..Default::default()
-    // };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 1000.0]) // wide enough for the drag-drop overlay text
             .with_drag_and_drop(true),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
+    
     eframe::run_native(
         "Telegraf Config Generator",
         options,
-        Box::new(|_cc| Ok(Box::new(TelegrafApp::default()))),
+        Box::new(|cc| {
+            // Access WGPU render state if needed:
+            // let _wgpu_render_state = cc.wgpu_render_state.as_ref().unwrap();
+            Ok(Box::new(TelegrafApp::default()))
+        }),
     )
 }
