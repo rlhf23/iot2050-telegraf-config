@@ -218,7 +218,7 @@ impl OpcUaPoller {
             format!("{}:4840", ip)
         };
 
-        let socket_addrs = addr.to_socket_addrs().map_err(|e| {
+        let mut socket_addrs = addr.to_socket_addrs().map_err(|e| {
             TelegrafError::OpcUaConnectionError(format!(
                 "Could not resolve OPC UA server address: {}",
                 e
