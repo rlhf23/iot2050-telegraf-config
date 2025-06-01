@@ -205,7 +205,6 @@ impl ConfigGenerator {
                         opcua::types::Identifier::ByteString(bytes) => {
                             (format!("{:?}", bytes), "b")
                         }
-                        _ => (format!("{:?}", node.node_id.identifier), "s"), // Default to string type
                     };
 
                     // If this is the first node, use its identifier type for the group
@@ -287,7 +286,6 @@ impl ConfigGenerator {
                             opcua::types::Identifier::ByteString(bytes) => {
                                 (format!("{:?}", bytes), "b")
                             }
-                            _ => (format!("{:?}", node.node_id.identifier), "s"), // Default to string type
                         };
 
                         // If this is the first node, use its identifier type for the group

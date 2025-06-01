@@ -232,20 +232,30 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         .status();
 
     // Start the OPC UA test server as a child process
+    println!("Starting OPC UA test server...");
     let mut server_handle = Command::new("cargo")
         .arg("run")
         .arg("--bin")
         .arg("opcua_test_server")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::piped())  // Capture stdout for debugging
+        .stderr(Stdio::piped())  // Capture stderr for debugging
         .spawn()
         .expect("Failed to start OPC UA test server");
 
-    // Give the server a moment to start up
-    thread::sleep(Duration::from_secs(2));
+    // Give the server time to start up (longer wait time)
+    println!("Waiting for server to start...");
+    thread::sleep(Duration::from_secs(5));
     
     // Check if the server is still running
     if let Ok(Some(status)) = server_handle.try_wait() {
+        // Server exited, try to get the output for debugging
+        let output = server_handle.wait_with_output()
+            .expect("Failed to get server output");
+        
+        println!("Server process exited unexpectedly with status: {:?}", status);
+        println!("Server stdout: {}", String::from_utf8_lossy(&output.stdout));
+        println!("Server stderr: {}", String::from_utf8_lossy(&output.stderr));
+        
         panic!("Server process exited unexpectedly with status: {:?}", status);
     }
     
