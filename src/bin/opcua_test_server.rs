@@ -35,13 +35,29 @@ fn main() -> Result<(), TelegrafError> {
             .unwrap()
     };
 
-    // Load and parse XML to create nodes
-    match load_nodes_from_xml(&mut server) {
-        Ok(_) => println!("Successfully loaded nodes from XML"),
-        Err(e) => {
-            println!("Failed to load nodes from XML: {}. Using fallback nodes.", e);
-            add_example_variables(&mut server, ns);
+    // Load and parse XML files to create nodes
+    let xml_files = [
+        "tests/sample_db.xml",
+        "tests/data_block_1.xml", 
+        "tests/data_block_2.xml"
+    ];
+    
+    let mut any_loaded = false;
+    for xml_file in &xml_files {
+        match load_nodes_from_xml(&mut server, xml_file) {
+            Ok(_) => {
+                println!("Successfully loaded nodes from {}", xml_file);
+                any_loaded = true;
+            },
+            Err(e) => {
+                println!("Failed to load nodes from {}: {}", xml_file, e);
+            }
         }
+    }
+    
+    if !any_loaded {
+        println!("No XML files could be loaded. Using fallback nodes.");
+        add_example_variables(&mut server, ns);
     }
     println!("Starting OPC UA test server at {}:{}", address, port);
     server.run();
@@ -49,8 +65,8 @@ fn main() -> Result<(), TelegrafError> {
     Ok(())
 }
 
-fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
-    let xml_content = std::fs::read_to_string("tests/sample_db.xml")
+fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), TelegrafError> {
+    let xml_content = std::fs::read_to_string(xml_file_path)
         .map_err(|e| TelegrafError::IoError(e))?;
     
     let doc = roxmltree::Document::parse(&xml_content)
@@ -141,8 +157,10 @@ fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
     let mut created_objects = HashMap::new();
     created_objects.insert("i=85".to_string(), NodeId::objects_folder_id()); // Standard Objects folder
     
-    // Create ServerInterfaces object
-    if let Some((browse_name, display_name)) = objects.get("ns=1;s=ServerInterfaces") {
+    // Create ServerInterfaces object if it doesn't exist
+    let server_interfaces_id = if let Some(existing_id) = created_objects.get("ns=1;s=ServerInterfaces") {
+        *existing_id
+    } else if let Some((browse_name, display_name)) = objects.get("ns=1;s=ServerInterfaces") {
         let server_interfaces_id = {
             let mut address_space = address_space.write();
             address_space
@@ -150,37 +168,51 @@ fn load_nodes_from_xml(server: &mut Server) -> Result<(), TelegrafError> {
                 .unwrap()
         };
         created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id);
-    }
+        server_interfaces_id
+    } else {
+        // Create default ServerInterfaces if not found in XML
+        let server_interfaces_id = {
+            let mut address_space = address_space.write();
+            address_space
+                .add_folder("ServerInterfaces", "ServerInterfaces", &NodeId::objects_folder_id())
+                .unwrap()
+        };
+        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id);
+        server_interfaces_id
+    };
     
-    // Create Sample_DB object under ServerInterfaces  
-    if let Some((browse_name, display_name)) = objects.get("ns=2;i=1") {
-        if let Some(server_interfaces_id) = created_objects.get("ns=1;s=ServerInterfaces") {
-            let sample_db_id = {
+    // Create data block objects under ServerInterfaces
+    for (object_node_id, (browse_name, display_name)) in &objects {
+        if object_node_id.starts_with("ns=2;i=") {
+            let data_block_id = {
                 let mut address_space = address_space.write();
                 address_space
-                    .add_folder(browse_name, display_name, server_interfaces_id)
+                    .add_folder(browse_name, display_name, &server_interfaces_id)
                     .unwrap()
             };
-            created_objects.insert("ns=2;i=1".to_string(), sample_db_id);
+            created_objects.insert(object_node_id.clone(), data_block_id);
         }
     }
     
-    // Create variables under Sample_DB
-    if let Some(sample_db_id) = created_objects.get("ns=2;i=1") {
-        let mut variables_to_create = Vec::new();
-        
-        for (node_id_str, (browse_name, display_name, data_type)) in &variables {
-            if node_id_str.starts_with("ns=2;i=") {
-                let node_id = parse_node_id(node_id_str)?;
-                let default_value = get_default_value_for_type(data_type);
-                
-                variables_to_create.push(Variable::new(&node_id, browse_name, display_name, default_value));
+    // Create variables under their respective data block objects
+    for (object_node_id, object_id) in &created_objects {
+        if object_node_id.starts_with("ns=2;i=") {
+            let mut variables_to_create = Vec::new();
+            
+            for (node_id_str, (browse_name, display_name, data_type)) in &variables {
+                if node_id_str.starts_with("ns=2;i=") {
+                    let node_id = parse_node_id(node_id_str)?;
+                    let default_value = get_default_value_for_type(data_type);
+                    
+                    variables_to_create.push(Variable::new(&node_id, browse_name, display_name, default_value));
+                }
             }
-        }
-        
-        if !variables_to_create.is_empty() {
-            let mut address_space = address_space.write();
-            let _ = address_space.add_variables(variables_to_create, sample_db_id);
+            
+            if !variables_to_create.is_empty() {
+                let mut address_space = address_space.write();
+                let _ = address_space.add_variables(variables_to_create, object_id);
+                break; // Only add variables once per file
+            }
         }
     }
     
