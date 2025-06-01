@@ -36,25 +36,21 @@ fn main() -> Result<(), TelegrafError> {
     };
 
     // Load and parse XML files to create nodes
-    let xml_files = [
-        "tests/sample_db.xml",
-        "tests/data_block_1.xml", 
-        "tests/data_block_2.xml"
-    ];
-    
+    let xml_files = ["tests/sample_db.xml"];
+
     let mut any_loaded = false;
     for xml_file in &xml_files {
         match load_nodes_from_xml(&mut server, xml_file) {
             Ok(_) => {
                 println!("Successfully loaded nodes from {}", xml_file);
                 any_loaded = true;
-            },
+            }
             Err(e) => {
                 println!("Failed to load nodes from {}: {}", xml_file, e);
             }
         }
     }
-    
+
     if !any_loaded {
         println!("No XML files could be loaded. Using fallback nodes.");
         add_example_variables(&mut server, ns);
@@ -66,15 +62,18 @@ fn main() -> Result<(), TelegrafError> {
 }
 
 fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), TelegrafError> {
-    let xml_content = std::fs::read_to_string(xml_file_path)
-        .map_err(|e| TelegrafError::IoError(e))?;
-    
+    let xml_content =
+        std::fs::read_to_string(xml_file_path).map_err(|e| TelegrafError::IoError(e))?;
+
     let doc = roxmltree::Document::parse(&xml_content)
         .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
-    
+
     // Parse namespace URIs
     let mut namespaces = HashMap::new();
-    if let Some(namespace_uris) = doc.descendants().find(|n| n.tag_name().name() == "NamespaceUris") {
+    if let Some(namespace_uris) = doc
+        .descendants()
+        .find(|n| n.tag_name().name() == "NamespaceUris")
+    {
         for (index, uri_node) in namespace_uris.children().enumerate() {
             if uri_node.tag_name().name() == "Uri" {
                 if let Some(uri) = uri_node.text() {
@@ -83,7 +82,7 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
             }
         }
     }
-    
+
     // Register namespaces and get their IDs
     let mut namespace_ids = HashMap::new();
     let address_space = server.address_space();
@@ -94,29 +93,38 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
             namespace_ids.insert(uri.clone(), ns_id);
         }
     }
-    
+
     // Parse UAObject nodes to create folders
     let mut objects = HashMap::new();
     let mut object_references = HashMap::new();
-    
+
     for node in doc.descendants() {
         if node.tag_name().name() == "UAObject" {
             if let Some(node_id_str) = node.attribute("NodeId") {
                 if let Some(browse_name) = node.attribute("BrowseName") {
-                    let display_name = node.children()
+                    let display_name = node
+                        .children()
                         .find(|n| n.tag_name().name() == "DisplayName")
                         .and_then(|n| n.text())
                         .unwrap_or(browse_name);
-                    
-                    objects.insert(node_id_str.to_string(), (browse_name.to_string(), display_name.to_string()));
-                    
+
+                    objects.insert(
+                        node_id_str.to_string(),
+                        (browse_name.to_string(), display_name.to_string()),
+                    );
+
                     // Parse references to understand hierarchy
-                    if let Some(references) = node.children().find(|n| n.tag_name().name() == "References") {
+                    if let Some(references) = node
+                        .children()
+                        .find(|n| n.tag_name().name() == "References")
+                    {
                         let mut organizes_refs = Vec::new();
                         for ref_node in references.children() {
                             if ref_node.tag_name().name() == "Reference" {
                                 if let Some(ref_type) = ref_node.attribute("ReferenceType") {
-                                    if ref_type == "Organizes" && ref_node.attribute("IsForward").is_none() {
+                                    if ref_type == "Organizes"
+                                        && ref_node.attribute("IsForward").is_none()
+                                    {
                                         // This is a parent reference (IsForward=false or not specified means parent)
                                         if let Some(target) = ref_node.text() {
                                             organizes_refs.push(target.to_string());
@@ -133,54 +141,73 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
             }
         }
     }
-    
+
     // Parse UAVariable nodes
     let mut variables = HashMap::new();
     for node in doc.descendants() {
         if node.tag_name().name() == "UAVariable" {
             if let Some(node_id_str) = node.attribute("NodeId") {
                 if let Some(browse_name) = node.attribute("BrowseName") {
-                    let display_name = node.children()
+                    let display_name = node
+                        .children()
                         .find(|n| n.tag_name().name() == "DisplayName")
                         .and_then(|n| n.text())
                         .unwrap_or(browse_name);
-                    
+
                     let data_type = node.attribute("DataType").unwrap_or("String");
-                    
-                    variables.insert(node_id_str.to_string(), (browse_name.to_string(), display_name.to_string(), data_type.to_string()));
+
+                    variables.insert(
+                        node_id_str.to_string(),
+                        (
+                            browse_name.to_string(),
+                            display_name.to_string(),
+                            data_type.to_string(),
+                        ),
+                    );
                 }
             }
         }
     }
-    
+
     // Create the object hierarchy starting from Objects folder
     let mut created_objects = HashMap::new();
     created_objects.insert("i=85".to_string(), NodeId::objects_folder_id()); // Standard Objects folder
-    
+
     // Create ServerInterfaces object if it doesn't exist
-    let server_interfaces_id = if let Some(existing_id) = created_objects.get("ns=1;s=ServerInterfaces") {
-        existing_id.clone()
-    } else if let Some((browse_name, display_name)) = objects.get("ns=1;s=ServerInterfaces") {
-        let server_interfaces_id = {
-            let mut address_space = address_space.write();
-            address_space
-                .add_folder(browse_name, display_name, &NodeId::objects_folder_id())
-                .unwrap()
+    let server_interfaces_id =
+        if let Some(existing_id) = created_objects.get("ns=1;s=ServerInterfaces") {
+            existing_id.clone()
+        } else if let Some((browse_name, display_name)) = objects.get("ns=1;s=ServerInterfaces") {
+            let server_interfaces_id = {
+                let mut address_space = address_space.write();
+                address_space
+                    .add_folder(browse_name, display_name, &NodeId::objects_folder_id())
+                    .unwrap()
+            };
+            created_objects.insert(
+                "ns=1;s=ServerInterfaces".to_string(),
+                server_interfaces_id.clone(),
+            );
+            server_interfaces_id
+        } else {
+            // Create default ServerInterfaces if not found in XML
+            let server_interfaces_id = {
+                let mut address_space = address_space.write();
+                address_space
+                    .add_folder(
+                        "ServerInterfaces",
+                        "ServerInterfaces",
+                        &NodeId::objects_folder_id(),
+                    )
+                    .unwrap()
+            };
+            created_objects.insert(
+                "ns=1;s=ServerInterfaces".to_string(),
+                server_interfaces_id.clone(),
+            );
+            server_interfaces_id
         };
-        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id.clone());
-        server_interfaces_id
-    } else {
-        // Create default ServerInterfaces if not found in XML
-        let server_interfaces_id = {
-            let mut address_space = address_space.write();
-            address_space
-                .add_folder("ServerInterfaces", "ServerInterfaces", &NodeId::objects_folder_id())
-                .unwrap()
-        };
-        created_objects.insert("ns=1;s=ServerInterfaces".to_string(), server_interfaces_id.clone());
-        server_interfaces_id
-    };
-    
+
     // Create data block objects under ServerInterfaces
     for (object_node_id, (browse_name, display_name)) in &objects {
         if object_node_id.starts_with("ns=2;i=") {
@@ -193,21 +220,26 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
             created_objects.insert(object_node_id.clone(), data_block_id);
         }
     }
-    
+
     // Create variables under their respective data block objects
     for (object_node_id, object_id) in &created_objects {
         if object_node_id.starts_with("ns=2;i=") {
             let mut variables_to_create = Vec::new();
-            
+
             for (node_id_str, (browse_name, display_name, data_type)) in &variables {
                 if node_id_str.starts_with("ns=2;i=") {
                     let node_id = parse_node_id(node_id_str)?;
                     let default_value = get_default_value_for_type(data_type);
-                    
-                    variables_to_create.push(Variable::new(&node_id, browse_name, display_name, default_value));
+
+                    variables_to_create.push(Variable::new(
+                        &node_id,
+                        browse_name,
+                        display_name,
+                        default_value,
+                    ));
                 }
             }
-            
+
             if !variables_to_create.is_empty() {
                 let mut address_space = address_space.write();
                 let _ = address_space.add_variables(variables_to_create, object_id);
@@ -215,27 +247,35 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
             }
         }
     }
-    
+
     Ok(())
 }
 
 fn parse_node_id(node_id_str: &str) -> Result<NodeId, TelegrafError> {
     if let Some(rest) = node_id_str.strip_prefix("ns=") {
         if let Some((ns_str, id_part)) = rest.split_once(';') {
-            let namespace: u16 = ns_str.parse()
-                .map_err(|_| TelegrafError::ConfigError(format!("Invalid namespace in NodeId: {}", node_id_str)))?;
-            
+            let namespace: u16 = ns_str.parse().map_err(|_| {
+                TelegrafError::ConfigError(format!("Invalid namespace in NodeId: {}", node_id_str))
+            })?;
+
             if let Some(id_str) = id_part.strip_prefix("i=") {
-                let id: u32 = id_str.parse()
-                    .map_err(|_| TelegrafError::ConfigError(format!("Invalid numeric ID in NodeId: {}", node_id_str)))?;
+                let id: u32 = id_str.parse().map_err(|_| {
+                    TelegrafError::ConfigError(format!(
+                        "Invalid numeric ID in NodeId: {}",
+                        node_id_str
+                    ))
+                })?;
                 return Ok(NodeId::new(namespace, id));
             } else if let Some(id_str) = id_part.strip_prefix("s=") {
                 return Ok(NodeId::new(namespace, id_str.to_string()));
             }
         }
     }
-    
-    Err(TelegrafError::ConfigError(format!("Unsupported NodeId format: {}", node_id_str)))
+
+    Err(TelegrafError::ConfigError(format!(
+        "Unsupported NodeId format: {}",
+        node_id_str
+    )))
 }
 
 fn get_default_value_for_type(data_type: &str) -> opcua::types::Variant {
