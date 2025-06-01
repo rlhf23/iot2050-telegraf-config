@@ -46,6 +46,7 @@ thiserror = "2.0.12"
 tempfile = "3.8.0"
 opcua = { version = "0.12.0", features = ["client"] }
 scopeguard = "1.2.0"
+insta = { version = "1.39.0", features = ["redactions"] }
 
 [build-dependencies]
 dotenv = "0.15.0"

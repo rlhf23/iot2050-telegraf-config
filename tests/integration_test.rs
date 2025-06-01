@@ -513,6 +513,14 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     // Print the configuration for debugging
     println!("Generated configuration:\n{}", config);
     
+    // Create a snapshot of the generated configuration
+    // This will create/update snapshots in tests/__snapshots__
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path("__snapshots__");
+    settings.bind(|| {
+        insta::assert_snapshot!("opcua_config_generation", &config);
+    });
+    
     println!("Successfully generated configuration for {} nodes", selected_nodes_clone.len());
     Ok(())
 }
