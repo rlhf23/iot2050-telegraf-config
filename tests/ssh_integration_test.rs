@@ -76,8 +76,13 @@ async fn test_ssh_connection(addr: &str) -> Result<(), Box<dyn std::error::Error
     for attempt in 1..=5 {
         println!("SSH connection attempt {}...", attempt);
         match ssh_utils::connect_ssh_with_timeout(&host_with_port, username, password, timeout_seconds).await {
-            Ok(_) => {
+            Ok(session) => {
                 println!("Successfully connected to SSH server");
+                // Verify the session is authenticated
+                if !session.authenticated() {
+                    return Err("SSH session not authenticated".into());
+                }
+                println!("SSH authentication successful");
                 return Ok(());
             }
             Err(e) => {
@@ -88,54 +93,48 @@ async fn test_ssh_connection(addr: &str) -> Result<(), Box<dyn std::error::Error
         }
     }
 
+    // Try to get more detailed error information using ssh command
+    let output = std::process::Command::new("sshpass")
+        .args(["-p", password])
+        .arg("ssh")
+        .args(["-v"])
+        .args(["-o", "BatchMode=yes"])
+        .args(["-o", "StrictHostKeyChecking=no"])
+        .args(["-p", port])
+        .arg(&format!("{}@{}", username, host))
+        .arg("echo test")
+        .output()
+        .unwrap_or_else(|_| std::process::Output {
+            status: std::process::ExitStatus::default(),
+            stdout: vec![],
+            stderr: b"Failed to execute SSH command".to_vec(),
+        });
+    
+    eprintln!("SSH connection failed. Debug output:");
+    eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
+    eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
+    
     Err(format!("Failed to connect to SSH server after multiple attempts: {:?}", 
         last_error.unwrap_or_else(|| Box::new(std::io::Error::new(
             std::io::ErrorKind::Other, 
             "No error details available"
         )))
     ).into())
-    ) {
-        Ok(s) => s,
-        Err(e) => {
-            // Try to get more detailed error information
-            let output = std::process::Command::new("ssh")
-                .args(["-v"])
-                .args(["-o", "BatchMode=yes"])
-                .args(["-o", "StrictHostKeyChecking=no"])
-                .args(["-p", port])
-                .arg(&format!("{}@{}", TEST_USER, ip))
-                .arg("echo test")
-                .output()
-                .unwrap_or_else(|_| std::process::Output {
-                    status: std::process::ExitStatus::default(),
-                    stdout: vec![],
-                    stderr: b"Failed to execute SSH command".to_vec(),
-                });
-                
-            eprintln!("SSH connection failed. Debug output:");
-            eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
-            eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
-            return Err(e.into());
-        }
-    };
-    
-    if !session.authenticated() {
-        return Err("SSH session not authenticated".into());
-    }
-    
-    println!("SSH authentication successful");
-    Ok(())
 }
 
 async fn test_file_transfer(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    use tempfile::tempdir;
+    use tokio::fs;
+
     // Create a test file
     let temp_dir = tempdir()?;
     let test_content = "test content";
     let local_path = temp_dir.path().join("test.txt");
     fs::write(&local_path, test_content).await?;
 
-    // Get just the IP part of the address
-    let ip = addr.split(':').next().unwrap();
+    // Get the host and port from the provided address
+    let host = "localhost";
     let port = addr.split(':').nth(1).unwrap_or("22");
     
     // Create the remote directory if it doesn't exist
@@ -144,19 +143,19 @@ async fn test_file_transfer(addr: &str) -> Result<(), Box<dyn std::error::Error>
         .arg("ssh")
         .args(["-o", "StrictHostKeyChecking=no"])
         .args(["-p", port])
-        .arg(&format!("{}@{}", TEST_USER, ip))
+        .arg(&format!("{}@{}", TEST_USER, host))
         .arg("mkdir -p $(dirname /tmp/telegraf.conf)")
         .output()?;
 
-    // Transfer file
-    println!("Transferring file to {}:{}...", ip, port);
+    // Transfer file using our utility function
+    println!("Transferring file to {}:{}...", host, port);
     let result = ssh_utils::send_file_over_ssh(
         &local_path,
         REMOTE_PATH,
-        &format!("{}:{}", ip, port),
+        &format!("{}:{}", host, port),
         TEST_USER,
         TEST_PASSWORD,
-    );
+    ).await;
 
     if let Err(e) = &result {
         eprintln!("Failed to transfer file: {}", e);
@@ -169,7 +168,7 @@ async fn test_file_transfer(addr: &str) -> Result<(), Box<dyn std::error::Error>
         .arg("ssh")
         .args(["-o", "StrictHostKeyChecking=no"])
         .args(["-p", port])
-        .arg(&format!("{}@{}", TEST_USER, ip))
+        .arg(&format!("{}@{}", TEST_USER, host))
         .arg(&format!("cat {}", REMOTE_PATH))
         .output()?;
 
@@ -180,8 +179,7 @@ async fn test_file_transfer(addr: &str) -> Result<(), Box<dyn std::error::Error>
 
     let remote_content = String::from_utf8_lossy(&output.stdout);
     if remote_content != test_content {
-        eprintln!("Content mismatch. Expected: '{}', Got: '", test_content);
-        eprintln!("Remote content: '{}'", remote_content);
+        eprintln!("Content mismatch. Expected: '{}', Got: '{}'", test_content, remote_content);
         return Err("File content does not match".into());
     }
 
