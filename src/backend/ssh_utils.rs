@@ -34,9 +34,9 @@ pub struct SshConfig {
 impl Default for SshConfig {
     fn default() -> Self {
         Self {
-            connect_timeout: 10,
-            operation_timeout: 60,
-            stream_timeout: 30,
+            connect_timeout: 3,      // Host is either there or it isn't - keep connection attempts short
+            operation_timeout: 60,   // SSH operations like file transfer, command execution
+            stream_timeout: 15,      // Data stream read/write operations
         }
     }
 }
@@ -269,8 +269,13 @@ pub fn send_file_over_ssh(
 ) -> Result<(), TelegrafError> {
     println!("Sending file over SSH to {}", remote_host);
 
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for file transfer operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 120, // Allow time for file transfer operations
+        stream_timeout: 30,    // Reasonable timeout for file data transfer
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Open a new SCP session and send the file
     let mut remote_file = session.scp_send(
@@ -352,8 +357,13 @@ pub fn restart_telegraf_over_ssh(
     println!("Restarting telegraf service on the remote host...");
     let start_time = Instant::now();
 
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for service management operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 60, // Service operations should be reasonably quick
+        stream_timeout: 15,    // Command output doesn't need long stream timeout
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Step 1: Try graceful stop first with timeout
     println!("Stopping telegraf service gracefully...");
@@ -473,7 +483,12 @@ pub fn backup_influxdb(
     } else {
         // Read token from the environment file via SSH
         let command = "cat /etc/default/telegraf | grep INFLUX_TOKEN=";
-        let session = connect_ssh_with_timeout(iot_host, iot_username, iot_password, 10)?;
+        let config = SshConfig {
+            connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+            operation_timeout: 30, // Reading token file should be quick
+            stream_timeout: 10,    // Small file read doesn't need long timeout
+        };
+        let session = connect_ssh_with_config(iot_host, iot_username, iot_password, &config)?;
         let output = execute_ssh_command(&session, command)?;
 
         // Parse the token from the output (format: token=value)
@@ -532,8 +547,13 @@ pub fn execute_command_over_ssh(
     password: &str,
     command: &str,
 ) -> Result<(), TelegrafError> {
-    // Connect to SSH with extended timeout for long-running commands (360 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 360)?;
+    // Connect to SSH with appropriate timeouts for potentially long-running commands
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 360, // Allow long time for potentially long-running commands
+        stream_timeout: 60,    // Extended stream timeout for large command output
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Execute the command using the centralized execution function
     let output = execute_ssh_command(&session, command)?;
@@ -549,8 +569,13 @@ pub fn copy_directory_over_ssh(
     remote_directory: &str,
     local_directory: &str,
 ) -> Result<(), TelegrafError> {
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for directory operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 180, // Directory operations may take longer depending on size
+        stream_timeout: 60,    // File transfers need reasonable stream timeout
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Execute a command to list files in the remote directory
     let mut channel = session.channel_session()?;
@@ -584,8 +609,13 @@ pub fn backup_grafana_config(
     username: &str,
     password: &str,
 ) -> Result<(), TelegrafError> {
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for file backup operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 60, // File backup should be reasonably quick
+        stream_timeout: 20,    // Configuration files are usually small
+    };
+    let session = connect_ssh_with_config(host, username, password, &config)?;
 
     // Since /etc/grafana/grafana.ini might require sudo access,
     // first copy it to a temp location with sudo, then download it
@@ -637,8 +667,13 @@ pub fn get_telegraf_status(
 ) -> Result<String, TelegrafError> {
     println!("Starting telegraf status retrieval from {}", remote_host);
 
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for status check operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 30, // Status checks should be quick
+        stream_timeout: 10,    // Status output is usually small
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     println!("SSH connection established, running status command");
 
@@ -667,8 +702,13 @@ pub fn get_telegraf_logs(
 ) -> Result<String, TelegrafError> {
     println!("Starting telegraf logs retrieval from {}", remote_host);
 
-    // Connect to SSH with timeout (10 seconds)
-    let session = connect_ssh_with_timeout(remote_host, username, password, 10)?;
+    // Connect to SSH with appropriate timeouts for log retrieval operations
+    let config = SshConfig {
+        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        operation_timeout: 45, // Log retrieval may take a bit longer for large logs
+        stream_timeout: 20,    // Log output can be moderate in size
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     println!("SSH connection established, retrieving logs");
 
