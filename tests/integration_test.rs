@@ -52,6 +52,7 @@ fn test_cli_basics() {
     assert!(help_output.status.success(), "Help command should succeed");
     println!("Verified that the CLI executable can run with --help");
 }
+
 #[test]
 fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     // Skip test in CI environment if needed
@@ -124,8 +125,17 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         "Successfully generated configuration from {} XML files",
         xml_files.len()
     );
+    
+    // Clean up the generated telegraf.conf file if it exists
+    let config_path = std::env::current_dir()?.join("telegraf.conf");
+    if config_path.exists() {
+        std::fs::remove_file(&config_path)
+            .map_err(|e| format!("Failed to clean up telegraf.conf: {}", e))?;
+    }
+    
     Ok(())
 }
+
 // Helper to get the path to our binaries
 fn get_bin_path(bin_name: &str) -> PathBuf {
     let mut path = std::env::current_exe().expect("Failed to get current exe path");
