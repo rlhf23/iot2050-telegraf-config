@@ -47,6 +47,9 @@ tempfile = "3.8.0"
 opcua = { version = "0.12.0", features = ["client"] }
 scopeguard = "1.2.0"
 insta = { version = "1.39.0", features = ["redactions"] }
+testcontainers = { version = "0.24", features = ["blocking"] }
+lazy_static = "1.4"
+reqwest = "0.12"
 
 [build-dependencies]
 dotenv = "0.15.0"

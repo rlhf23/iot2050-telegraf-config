@@ -38,8 +38,17 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
     }
 }
 
-// Helper function to establish SSH connection with timeout
-fn connect_ssh_with_timeout(
+/// Establishes an SSH connection with a specified timeout
+///
+/// # Arguments
+/// * `host` - The host to connect to in format 'hostname:port'
+/// * `username` - The username for authentication
+/// * `password` - The password for authentication
+/// * `timeout_seconds` - Connection timeout in seconds
+///
+/// # Returns
+/// Returns a Result containing the SSH session if successful, or a TelegrafError if the connection fails
+pub fn connect_ssh_with_timeout(
     host: &str,
     username: &str,
     password: &str,

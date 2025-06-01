@@ -1,20 +1,281 @@
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::thread;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
+use tempfile::tempdir;
+use tokio::fs;
 
-use scopeguard;
-use sie_generate_config::backend::opcua_poller::OpcUaNode;
+use sie_generate_config::backend::ssh_utils;
+use sie_generate_config::config::TelegrafConfig;
+use sie_generate_config::error::TelegrafError;
 
-use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
-    SelectedOpcUaNode, TelegrafConfig,
-};
+mod test_utils;
+use test_utils::container_setup;
+
+// Test configuration
+const TEST_USER: &str = "testuser";
+const TEST_PASSWORD: &str = "testpass";
+const REMOTE_PATH: &str = "/tmp/telegraf.conf";
 
 // Check if we're running in a CI environment
 fn is_ci_environment() -> bool {
     // Standard way to detect CI environments
     std::env::var("CI").is_ok()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_ssh_operations() -> Result<(), Box<dyn std::error::Error>> {
+    // Skip in CI if needed
+    if is_ci_environment() && std::env::var("RUN_SSH_TESTS").is_err() {
+        println!("Skipping SSH tests in CI (set RUN_SSH_TESTS=1 to enable)");
+        return Ok(());
+    }
+
+    // Setup test environment
+    let test_env = test_utils::container_setup::setup_test_environment().await;
+    let addr = format!("127.0.0.1:{}", test_env.ssh_port);
+    
+    // Test SSH connection
+    test_ssh_connection(&addr).await?;
+    
+    // Test file transfer
+    test_file_transfer(&addr).await?;
+    
+    // Test service configuration
+    test_service_configuration(&addr).await?;
+
+    Ok(())
+}
+
+async fn test_ssh_connection(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let ip = addr.split(':').next().unwrap();
+    let port = addr.split(':').nth(1).unwrap_or("22");
+    
+    println!("Testing SSH connection to {}:{}...", ip, port);
+    
+    // First, check if we can connect via raw TCP
+    let tcp_addr = format!("{}:{}", ip, port);
+    let socket_addr: std::net::SocketAddr = tcp_addr.parse()?;
+    
+    // Try multiple times to connect as the container might need time to start
+    let mut connected = false;
+    for _ in 0..10 {
+        match std::net::TcpStream::connect_timeout(&socket_addr, std::time::Duration::from_secs(5)) {
+            Ok(_) => {
+                connected = true;
+                break;
+            }
+            Err(e) => {
+                println!("TCP connection attempt failed: {}. Retrying...", e);
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+        }
+    }
+    
+    if !connected {
+        return Err(format!("Failed to establish TCP connection to {}:{}", ip, port).into());
+    }
+    
+    // Now test SSH authentication
+    println!("TCP connection successful, testing SSH authentication...");
+    
+    let session = match ssh_utils::connect_ssh_with_timeout(
+        &format!("{}:{}", ip, port),
+        TEST_USER,
+        TEST_PASSWORD,
+        10, // Increased timeout
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            // Try to get more detailed error information
+            let output = std::process::Command::new("ssh")
+                .args(["-v"])
+                .args(["-o", "BatchMode=yes"])
+                .args(["-o", "StrictHostKeyChecking=no"])
+                .args(["-p", port])
+                .arg(&format!("{}@{}", TEST_USER, ip))
+                .arg("echo test")
+                .output()
+                .unwrap_or_else(|_| std::process::Output {
+                    status: std::process::ExitStatus::default(),
+                    stdout: vec![],
+                    stderr: b"Failed to execute SSH command".to_vec(),
+                });
+                
+            eprintln!("SSH connection failed. Debug output:");
+            eprintln!("STDOUT: {}", String::from_utf8_lossy(&output.stdout));
+            eprintln!("STDERR: {}", String::from_utf8_lossy(&output.stderr));
+            return Err(e.into());
+        }
+    };
+    
+    if !session.authenticated() {
+        return Err("SSH session not authenticated".into());
+    }
+    
+    println!("SSH authentication successful");
+    Ok(())
+}
+
+async fn test_file_transfer(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Create a test file
+    let temp_dir = tempdir()?;
+    let test_content = "test content";
+    let local_path = temp_dir.path().join("test.txt");
+    fs::write(&local_path, test_content)?;
+
+    // Get just the IP part of the address
+    let ip = addr.split(':').next().unwrap();
+    
+    // Create the remote directory if it doesn't exist
+    let _ = Command::new("sshpass")
+        .args(["-p", TEST_PASSWORD])
+        .arg("ssh")
+        .args(["-o", "StrictHostKeyChecking=no"])
+        .args(["-p", &addr.split(':').nth(1).unwrap()])
+        .arg(&format!("{}@{}", TEST_USER, ip))
+        .arg("mkdir -p $(dirname /tmp/telegraf.conf)")
+        .output()?;
+
+    // Transfer file
+    println!("Transferring file to {}:22...", ip);
+    let result = ssh_utils::send_file_over_ssh(
+        &local_path,
+        REMOTE_PATH,
+        &format!("{}:22", ip),
+        TEST_USER,
+        TEST_PASSWORD,
+    );
+
+    if let Err(e) = &result {
+        eprintln!("Failed to transfer file: {}", e);
+        return result.map_err(|e| e.into());
+    }
+
+    // Verify file was transferred
+    let output = Command::new("sshpass")
+        .args(["-p", TEST_PASSWORD])
+        .arg("ssh")
+        .args(["-o", "StrictHostKeyChecking=no"])
+        .args(["-p", &addr.split(':').nth(1).unwrap()])
+        .arg(&format!("{}@{}", TEST_USER, ip))
+        .arg(&format!("cat {}", REMOTE_PATH))
+        .output()?;
+
+    if !output.status.success() {
+        eprintln!("Failed to read remote file: {}", String::from_utf8_lossy(&output.stderr));
+        return Err("Failed to verify file transfer".into());
+    }
+
+    let remote_content = String::from_utf8_lossy(&output.stdout);
+    if remote_content != test_content {
+        eprintln!("Content mismatch. Expected: '{}', Got: '{}'", test_content, remote_content);
+        return Err("File content does not match".into());
+    }
+
+    Ok(())
+}
+
+async fn test_service_configuration(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Create a test config file
+    let temp_dir = tempdir()?;
+    let config_content = "[agent]\ninterval = \"10s\"";
+    let config_path = temp_dir.path().join("telegraf.conf");
+    std::fs::write(&config_path, config_content)?;
+    
+    // Send the config file over SSH
+    ssh_utils::send_file_over_ssh(
+        &config_path,
+        "/etc/telegraf/telegraf.conf",
+        addr,
+        TEST_USER,
+        TEST_PASSWORD,
+    )?;
+
+    // Restart Telegraf to apply the new config
+    let restart_output = Command::new("sshpass")
+        .args(["-p", TEST_PASSWORD])
+        .arg("ssh")
+        .args(["-o", "StrictHostKeyChecking=no"])
+        .args(["-p", &addr.split(':').nth(1).unwrap()])
+        .arg(&format!("{}@{}", TEST_USER, "127.0.0.1"))
+        .arg("sudo systemctl restart telegraf")
+        .output()?;
+
+    if !restart_output.status.success() {
+        eprintln!("Failed to restart Telegraf: {:?}", String::from_utf8_lossy(&restart_output.stderr));
+        return Err("Failed to restart Telegraf".into());
+    }
+
+    // Give Telegraf a moment to start
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Verify service is running
+    let output = Command::new("sshpass")
+        .args(["-p", TEST_PASSWORD])
+        .arg("ssh")
+        .args(["-o", "StrictHostKeyChecking=no"])
+        .args(["-p", &addr.split(':').nth(1).unwrap()])
+        .arg(&format!("{}@{}", TEST_USER, "127.0.0.1"))
+        .arg("pgrep -f telegraf")
+        .output()?;
+
+    if !output.status.success() {
+        eprintln!("Telegraf process not found");
+        // Try to get logs for debugging
+        let logs = Command::new("sshpass")
+            .args(["-p", TEST_PASSWORD])
+            .arg("ssh")
+            .args(["-o", "StrictHostKeyChecking=no"])
+            .args(["-p", &addr.split(':').nth(1).unwrap()])
+            .arg(&format!("{}@{}", TEST_USER, "127.0.0.1"))
+            .arg("journalctl -u telegraf --no-pager -n 20")
+            .output()?;
+        if logs.status.success() {
+            eprintln!("Telegraf logs:\n{}", String::from_utf8_lossy(&logs.stdout));
+        }
+        return Err("Telegraf service is not running".into());
+    }
+
+    Ok(())
+}
+
+// Add service-specific tests
+#[tokio::test]
+async fn test_influxdb_integration() -> Result<(), Box<dyn std::error::Error>> {
+    let test_env = test_utils::container_setup::setup_test_environment().await;
+    
+    // Test InfluxDB connectivity
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&format!("http://localhost:{}/ping", test_env.influx_port))
+        .send()
+        .await?;
+    
+    assert_eq!(response.status(), 204);  // InfluxDB ping returns 204
+    
+    // Test writing and reading data
+    // ... add your test cases here
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_prometheus_integration() -> Result<(), Box<dyn std::error::Error>> {
+    let test_env = test_utils::container_setup::setup_test_environment().await;
+    
+    // Test Prometheus connectivity
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&format!("http://localhost:{}/-/healthy", test_env.prometheus_port))
+        .send()
+        .await?;
+    
+    assert!(response.status().is_success());
+    
+    // Test metrics collection
+    // ... add your test cases here
+    
+    Ok(())
 }
 
 // Integration tests that interface with the CLI are skipped in CI environments

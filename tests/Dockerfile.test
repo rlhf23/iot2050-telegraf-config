@@ -1,0 +1,131 @@
+# Use a more recent Ubuntu base image with systemd
+FROM ubuntu:22.04
+
+# Set non-interactive frontend to avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install systemd and other required packages
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    systemd \
+    systemd-sysv \
+    sudo \
+    openssh-server \
+    curl \
+    wget \
+    gnupg \
+    apt-transport-https \
+    ca-certificates \
+    software-properties-common \
+    iproute2 \
+    net-tools \
+    iputils-ping \
+    vim && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Set up SSH
+RUN mkdir /run/sshd
+RUN echo 'root:root' | chpasswd
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Create test user
+RUN useradd -m -s /bin/bash testuser && \
+    echo 'testuser:testpass' | chpasswd && \
+    echo 'testuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+# Install InfluxDB
+RUN wget -qO- https://repos.influxdata.com/influxdb.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdb.gpg && \
+    echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu jammy stable" | tee /etc/apt/sources.list.d/influxdb.list && \
+    apt-get update && \
+    apt-get install -y influxdb2 && \
+    systemctl enable influxdb
+
+# Install Prometheus
+RUN wget https://github.com/prometheus/prometheus/releases/download/v2.47.0/prometheus-2.47.0.linux-amd64.tar.gz && \
+    tar xvfz prometheus-*.tar.gz && \
+    cp prometheus-2.47.0.linux-amd64/prometheus /usr/local/bin/ && \
+    cp prometheus-2.47.0.linux-amd64/promtool /usr/local/bin/ && \
+    rm -rf prometheus-2.47.0.linux-amd64 prometheus-*.tar.gz
+
+# Install Node Exporter
+RUN wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/node_exporter-1.6.1.linux-amd64.tar.gz && \
+    tar xvfz node_exporter-*.tar.gz && \
+    cp node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/ && \
+    rm -rf node_exporter-1.6.1.linux-amd64 node_exporter-*.tar.gz
+
+# Install Telegraf
+RUN wget -qO- https://repos.influxdata.com/influxdb.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdb.gpg && \
+    echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu jammy stable" | tee /etc/apt/sources.list.d/influxdb.list && \
+    apt-get update && \
+    apt-get install -y telegraf
+
+# Create necessary directories and set permissions
+RUN mkdir -p /var/run/sshd /var/log /var/lib/influxdb2 /var/lib/prometheus /etc/telegraf && \
+    chmod 755 /var/run/sshd && \
+    chmod 755 /var/log && \
+    chmod 755 /var/lib/influxdb2 && \
+    chmod 755 /var/lib/prometheus && \
+    chmod 755 /etc/telegraf && \
+    # Set up test user permissions
+    echo 'testuser ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/testuser && \
+    chmod 0440 /etc/sudoers.d/testuser && \
+    # Create .ssh directory
+    mkdir -p /home/testuser/.ssh && \
+    touch /home/testuser/.ssh/authorized_keys && \
+    chown -R testuser:testuser /home/testuser/.ssh && \
+    chmod 700 /home/testuser/.ssh
+
+# Initialize InfluxDB
+RUN mkdir -p /var/lib/influxdb2 && \
+    chown -R influxdb:influxdb /var/lib/influxdb2
+
+# Copy configuration files
+COPY tests/config/telegraf_test.conf /etc/telegraf/telegraf.conf
+COPY tests/config/prometheus.yml /etc/prometheus/prometheus.yml
+
+# Set proper permissions for config files
+RUN chown -R telegraf:telegraf /etc/telegraf && \
+    chown -R prometheus:prometheus /etc/prometheus
+
+# Copy and set up entrypoint
+COPY tests/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose ports
+EXPOSE 22 8086 9090 9273
+
+# Set up systemd
+RUN cd /lib/systemd/system/sysinit.target.wants/ && \
+    ls | grep -v systemd-tmpfiles-setup | xargs rm -f && \
+    rm -f /lib/systemd/system/multi-user.target.wants/* \
+    /etc/systemd/system/*.wants/* \
+    /lib/systemd/system/local-fs.target.wants/* \
+    /lib/systemd/system/sockets.target.wants/*udev* \
+    /lib/systemd/system/sockets.target.wants/*initctl* \
+    /lib/systemd/system/basic.target.wants/* \
+    /lib/systemd/system/anaconda.target.wants/* \
+    /lib/systemd/system/plymouth* \
+    /lib/systemd/system/systemd-update-utmp*
+
+# Generate SSH host keys if they don't exist
+RUN ssh-keygen -A
+
+# Create .ssh directory for testuser
+RUN mkdir -p /home/testuser/.ssh && \
+    chmod 700 /home/testuser/.ssh && \
+    chown -R testuser:testuser /home/testuser/.ssh
+
+# Create PID directory
+RUN mkdir -p /var/run/sshd /var/run/influxdb /var/run/prometheus /var/run/telegraf && \
+    chmod 777 /var/run/sshd /var/run/influxdb /var/run/prometheus /var/run/telegraf
+
+# Set up health check
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
+    CMD pgrep -f "sshd" > /dev/null && \
+        pgrep -f "influxd" > /dev/null && \
+        pgrep -f "prometheus" > /dev/null || exit 1
+
+# Start services
+CMD ["/entrypoint.sh"]
