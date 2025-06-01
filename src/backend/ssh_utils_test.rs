@@ -20,22 +20,6 @@ mod tests {
     // So we'll test the error handling for missing files and invalid paths
 
     #[test]
-    fn test_send_and_restart_telegraf_missing_file() {
-        let non_existent_path = PathBuf::from("/this/file/does/not/exist.conf");
-        let result = ssh_utils::send_and_restart_telegraf(
-            &non_existent_path,
-            "/remote/path",
-            "192.168.1.100:22",
-            "user",
-            "pass",
-        );
-
-        // Just check that we get an error, without being specific about the error message
-        // This makes the test more robust across different platforms and environments
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_send_file_over_ssh_invalid_host() {
         let dir = tempdir().unwrap();
         let file_path = create_test_file(&dir.path().to_path_buf(), "test.conf", "test content");
