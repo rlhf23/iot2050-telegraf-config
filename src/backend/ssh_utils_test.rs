@@ -108,6 +108,7 @@ mod tests {
     // Test file operations (without actual SSH)
     mod file_operation_tests {
         use super::*;
+        use crate::error::TelegrafError;
 
         #[test]
         fn test_send_file_over_ssh_missing_file() {
