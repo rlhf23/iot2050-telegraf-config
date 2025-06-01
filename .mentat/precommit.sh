@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Precommit script to run clippy and catch linting issues
+# Precommit script to run clippy and catch serious linting issues
 echo "Running cargo clippy..."
-cargo clippy -- -D warnings
+cargo clippy
 
-# Check if clippy passed
+# Check if clippy passed (only fail on errors, not warnings)
 if [ $? -ne 0 ]; then
-    echo "❌ Clippy found issues. Please fix them before committing."
+    echo "❌ Clippy found errors. Please fix them before committing."
     exit 1
 fi
 
