@@ -2,17 +2,46 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tempfile::tempdir;
+
+use opcua::{
+    client::prelude::Session,
+    sync::RwLock,
+    types::{
+        AttributeId, BrowseDescription, BrowseDescriptionResultMask, BrowseDirection, ByteString,
+        EndpointDescription, MessageSecurityMode, NodeClass, NodeId, ReferenceTypeId,
+        UserTokenPolicy, Variant, DataValue, DataTypeId, Guid, LocalizedText, UAString, 
+        service_types::ReferenceDescription,
+    },
+};
 
 use crate::error::TelegrafError;
 use crate::TelegrafConfig;
+use crate::backend::opcua_poller::{OpcUaNode, OpcUaPoller};
 
 // Mock implementation for testing without a real OPC UA server
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Helper function to create a test TelegrafConfig
+    use opcua::types::*;
+    
+    // Helper to create a test node ID
+    fn test_node_id(id: u32) -> NodeId {
+        NodeId::new(0, id as u32)
+    }
+    
+    // Helper to create a test OpcUaNode
+    fn create_test_node(id: u32, name: &str, node_class: NodeClass) -> OpcUaNode {
+        OpcUaNode::new(
+            test_node_id(id),
+            name.to_string(),
+            format!("Display {}", name),
+            node_class,
+        )
+    }
+    
+    // Helper to create a test config
     fn create_test_config() -> TelegrafConfig {
         TelegrafConfig {
             folder: PathBuf::new(),
@@ -31,7 +60,180 @@ mod tests {
             selected_opcua_nodes: Vec::new(),
         }
     }
+    
+    // Helper to create a test node with children
+    fn create_test_node_with_children() -> OpcUaNode {
+        let mut node = create_test_node(1, "TestNode", NodeClass::Object);
+        let child1 = create_test_node(2, "Child1", NodeClass::Variable);
+        let child2 = create_test_node(3, "Child2", NodeClass::Variable);
+        node.children = vec![child1, child2];
+        node
+    }
+    
+    // Tests for OpcUaNode implementation
+    mod opcua_node_tests {
+        use super::*;
+        
+        #[test]
+        fn test_new_node() {
+            let node = OpcUaNode::new(
+                test_node_id(1),
+                "TestNode".to_string(),
+                "Test Node".to_string(),
+                NodeClass::Variable,
+            );
+            
+            assert_eq!(node.browse_name, "TestNode");
+            assert_eq!(node.display_name, "Test Node");
+            assert_eq!(node.node_class, NodeClass::Variable);
+            assert!(!node.selected);
+            assert!(!node.children_loaded);
+            assert!(!node.has_more_children);
+            assert!(node.continuation_point.is_none());
+        }
+        
+        #[test]
+        fn test_node_selection() {
+            let mut node = create_test_node(1, "TestNode", NodeClass::Variable);
+            
+            // Test initial state
+            assert!(!node.selected);
+            
+            // Test selection
+            node.selected = true;
+            assert!(node.selected);
+        }
+        
+        #[test]
+        fn test_is_folder_node() {
+            let folder_node = create_test_node(1, "Folder", NodeClass::Object);
+            let var_node = create_test_node(2, "Variable", NodeClass::Variable);
+            
+            assert!(folder_node.is_folder_node());
+            assert!(!var_node.is_folder_node());
+        }
+        
+        #[test]
+        fn test_deselect_children() {
+            let mut parent = create_test_node(1, "Parent", NodeClass::Object);
+            let mut child1 = create_test_node(2, "Child1", NodeClass::Variable);
+            let mut child2 = create_test_node(3, "Child2", NodeClass::Variable);
+            
+            parent.selected = true;
+            child1.selected = true;
+            child2.selected = true;
+            
+            parent.children = vec![child1, child2];
+            parent.deselect_children();
+            
+            for child in &parent.children {
+                assert!(!child.selected);
+            }
+        }
+    }
+    
+    // Tests for OpcUaPoller implementation
+    mod opcua_poller_tests {
+        use super::*;
+        
+        #[test]
+        fn test_new_poller() {
+            let config = create_test_config();
+            let poller = OpcUaPoller::new(config);
+            
+            // Should succeed with valid config
+            assert!(poller.is_ok());
+            
+            // Test that we can use the poller
+            if let Ok(poller) = poller {
+                // Test that we can get namespace info (will fail to connect, but should return an error)
+                let result = poller.get_namespace_info(&["test.xml".to_string()]);
+                assert!(result.is_err()); // Should fail to connect to OPC UA server
+            }
+        }
+        
+        #[test]
+        fn test_browse_complete_structure() {
+            let config = create_test_config();
+            let poller = OpcUaPoller::new(config).unwrap();
+            
+            // This will fail to connect to a real OPC UA server, but we can test the error case
+            let result = poller.browse_complete_structure();
+            assert!(result.is_err());
+        }
+        
+        #[test]
+        fn test_invalid_ip() {
+            let mut config = create_test_config();
+            config.ip = "invalid-ip".to_string();
+            
+            let result = OpcUaPoller::new(config);
+            // The error could be either ConfigError or OpcUaClientError
+            assert!(result.is_err());
+        }
+    }
 
+
+    // Test node collection methods
+    #[test]
+    fn test_node_collection() {
+        // Create a simple node hierarchy
+        let mut parent = create_test_node(1, "Parent", NodeClass::Object);
+        let mut child1 = create_test_node(2, "Child1", NodeClass::Variable);
+        let child2 = create_test_node(3, "Child2", NodeClass::Variable);
+        
+        // Select one child
+        child1.selected = true;
+        parent.children = vec![child1, child2];
+        
+        // Test collect_selected_nodes
+        let mut selected = Vec::new();
+        OpcUaNode::collect_selected_nodes(&[parent.clone()], &mut selected);
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].browse_name, "Child1");
+        
+        // Test collect_selected_variable_nodes
+        let mut var_nodes = Vec::new();
+        OpcUaNode::collect_selected_variable_nodes(&[parent], &mut var_nodes);
+        assert_eq!(var_nodes.len(), 1);
+        assert_eq!(var_nodes[0].browse_name, "Child1");
+    }
+    
+    // Test node conversion to config
+    #[test]
+    fn test_node_conversion() {
+        let mut node = create_test_node(1, "TestNode", NodeClass::Variable);
+        node.node_id = NodeId::new(2, "TestNode");
+        node.data_type = Some("Double".to_string());
+        node.selected = true; // Node must be selected to be included
+        
+        // Convert to config format
+        let config_nodes = OpcUaNode::convert_selected_nodes_to_config(&[node]);
+        
+        // Verify we got the expected number of nodes
+        assert_eq!(config_nodes.len(), 1);
+        
+        // Verify the node ID is correctly formatted
+        let node_id_str = config_nodes[0].node_id.to_string();
+        assert!(node_id_str.contains("TestNode"), "Node ID should contain 'TestNode', got: {}", node_id_str);
+    }
+    
+    // Test error handling for invalid configurations
+    #[test]
+    fn test_invalid_configurations() {
+        // Test with invalid IP
+        let mut config = create_test_config();
+        config.ip = "invalid-ip".to_string();
+        let poller = OpcUaPoller::new(config);
+        assert!(poller.is_err());
+        
+        // Test with empty IP
+        let mut empty_ip_config = create_test_config();
+        empty_ip_config.ip = "".to_string();
+        let poller = OpcUaPoller::new(empty_ip_config);
+        assert!(poller.is_err());
+    }
+    
     // Test that the mapping between XML file names and namespaces works correctly
     #[test]
     fn test_namespace_mapping() {
