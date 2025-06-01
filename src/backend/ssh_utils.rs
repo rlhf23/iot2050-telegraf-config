@@ -6,17 +6,9 @@
 //! # Examples
 //! 
 //! ```no_run
+//! // Example usage is available through the public API in ConfigGenerator
 //! use std::path::Path;
-//! use sie_generate_config::backend::ssh_utils;
-//! 
-//! // Send a configuration file to a remote device
-//! let result = ssh_utils::send_file_over_ssh(
-//!     Path::new("telegraf.conf"),
-//!     "/etc/telegraf/telegraf.conf", 
-//!     "192.168.1.2:22",
-//!     "iotuser",
-//!     "password"
-//! );
+//! // Public functions are re-exported through the backend module
 //! ```
 
 use crate::error::TelegrafError;
@@ -60,9 +52,9 @@ impl Default for SshConfig {
 /// 
 /// # Examples
 /// ```
-/// # use sie_generate_config::backend::ssh_utils::validate_host_format;
-/// assert!(validate_host_format("192.168.1.2:22").is_ok());
-/// assert!(validate_host_format("invalid").is_err());
+/// # // Internal function - examples would require module to be public
+/// # // assert!(validate_host_format("192.168.1.2:22").is_ok());
+/// # // assert!(validate_host_format("invalid").is_err());
 /// ```
 fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
     // Check if the host string contains a colon (required for host:port format)
@@ -313,10 +305,10 @@ pub fn send_file_over_ssh(
 /// 
 /// # Examples
 /// ```no_run
-/// # use sie_generate_config::backend::ssh_utils::execute_ssh_command;
-/// # let session = todo!(); // Assume we have an established session
-/// let output = execute_ssh_command(&session, "ls -la")?;
-/// println!("Directory listing: {}", output);
+/// # // Internal function - examples would require module to be public
+/// # // let session = todo!(); // Assume we have an established session
+/// # // let output = execute_ssh_command(&session, "ls -la")?;
+/// # // println!("Directory listing: {}", output);
 /// ```
 fn execute_ssh_command(session: &Session, command: &str) -> Result<String, TelegrafError> {
     let mut channel = session.channel_session()?;
