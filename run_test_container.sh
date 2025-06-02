@@ -7,7 +7,7 @@ docker rm -f iot2050-test-container 2>/dev/null || true
 
 # Build the minimal test image
 echo "Building minimal test container image..."
-docker build -t iot2050-test-env -f tests/Dockerfile.test .
+docker build -t iot2050-test-env -f tests/Dockerfile.minimal .
 
 # Run the container with exposed SSH port
 echo "Starting test container..."
