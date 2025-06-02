@@ -223,7 +223,7 @@ impl ConfigGenerator {
                 }
 
                 // Join all node configs with commas and newlines for the group format
-                let nodes_str = node_configs.join(",\n        ");
+                let nodes_str = node_configs.join("\n        ");
 
                 // Create a grouped config using format_regular_config
                 let opcua_config = format::OpcuaConfig {
@@ -297,11 +297,25 @@ impl ConfigGenerator {
                         let escaped_identifier = identifier.replace('"', "\\\"");
 
                         // Format individual node config
-                        let node_config = format!(
-                            "{{name=\"{}\", identifier=\"{}\"}}",
-                            node.measurement_name, escaped_identifier
-                        );
+                        // let node_config = format!(
+                        //     "{{name=\"{}\", identifier=\"{}\"}}",
+                        //     node.measurement_name, escaped_identifier
+                        // );
 
+                        let node_config = format!(
+                            "    # {{0}}\n
+                              [[inputs.opcua.nodes]]\n
+                                name = \"{}\"\n
+                                namespace = \"{}\"\n
+                                identifier_type = \"{}\"\n
+                                identifier = \"{}\"\n
+                                interval = \"{}ms\"\n", //Add commentMore actions
+                            node.measurement_name,
+                            node.namespace,
+                            identifier_type,
+                            escaped_identifier,
+                            node.interval_ms
+                        );
                         node_configs.push(node_config);
                     }
 
@@ -318,7 +332,7 @@ impl ConfigGenerator {
                     };
 
                     let config_string =
-                        format::format_regular_config(&opcua_config, &node_configs.join("\n"));
+                        format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
                     config_strings.push(config_string);
                 }
             }
