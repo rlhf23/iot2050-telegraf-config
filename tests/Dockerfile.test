@@ -35,12 +35,18 @@ RUN useradd -m -s /bin/bash testuser && \
     echo 'testuser:testpass' | chpasswd && \
     echo 'testuser ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
+# add influxdata repo
+RUN wget -q https://repos.influxdata.com/influxdata-archive_compat.key
+RUN echo '393e8779c89ac8d958f81f942f9ad7fb82a25e133faddaf92e15b16e6ac9ce4c influxdata-archive_compat.key' | sha256sum -c && cat influxdata-archive_compat.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg > /dev/null
+RUN echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
+
+# install telegraf
+RUN sudo apt-get update && sudo apt-get install telegraf
+RUN sudo service telegraf start
+
 # Install InfluxDB
-RUN wget -qO- https://repos.influxdata.com/influxdb.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdb.gpg && \
-    echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu jammy stable" | tee /etc/apt/sources.list.d/influxdb.list && \
-    apt-get update && \
-    apt-get install -y influxdb2 && \
-    systemctl enable influxdb
+RUN sudo apt-get update && sudo apt-get install -y influxdb2
+# RUN sudo service influxdb start
 
 # Install Prometheus
 RUN wget https://github.com/prometheus/prometheus/releases/download/v2.47.0/prometheus-2.47.0.linux-amd64.tar.gz && \
@@ -54,12 +60,6 @@ RUN wget https://github.com/prometheus/node_exporter/releases/download/v1.6.1/no
     tar xvfz node_exporter-*.tar.gz && \
     cp node_exporter-1.6.1.linux-amd64/node_exporter /usr/local/bin/ && \
     rm -rf node_exporter-1.6.1.linux-amd64 node_exporter-*.tar.gz
-
-# Install Telegraf
-RUN wget -qO- https://repos.influxdata.com/influxdb.key | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdb.gpg && \
-    echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdb.gpg] https://repos.influxdata.com/ubuntu jammy stable" | tee /etc/apt/sources.list.d/influxdb.list && \
-    apt-get update && \
-    apt-get install -y telegraf
 
 # Create necessary directories and set permissions
 RUN mkdir -p /var/run/sshd /var/log /var/lib/influxdb2 /var/lib/prometheus /etc/telegraf && \
@@ -82,12 +82,12 @@ RUN mkdir -p /var/lib/influxdb2 && \
     chown -R influxdb:influxdb /var/lib/influxdb2
 
 # Copy configuration files
-COPY tests/config/telegraf_test.conf /etc/telegraf/telegraf.conf
+COPY tests/config/telegraf_container.conf /etc/telegraf/telegraf.conf
 COPY tests/config/prometheus.yml /etc/prometheus/prometheus.yml
 
 # Set proper permissions for config files
-RUN chown -R telegraf:telegraf /etc/telegraf && \
-    chown -R prometheus:prometheus /etc/prometheus
+# RUN chown -R telegraf:telegraf /etc/telegraf && \
+#     chown -R prometheus:prometheus /etc/prometheus
 
 # Copy and set up entrypoint
 COPY tests/entrypoint.sh /entrypoint.sh
