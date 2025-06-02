@@ -218,7 +218,7 @@ impl OpcUaPoller {
             format!("{}:4840", ip)
         };
 
-        let socket_addrs = addr.to_socket_addrs().map_err(|e| {
+        let mut socket_addrs = addr.to_socket_addrs().map_err(|e| {
             TelegrafError::OpcUaConnectionError(format!(
                 "Could not resolve OPC UA server address: {}",
                 e
@@ -226,7 +226,7 @@ impl OpcUaPoller {
         })?;
 
         // Try connecting to the first resolved address with a timeout
-        for socket_addr in socket_addrs {
+        if let Some(socket_addr) = socket_addrs.next() {
             // Set a connect timeout of 3 seconds
             match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(3)) {
                 Ok(_) => {
