@@ -57,7 +57,7 @@ expression: "&config"
   auth_method = "UserName"
   username = ""
   password = ""
-  timestamp = "source"
+  timestamp = "gather"
   client_trace = false
   interval = "1000ms"
     [[inputs.opcua.group]]

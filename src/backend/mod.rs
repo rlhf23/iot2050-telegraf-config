@@ -297,11 +297,6 @@ impl ConfigGenerator {
                         let escaped_identifier = identifier.replace('"', "\\\"");
 
                         // Format individual node config
-                        // let node_config = format!(
-                        //     "{{name=\"{}\", identifier=\"{}\"}}",
-                        //     node.measurement_name, escaped_identifier
-                        // );
-
                         let node_config = format!(
                             "  # {{0}}
     [[inputs.opcua.nodes]]
@@ -309,7 +304,7 @@ impl ConfigGenerator {
       namespace = \"{}\"
       identifier_type = \"{}\"
       identifier = \"{}\"
-      interval = \"{}ms\"", //Add commentMore actions
+      interval = \"{}ms\"",
                             node.measurement_name,
                             node.namespace,
                             identifier_type,
