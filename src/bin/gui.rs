@@ -750,9 +750,8 @@ impl eframe::App for TelegrafApp {
                     match ConfigGenerator::new(self.config.clone()) {
                         Ok(generator) => {
                             match generator.send_config() {
-                                Ok(_) => {
-                                    self.status_message =
-                                        "Configuration sent successfully!".to_string();
+                                Ok(detailed_output) => {
+                                    self.status_message = detailed_output;
                                 }
                                 Err(e) => {
                                     self.status_message = self.handle_error(&e, "send config");
@@ -774,8 +773,8 @@ impl eframe::App for TelegrafApp {
                         match ConfigGenerator::new(self.config.clone()) {
                             Ok(generator) => {
                                 match generator.backup_influx() {
-                                    Ok(_) => {
-                                        self.status_message = "InfluxDB backup completed!".to_string();
+                                    Ok(detailed_output) => {
+                                        self.status_message = detailed_output;
                                     }
                                     Err(e) => {
                                         self.status_message = self.handle_error(&e, "InfluxDB backup");
@@ -793,8 +792,8 @@ impl eframe::App for TelegrafApp {
                         match ConfigGenerator::new(self.config.clone()) {
                             Ok(generator) => {
                                 match generator.backup_grafana() {
-                                    Ok(_) => {
-                                        self.status_message = "Grafana backup completed!".to_string();
+                                    Ok(detailed_output) => {
+                                        self.status_message = detailed_output;
                                     }
                                     Err(e) => {
                                 self.status_message = self.handle_error(&e, "Grafana backup");
