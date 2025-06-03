@@ -269,7 +269,7 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   timestamp = "gather"
   client_trace = false
   interval = "{}" 
-    {}
+{}
     "#,
         config.ip, config.username, config.password, interval, nodes_str
     )
