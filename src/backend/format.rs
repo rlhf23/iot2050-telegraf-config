@@ -185,7 +185,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "source"
+  timestamp = "gather"
   client_trace = false
   interval = "{}"
     [[inputs.opcua.group]]
@@ -226,7 +226,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "source"
+  timestamp = "gather"
   client_trace = false
     [[inputs.opcua_listener.group]]
       name = "{}"
@@ -266,10 +266,10 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "source"
+  timestamp = "gather"
   client_trace = false
   interval = "{}" 
-    {}
+{}
     "#,
         config.ip, config.username, config.password, interval, nodes_str
     )

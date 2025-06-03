@@ -298,10 +298,19 @@ impl ConfigGenerator {
 
                         // Format individual node config
                         let node_config = format!(
-                            "{{name=\"{}\", identifier=\"{}\"}}",
-                            node.measurement_name, escaped_identifier
+                            "  # {{0}}
+    [[inputs.opcua.nodes]]
+      name = \"{}\"
+      namespace = \"{}\"
+      identifier_type = \"{}\"
+      identifier = \"{}\"
+      interval = \"{}ms\"",
+                            node.measurement_name,
+                            node.namespace,
+                            identifier_type,
+                            escaped_identifier,
+                            node.interval_ms
                         );
-
                         node_configs.push(node_config);
                     }
 
@@ -318,7 +327,7 @@ impl ConfigGenerator {
                     };
 
                     let config_string =
-                        format::format_regular_config(&opcua_config, &node_configs.join("\n"));
+                        format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
                     config_strings.push(config_string);
                 }
             }
