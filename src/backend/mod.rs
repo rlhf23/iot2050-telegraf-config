@@ -11,7 +11,7 @@ mod format_test;
 pub mod opcua_poller;
 #[cfg(test)]
 mod opcua_poller_test;
-mod ssh_utils;
+pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
 

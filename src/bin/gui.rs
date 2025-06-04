@@ -5,7 +5,7 @@ use sie_generate_config::{
         ConfigGenerator, ServiceType,
     },
     error::{TelegrafError, XmlFileValidation},
-    TelegrafConfig,
+    TelegrafConfig, WorkerHandle, WorkerCommand, WorkerResponse,
 };
 
 #[derive(Default)]
@@ -34,9 +34,25 @@ struct TelegrafApp {
     show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
     is_browsing_opcua: bool,             // Flag to indicate if currently browsing OPC UA
     browse_status_message: String,       // Status message for OPC UA browsing
+    worker: Option<WorkerHandle>,        // Background worker for async operations
+    is_working: bool,                   // Whether a background operation is in progress
 }
 
 impl TelegrafApp {
+    /// Helper method to send a command to the worker and update UI state
+    fn send_worker_command(&mut self, command: WorkerCommand, working_message: &str) {
+        if let Some(worker) = &self.worker {
+            if let Err(e) = worker.send_command(command) {
+                self.status_message = format!("Failed to start operation: {}", e);
+            } else {
+                self.is_working = true;
+                self.status_message = working_message.to_string();
+            }
+        } else {
+            self.status_message = "Worker not initialized".to_string();
+        }
+    }
+
     fn load_token(&mut self) {
         if let Ok(token_content) = std::fs::read_to_string(&self.token_file_path) {
             self.config.influx_token = Some(token_content.trim().to_string());
@@ -223,15 +239,14 @@ impl TelegrafApp {
         let selected_nodes = OpcUaNode::convert_selected_nodes_to_config(&self.opcua_nodes);
         self.config.selected_opcua_nodes = selected_nodes;
     }
-}
 
-impl Default for TelegrafApp {
     fn default() -> Self {
         let mut path = std::env::current_exe().unwrap();
-        path.pop();
-
+        path.pop(); // Remove the executable name
         let token_file_path = path.join("token.txt");
 
+        let worker = Some(WorkerHandle::new());
+        
         let mut app = Self {
             config: TelegrafConfig {
                 folder: path.clone(),
@@ -247,7 +262,7 @@ impl Default for TelegrafApp {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(), // Initialize empty vector for selected nodes
+                selected_opcua_nodes: Vec::new(),
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
@@ -259,16 +274,122 @@ impl Default for TelegrafApp {
             show_opcua_browser: false,
             is_browsing_opcua: false,
             browse_status_message: String::new(),
+            worker,
+            is_working: false,
         };
+        
+        // Load initial data
         app.load_xml_files();
         app.load_token();
+        
         app
     }
 }
 
 impl eframe::App for TelegrafApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for worker responses
+        if let Some(worker) = &self.worker {
+            if let Some(response) = worker.try_get_response() {
+                self.is_working = false;
+                match response {
+                    WorkerResponse::DummyResponse => {
+                        self.status_message = "Dummy operation completed!".to_string();
+                    }
+                    WorkerResponse::SshCommandOutput(output) => {
+                        self.status_message = format!("SSH command output:\n{}", output);
+                    }
+                    WorkerResponse::SshError(err) => {
+                        self.status_message = format!("SSH error: {}", err);
+                    }
+                    WorkerResponse::FileTransferComplete => {
+                        self.status_message = "File transfer completed successfully".to_string();
+                    }
+                    WorkerResponse::FileTransferError(err) => {
+                        self.status_message = format!("File transfer error: {}", err);
+                    }
+                }
+            }
+        }
+
+        // Show loading indicator if working
+        if self.is_working {
+            egui::Window::new("Working...")
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.add(egui::Spinner::new().size(48.0));
+                    ui.label("Please wait...");
+                });
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
+            // SSH Operations Section
+            ui.heading("SSH Operations");
+            
+            // Test SSH Connection Button
+            if ui.button("Test SSH Connection").clicked() {
+                if let Some(worker) = &self.worker {
+                    let cmd = WorkerCommand::ExecuteSshCommand {
+                        host: self.config.iot_host.clone(),
+                        username: self.config.iot_username.clone(),
+                        password: self.config.iot_password.clone(),
+                        command: "echo 'SSH connection successful!'; uname -a".to_string(),
+                    };
+                    
+                    if let Err(e) = worker.send_command(cmd) {
+                        self.status_message = format!("Failed to start SSH operation: {}", e);
+                    } else {
+                        self.is_working = true;
+                        self.status_message = "Testing SSH connection...".to_string();
+                    }
+                }
+            }
+            
+            // Add some space between buttons
+            ui.add_space(10.0);
+            
+            // Test File Transfer Button
+            if ui.button("Test File Transfer").clicked() {
+                // Create a test file to transfer
+                let test_file = std::env::temp_dir().join("test_file.txt");
+                if let Err(e) = std::fs::write(&test_file, "This is a test file") {
+                    self.status_message = format!("Failed to create test file: {}", e);
+                    return;
+                }
+                
+                if let Some(worker) = &self.worker {
+                    let cmd = WorkerCommand::SendFileOverSsh {
+                        host: self.config.iot_host.clone(),
+                        username: self.config.iot_username.clone(),
+                        password: self.config.iot_password.clone(),
+                        local_path: test_file,
+                        remote_path: "/tmp/test_file.txt".to_string(),
+                    };
+                    
+                    if let Err(e) = worker.send_command(cmd) {
+                        self.status_message = format!("Failed to start file transfer: {}", e);
+                    } else {
+                        self.is_working = true;
+                        self.status_message = "Starting file transfer...".to_string();
+                    }
+                }
+            }
+            
+            ui.separator();
+            
+            // Status Section
+            ui.heading("Status");
+            
+            // Show status message in a scrollable area
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                if !self.status_message.is_empty() {
+                    ui.label(&self.status_message);
+                } else {
+                    ui.label("No operations performed yet.");
+                }
+            });
+            
+            ui.separator();
             ui.heading("Telegraf Configuration Generator");
             // Configuration Section
             ui.collapsing("Configuration", |ui| {
@@ -746,22 +867,11 @@ impl eframe::App for TelegrafApp {
                 }
 
                 if ui.button("Send Config").clicked() {
-                    self.status_message = "Sending configuration...".to_string();
-                    match ConfigGenerator::new(self.config.clone()) {
-                        Ok(generator) => {
-                            match generator.send_config() {
-                                Ok(detailed_output) => {
-                                    self.status_message = detailed_output;
-                                }
-                                Err(e) => {
-                                    self.status_message = self.handle_error(&e, "send config");
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            self.status_message = self.handle_error(&e, "send config");
-                        }
-                    }
+                    let config = self.config.clone();
+                    self.send_worker_command(
+                        WorkerCommand::SendTelegrafConfig { config },
+                        "Sending configuration..."
+                    );
                 }
             });
 
@@ -769,89 +879,37 @@ impl eframe::App for TelegrafApp {
             ui.collapsing("Other Commands", |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
-                        self.status_message = "Backing up InfluxDB...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.backup_influx() {
-                                    Ok(detailed_output) => {
-                                        self.status_message = detailed_output;
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "InfluxDB backup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "InfluxDB backup");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::BackupInfluxDB { config },
+                            "Backing up InfluxDB..."
+                        );
                     }
 
                     if ui.button("Backup Grafana").clicked() {
-                        self.status_message = "Backing up Grafana...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.backup_grafana() {
-                                    Ok(detailed_output) => {
-                                        self.status_message = detailed_output;
-                                    }
-                                    Err(e) => {
-                                self.status_message = self.handle_error(&e, "Grafana backup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "Grafana backup");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::BackupGrafana { config },
+                            "Backing up Grafana..."
+                        );
                     }
                 });
 
                 ui.horizontal(|ui| {
                     if ui.button("Get Telegraf Status").clicked() {
-                        self.status_message = "Retrieving Telegraf status...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.get_telegraf_status() {
-                                    Ok(status) => {
-                                        if status.is_empty() {
-                                            self.status_message = "Error: Telegraf status returned empty. Telegraf may not be running.".to_string();
-                                        } else {
-                                            self.status_message = format!("Telegraf Status:\n{}", status);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "status");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "status");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::GetTelegrafStatus { config },
+                            "Retrieving Telegraf status..."
+                        );
                     }
 
                     if ui.button("Get Telegraf Logs").clicked() {
-                        self.status_message = "Retrieving Telegraf logs...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.get_telegraf_logs(30) {
-                                    Ok(logs) => {
-                                        if logs.is_empty() {
-                                            self.status_message = "Error: Telegraf logs are empty. The log file may exist but is empty.".to_string();
-                                        } else {
-                                            self.status_message = format!("Telegraf Logs (Last 30 lines):\n{}", logs);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "logs");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "logs");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::GetTelegrafLogs { config, lines: 30 },
+                            "Retrieving Telegraf logs..."
+                        );
                     }
                 });
 
@@ -870,33 +928,24 @@ impl eframe::App for TelegrafApp {
 
                     if ui.button(format!("Check {} Status", service_name)).clicked() {
                         let service_url = self.config.iot_host.clone();
-
-                                self.status_message = format!("Checking {} status at {}...", service_name, service_url);
-
-                                match ConfigGenerator::new(self.config.clone()) {
-                                    Ok(generator) => {
-                                        let result = if is_prometheus {
-                                            generator.check_service_status(service_url.as_str(), ServiceType::Prometheus, 5)
-                                        } else {
-                                            generator.check_influxdb_status()
-                                        };
-
-                                        match result {
-                                            Ok(true) => {
-                                                self.status_message = format!("✅ {} is responding normally at {}", service_name, service_url);
-                                            },
-                                            Ok(false) => {
-                                                self.status_message = format!("❌ {} is not responding at {}", service_name, service_url);
-                                            },
-                                            Err(e) => {
-                                                self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
-                                            }
-                                        }
-                                    },
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
-                                    }
-                                }
+                        let config = self.config.clone();
+                        
+                        if is_prometheus {
+                            self.send_worker_command(
+                                WorkerCommand::CheckServiceStatus {
+                                    config,
+                                    service_url: service_url.clone(),
+                                    service_type: ServiceType::Prometheus,
+                                    timeout_secs: 5,
+                                },
+                                &format!("Checking {} status at {}...", service_name, service_url)
+                            );
+                        } else {
+                            self.send_worker_command(
+                                WorkerCommand::CheckInfluxDbStatus { config },
+                                &format!("Checking InfluxDB status at {}...", service_url)
+                            );
+                        }
                     }
                 });
             });
