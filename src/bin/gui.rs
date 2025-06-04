@@ -986,7 +986,7 @@ impl eframe::App for TelegrafApp {
                             if ui.button("Add Selected to Config").clicked() {
                                 self.add_selected_nodes_to_config();
                                 self.status_message = "Selected OPC UA nodes added to configuration.".to_string();
-                                self.show_opcua_browser = false; // Close browser after adding
+                                // self.show_opcua_browser = false; // Keep browser open after adding
                             }
                             if ui.button("Refresh Structure").clicked() {
                                  if self.opcua_browse_state != OpcUaBrowseState::BrowsingNodes {
@@ -1004,6 +1004,7 @@ impl eframe::App for TelegrafApp {
                             }
                         });
                     });
+                } 
             // Display currently selected nodes
                     if !self.config.selected_opcua_nodes.is_empty() {
                         ui.heading("Selected Nodes");
@@ -1058,7 +1059,7 @@ impl eframe::App for TelegrafApp {
                             });
                         });
                     }
-                }
+                
         });
     }
 }
