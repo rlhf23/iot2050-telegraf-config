@@ -47,6 +47,13 @@ pub enum WorkerCommand {
         local_path: PathBuf,
         remote_path: String,
     },
+    BrowseOpcUaNodes {
+        config: TelegrafConfig,
+    },
+    GetOpcUaNamespaces {
+        config: TelegrafConfig,
+        xml_files: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -57,6 +64,9 @@ pub enum WorkerResponse {
     FileTransferComplete,
     FileTransferError(String),
     ProgressUpdate(String),
+    OpcUaNodes(Vec<crate::backend::opcua_poller::OpcUaNode>),
+    OpcUaNamespaces(std::collections::HashMap<String, u16>),
+    OpcUaError(String),
 }
 
 pub struct WorkerHandle {
@@ -196,6 +206,28 @@ impl WorkerHandle {
                         match ssh_utils::send_file_over_ssh(&local_path, &remote_path, &host, &username, &password) {
                             Ok(_) => WorkerResponse::FileTransferComplete,
                             Err(e) => WorkerResponse::FileTransferError(format!("File transfer failed: {}", e)),
+                        }
+                    }
+                    WorkerCommand::BrowseOpcUaNodes { config } => {
+                        match crate::backend::opcua_poller::OpcUaPoller::new(config) {
+                            Ok(poller) => {
+                                match poller.browse_complete_structure() {
+                                    Ok(nodes) => WorkerResponse::OpcUaNodes(nodes),
+                                    Err(e) => WorkerResponse::OpcUaError(format!("Error browsing OPC UA structure: {}", e)),
+                                }
+                            }
+                            Err(e) => WorkerResponse::OpcUaError(format!("Error creating OPC UA poller: {}", e)),
+                        }
+                    }
+                    WorkerCommand::GetOpcUaNamespaces { config, xml_files } => {
+                        match crate::backend::opcua_poller::OpcUaPoller::new(config) {
+                            Ok(poller) => {
+                                match poller.get_namespace_info(&xml_files) {
+                                    Ok(namespace_map) => WorkerResponse::OpcUaNamespaces(namespace_map),
+                                    Err(e) => WorkerResponse::OpcUaError(format!("Error getting namespaces: {}", e)),
+                                }
+                            }
+                            Err(e) => WorkerResponse::OpcUaError(format!("Error creating OPC UA poller: {}", e)),
                         }
                     }
                 };
