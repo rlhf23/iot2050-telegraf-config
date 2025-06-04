@@ -290,8 +290,16 @@ impl eframe::App for TelegrafApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Check for worker responses
         if let Some(worker) = &self.worker {
+            // First, check if we have any responses
             if let Some(response) = worker.try_get_response() {
-                self.is_working = false;
+                // Process progress updates separately to maintain working state
+                if let WorkerResponse::ProgressUpdate(progress) = &response {
+                    self.status_message = progress.clone();
+                } else {
+                    self.is_working = false;
+                }
+                
+                // Process the response
                 match response {
                     WorkerResponse::DummyResponse => {
                         self.status_message = "Dummy operation completed!".to_string();
@@ -308,23 +316,20 @@ impl eframe::App for TelegrafApp {
                     WorkerResponse::FileTransferError(err) => {
                         self.status_message = format!("File transfer error: {}", err);
                     }
-                    WorkerResponse::ProgressUpdate(progress) => {
-                        self.status_message = progress;
+                    WorkerResponse::ProgressUpdate(_) => {
+                        // Already handled above to maintain working state
                     }
                 }
+                // Always request a repaint when we have a response
+                ctx.request_repaint();
+            } else if self.is_working {
+                // If we're working but don't have a response yet, request a repaint
+                // to keep the spinner animating
+                ctx.request_repaint();
             }
         }
 
-        // Show loading indicator if working
-        if self.is_working {
-            egui::Window::new("Working...")
-                .collapsible(false)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    ui.add(egui::Spinner::new().size(48.0));
-                    ui.label("Please wait...");
-                });
-        }
+        // Show loading indicator next to Command Output when working
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Telegraf Configuration Generator");
             // Configuration Section
@@ -890,7 +895,13 @@ impl eframe::App for TelegrafApp {
             if !self.status_message.is_empty() {
                 // Add a header to make it more visible
                 ui.separator();
-                ui.heading("Command Output:");
+                ui.horizontal(|ui| {
+                    ui.heading("Command Output:");
+                    if self.is_working {
+                        ui.add(egui::Spinner::new().size(16.0));
+                        ui.label("Working...");
+                    }
+                });
                 // Create a frame with a border to make the output more visible
                 let frame = egui::Frame::dark_canvas(ui.style())
                     .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE));
