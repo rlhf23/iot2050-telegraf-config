@@ -32,22 +32,10 @@ struct TelegrafApp {
     form_state: FormState,               // Validation state for the form
     opcua_nodes: Vec<OpcUaNode>,         // Store the complete OPC UA node hierarchy
     show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
+    is_browsing_opcua: bool,             // Flag to indicate if currently browsing OPC UA
     browse_status_message: String,       // Status message for OPC UA browsing
     worker: Option<WorkerHandle>,        // Background worker for async operations
     is_working: bool,                   // Whether a background operation is in progress
-    opcua_browse_state: OpcUaBrowseState, // State for OPC UA browsing operations
-}
-
-#[derive(Default, Debug, PartialEq, Clone)]
-enum OpcUaBrowseState {
-    #[default]
-    Idle,
-    BrowsingNodes,
-    BrowsingNodesFailed(String),
-    BrowsingNodesComplete,
-    GettingNamespaces,
-    GettingNamespacesFailed(String),
-    GettingNamespacesComplete,
 }
 
 impl TelegrafApp {
@@ -284,10 +272,10 @@ impl TelegrafApp {
             form_state: FormState::default(),
             opcua_nodes: Vec::new(),
             show_opcua_browser: false,
+            is_browsing_opcua: false,
             browse_status_message: String::new(),
             worker,
             is_working: false,
-            opcua_browse_state: OpcUaBrowseState::default(),
         };
         
         // Load initial data
@@ -330,53 +318,6 @@ impl eframe::App for TelegrafApp {
                     }
                     WorkerResponse::ProgressUpdate(_) => {
                         // Already handled above to maintain working state
-                    }
-                    WorkerResponse::OpcUaNodes(nodes) => {
-                        self.opcua_nodes = nodes;
-                        self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesComplete;
-                        self.browse_status_message = "OPC UA structure loaded successfully.".to_string();
-                    }
-                    WorkerResponse::OpcUaNamespaces(namespace_map) => {
-                        // Update the namespace fields in the GUI
-                        let mut found_count = 0;
-                        for (file_name, namespace_index) in namespace_map {
-                            // Find the full path for this file name
-                            if let Some(full_path) = self.xml_files.iter().find(|path| {
-                                path.ends_with(&file_name)
-                            }) {
-                                // Update the namespace field
-                                if let Some(config) = self.file_configs.get_mut(full_path) {
-                                    config.namespace = namespace_index.to_string();
-                                    found_count += 1;
-                                }
-                            }
-                        }
-
-                        if found_count > 0 {
-                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
-                        } else {
-                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
-                        }
-                        self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesComplete;
-                    }
-                    WorkerResponse::OpcUaError(err) => {
-                        self.status_message = format!("OPC UA error: {}", err);
-                        match self.opcua_browse_state {
-                            OpcUaBrowseState::BrowsingNodes => {
-                                self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesFailed(err.clone());
-                                self.browse_status_message = err;
-                            }
-                            OpcUaBrowseState::GettingNamespaces => {
-                                self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesFailed(err);
-                            }
-                            _ => {
-                                // Other states are not expected to transition here on a generic OpcUaError,
-                                // or the error is not specific to an ongoing browse/get_namespace operation.
-                                // We've already set a general self.status_message.
-                            }
-                        }
-                            _ => {}
-                        }
                     }
                 }
                 // Always request a repaint when we have a response
@@ -692,28 +633,75 @@ impl eframe::App for TelegrafApp {
                     // OPC UA Browser button
                     if ui.button("Browse OPC UA Structure").clicked() {
                         self.show_opcua_browser = true;
-                        if self.opcua_nodes.is_empty() && self.opcua_browse_state == OpcUaBrowseState::Idle {
-                            self.opcua_browse_state = OpcUaBrowseState::BrowsingNodes;
+                        if self.opcua_nodes.is_empty() && !self.is_browsing_opcua {
+                            self.is_browsing_opcua = true;
                             self.browse_status_message = "Browsing OPC UA structure...".to_string();
                             
-                            // Send command to worker
-                            let command = WorkerCommand::BrowseOpcUaNodes {
-                                config: self.config.clone(),
-                            };
-                            self.send_worker_command(command, "Browsing OPC UA structure...");
+                            // Start browsing in a separate thread
+                            match OpcUaPoller::new(self.config.clone()) {
+                                Ok(poller) => {
+                                    // Attempt to browse the OPC UA structure
+                                    match poller.browse_complete_structure() {
+                                        Ok(nodes) => {
+                                            self.opcua_nodes = nodes;
+                                            self.browse_status_message = "OPC UA structure loaded successfully.".to_string();
+                                        }
+                                        Err(e) => {
+                                            self.browse_status_message = format!("Error browsing OPC UA structure: {}", e);
+                                        }
+                                    }
+                                    self.is_browsing_opcua = false;
+                                }
+                                Err(e) => {
+                                    self.browse_status_message = format!("Error connecting to OPC UA server: {}", e);
+                                    self.is_browsing_opcua = false;
+                                }
+                            }
                         }
                     }
                 
                     if ui.button("Get OPC UA Namespaces").clicked() {
-                        self.status_message = "Getting OPC UA namespaces...".to_string();
-                        self.opcua_browse_state = OpcUaBrowseState::GettingNamespaces;
-                        
-                        // Send command to worker
-                        let command = WorkerCommand::GetOpcUaNamespaces {
-                            config: self.config.clone(),
-                            xml_files: self.xml_files.clone(),
-                        };
-                        self.send_worker_command(command, "Getting OPC UA namespaces...");
+                        self.status_message = "Connecting to OPC UA server...".to_string();
+                        // TODO: move to mod.rs
+                        // TODO: check multiple endpoints
+                        match OpcUaPoller::new(self.config.clone()) {
+                            Ok(poller) => {
+                                // Get the list of XML files
+                                let xml_files: Vec<String> = self.xml_files.clone();
+
+                                // Call the OPC UA poller to get namespace information
+                                match poller.get_namespace_info(&xml_files) {
+                                    Ok(namespace_map) => {
+                                        // Update the namespace fields in the GUI
+                                        let mut found_count = 0;
+                                        for (file_name, namespace_index) in namespace_map {
+                                            // Find the full path for this file name
+                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
+                                                path.ends_with(&file_name)
+                                            }) {
+                                                // Update the namespace field
+                                                if let Some(config) = self.file_configs.get_mut(full_path) {
+                                                    config.namespace = namespace_index.to_string();
+                                                    found_count += 1;
+                                                }
+                                            }
+                                        }
+
+                                        if found_count > 0 {
+                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                                        } else {
+                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.status_message = self.handle_error(&e, "OPC UA connection");
+                            }
+                        }
                     }
                     
                 });
@@ -1001,44 +989,41 @@ impl eframe::App for TelegrafApp {
                                         // Allow editing the measurement name
                                         let mut measurement_name = node.measurement_name.clone();
                                         if ui.text_edit_singleline(&mut measurement_name).changed() {
+                                            node.measurement_name = measurement_name;
+                                        }
+                                        
+                                        // Allow editing the interval
+                                        let mut interval_str = node.interval_ms.to_string();
+                                        if ui.text_edit_singleline(&mut interval_str).changed() {
+                                            if let Ok(interval) = interval_str.parse::<u32>() {
+                                                node.interval_ms = interval;
+                                            }
+                                        }
+                                        
+                                        // Remove button
+                                        if ui.button("Remove").clicked() {
+                                            nodes_to_remove.push(i);
+                                        }
+                                        
+                                        ui.end_row();
+                                    }
+                                    
+                                    // Remove nodes that were marked for removal
+                                    for &index in nodes_to_remove.iter().rev() {
+                                        if index < self.config.selected_opcua_nodes.len() {
+                                            self.config.selected_opcua_nodes.remove(index);
+                                        }
+                                    }
+                                });
+                            });
+                        });
+                    }
                 }
-                OpcUaBrowseState::BrowsingNodesFailed(err) => {
-                    ui.colored_label(egui::Color32::RED, format!("Failed to browse OPC UA structure: {}", err));
-                }
-                OpcUaBrowseState::Idle if !self.opcua_nodes.is_empty() => { // Show cached nodes if available
-                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        self.render_node_tree(ui, &mut self.opcua_nodes, 0);
-                    });
-                }
-                _ => { // Idle and no nodes, or other states not directly related to browsing display
-                    ui.label(&self.browse_status_message);
-                }
-            }
-
-            ui.separator();
-            ui.horizontal(|ui| {
-                if ui.button("Add Selected to Config").clicked() {
-                    self.add_selected_nodes_to_config();
-                    self.status_message = "Selected OPC UA nodes added to configuration.".to_string();
-                    self.show_opcua_browser = false; // Close browser after adding
-                }
-                if ui.button("Refresh Structure").clicked() {
-                    self.opcua_nodes.clear(); // Clear existing nodes
-                    self.opcua_browse_state = OpcUaBrowseState::BrowsingNodes;
-                    self.browse_status_message = "Refreshing OPC UA structure...".to_string();
-                    let command = WorkerCommand::BrowseOpcUaNodes {
-                        config: self.config.clone(),
-                    };
-                    self.send_worker_command(command, "Refreshing OPC UA structure...");
-                }
-                if ui.button("Close").clicked() {
-                    self.show_opcua_browser = false;
-                }
-            });
         });
+    }
 }
 
-// ... (rest of the code remains the same)
+fn main() -> eframe::Result<()> {
     // let native_options = eframe::NativeOptions {
     //     viewport: Some(egui::vec2(800.0, 1000.0)),
     //     ..Default::default()
