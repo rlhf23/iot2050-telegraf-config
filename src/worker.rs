@@ -93,39 +93,69 @@ impl WorkerHandle {
                         WorkerResponse::DummyResponse
                     }
                     WorkerCommand::SendTelegrafConfig { config } => {
-                        let (tx, rx) = std::sync::mpsc::channel();
-                        
-                        // Clone the config for the worker thread
-                        let config_clone = config.clone();
                         let worker_response_sender = thread_response_sender.clone();
                         
-                        // Spawn a thread to handle the actual operation
+                        // Use a single thread to handle both SSH operation and progress updates
                         std::thread::spawn(move || {
-                            let result = ssh_utils::send_and_restart_telegraf_with_progress(
-                                &config_clone.folder.join("telegraf.conf"),
-                                "/etc/telegraf/telegraf.conf",
-                                &config_clone.iot_host,
-                                &config_clone.iot_username,
-                                &config_clone.iot_password,
-                                tx,
-                            );
+                            let (tx, rx) = std::sync::mpsc::channel();
                             
-                            // Send final result
-                            let _ = worker_response_sender.send(match result {
-                                Ok(_) => WorkerResponse::SshCommandOutput("Configuration sent and Telegraf restarted successfully.".to_string()),
-                                Err(e) => WorkerResponse::SshError(format!("Failed to send config: {}", e)),
+                            // Clone config for the SSH operation thread
+                            let config_clone = config.clone();
+                            let ssh_tx = tx.clone();
+                            let ssh_response_sender = worker_response_sender.clone();
+                            
+                            // Spawn SSH operation in a separate thread
+                            let ssh_handle = std::thread::spawn(move || {
+                                ssh_utils::send_and_restart_telegraf_with_progress(
+                                    &config_clone.folder.join("telegraf.conf"),
+                                    "/etc/telegraf/telegraf.conf",
+                                    &config_clone.iot_host,
+                                    &config_clone.iot_username,
+                                    &config_clone.iot_password,
+                                    ssh_tx,
+                                )
                             });
-                        });
-                        
-                        // Spawn another thread to forward progress updates
-                        let progress_response_sender = thread_response_sender.clone();
-                        std::thread::spawn(move || {
-                            while let Ok(progress) = rx.recv() {
-                                let _ = progress_response_sender.send(WorkerResponse::ProgressUpdate(progress));
+                            
+                            // Handle progress updates in this thread
+                            loop {
+                                match rx.try_recv() {
+                                    Ok(progress) => {
+                                        let _ = worker_response_sender.send(WorkerResponse::ProgressUpdate(progress));
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                        // Check if SSH thread is done
+                                        if ssh_handle.is_finished() {
+                                            break;
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(10));
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Wait for SSH operation to complete and send final result
+                            match ssh_handle.join() {
+                                Ok(Ok(_)) => {
+                                    let _ = ssh_response_sender.send(WorkerResponse::SshCommandOutput(
+                                        "Configuration sent and Telegraf restarted successfully.".to_string()
+                                    ));
+                                }
+                                Ok(Err(e)) => {
+                                    let _ = ssh_response_sender.send(WorkerResponse::SshError(
+                                        format!("Failed to send config: {}", e)
+                                    ));
+                                }
+                                Err(_) => {
+                                    let _ = ssh_response_sender.send(WorkerResponse::SshError(
+                                        "SSH thread panicked".to_string()
+                                    ));
+                                }
                             }
                         });
                         
-                        // Don't send a final response here - it will be sent by the worker thread
+                        // Don't send a response here - it will be sent by the worker thread
                         continue;
                     }
                     WorkerCommand::BackupInfluxDB { config } => {
