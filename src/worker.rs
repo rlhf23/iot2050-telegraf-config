@@ -57,6 +57,7 @@ pub enum WorkerResponse {
     SshError(String),
     FileTransferComplete,
     FileTransferError(String),
+    ProgressUpdate(String),
 }
 
 pub struct WorkerHandle {
@@ -83,15 +84,40 @@ impl WorkerHandle {
                         WorkerResponse::DummyResponse
                     }
                     WorkerCommand::SendTelegrafConfig { config } => {
-                        match ConfigGenerator::new(config) {
-                            Ok(generator) => {
-                                match generator.send_config() {
-                                    Ok(output) => WorkerResponse::SshCommandOutput(output),
-                                    Err(e) => WorkerResponse::SshError(format!("Failed to send config: {}", e)),
-                                }
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        
+                        // Clone the config for the worker thread
+                        let config_clone = config.clone();
+                        let worker_response_sender = thread_response_sender.clone();
+                        
+                        // Spawn a thread to handle the actual operation
+                        std::thread::spawn(move || {
+                            let result = ssh_utils::send_and_restart_telegraf_with_progress(
+                                &config_clone.folder.join("telegraf.conf"),
+                                "/etc/telegraf/telegraf.conf",
+                                &config_clone.iot_host,
+                                &config_clone.iot_username,
+                                &config_clone.iot_password,
+                                tx,
+                            );
+                            
+                            // Send final result
+                            let _ = worker_response_sender.send(match result {
+                                Ok(_) => WorkerResponse::SshCommandOutput("Configuration sent and Telegraf restarted successfully.".to_string()),
+                                Err(e) => WorkerResponse::SshError(format!("Failed to send config: {}", e)),
+                            });
+                        });
+                        
+                        // Spawn another thread to forward progress updates
+                        let progress_response_sender = thread_response_sender.clone();
+                        std::thread::spawn(move || {
+                            while let Ok(progress) = rx.recv() {
+                                let _ = progress_response_sender.send(WorkerResponse::ProgressUpdate(progress));
                             }
-                            Err(e) => WorkerResponse::SshError(format!("Failed to create config generator: {}", e)),
-                        }
+                        });
+                        
+                        // Don't send a final response here - it will be sent by the worker thread
+                        continue;
                     }
                     WorkerCommand::BackupInfluxDB { config } => {
                         match ConfigGenerator::new(config) {

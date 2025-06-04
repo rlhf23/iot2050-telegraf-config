@@ -17,6 +17,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
+use std::sync::mpsc::Sender;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -226,6 +227,41 @@ fn connect_ssh_with_timeout(
 /// # Returns
 /// * `Ok(String)` - Configuration deployed and service restarted successfully with detailed output
 /// * `Err(TelegrafError)` - File transfer or service restart failed
+pub fn send_and_restart_telegraf_with_progress(
+    config_path: &Path,
+    remote_path: &str,
+    iot_host: &str,
+    iot_username: &str,
+    iot_password: &str,
+    progress_sender: Sender<String>,
+) -> Result<(), TelegrafError> {
+    // Send the telegraf.conf file to the IOT box
+    progress_sender.send("Sending configuration file...".to_string())
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+        
+    send_file_over_ssh(
+        config_path,
+        remote_path,
+        iot_host,
+        iot_username,
+        iot_password,
+    )?;
+    
+    progress_sender.send("Configuration file sent successfully.".to_string())
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+
+    // Restart the telegraf service on the IOT box
+    progress_sender.send("Restarting Telegraf service...".to_string())
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+        
+    let restart_output = restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
+    
+    progress_sender.send(restart_output)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+
+    Ok(())
+}
+
 pub fn send_and_restart_telegraf(
     config_path: &Path,
     remote_path: &str,

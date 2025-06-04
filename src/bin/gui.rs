@@ -308,6 +308,9 @@ impl eframe::App for TelegrafApp {
                     WorkerResponse::FileTransferError(err) => {
                         self.status_message = format!("File transfer error: {}", err);
                     }
+                    WorkerResponse::ProgressUpdate(progress) => {
+                        self.status_message = progress;
+                    }
                 }
             }
         }
