@@ -6,7 +6,6 @@ use crate::backend::ssh_utils;
 use crate::backend::{ConfigGenerator, ServiceType};
 use crate::TelegrafConfig;
 use std::path::PathBuf;
-
 #[derive(Debug)]
 pub enum WorkerCommand {
     DummyCommand,
