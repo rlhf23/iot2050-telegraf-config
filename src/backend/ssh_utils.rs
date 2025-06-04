@@ -224,7 +224,7 @@ fn connect_ssh_with_timeout(
 /// * `iot_password` - SSH password for the IoT device
 /// 
 /// # Returns
-/// * `Ok(())` - Configuration deployed and service restarted successfully
+/// * `Ok(String)` - Configuration deployed and service restarted successfully with detailed output
 /// * `Err(TelegrafError)` - File transfer or service restart failed
 pub fn send_and_restart_telegraf(
     config_path: &Path,
@@ -232,8 +232,11 @@ pub fn send_and_restart_telegraf(
     iot_host: &str,
     iot_username: &str,
     iot_password: &str,
-) -> Result<(), TelegrafError> {
+) -> Result<String, TelegrafError> {
+    let mut output = Vec::new();
+    
     // Send the telegraf.conf file to the IOT box
+    output.push("Sending configuration file...".to_string());
     send_file_over_ssh(
         config_path,
         remote_path,
@@ -241,11 +244,13 @@ pub fn send_and_restart_telegraf(
         iot_username,
         iot_password,
     )?;
+    output.push("Configuration file sent successfully.".to_string());
 
     // Restart the telegraf service on the IOT box
-    restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
+    let restart_output = restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
+    output.push(restart_output);
 
-    Ok(())
+    Ok(output.join("\n"))
 }
 
 /// Sends a file over SSH to a specified remote host using SCP
@@ -353,8 +358,9 @@ pub fn restart_telegraf_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
-) -> Result<(), TelegrafError> {
-    println!("Restarting telegraf service on the remote host...");
+) -> Result<String, TelegrafError> {
+    let mut output = Vec::new();
+    output.push("Restarting telegraf service on the remote host...".to_string());
     let start_time = Instant::now();
 
     // Connect to SSH with appropriate timeouts for service management operations
@@ -366,24 +372,24 @@ pub fn restart_telegraf_over_ssh(
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Step 1: Try graceful stop first with timeout
-    println!("Stopping telegraf service gracefully...");
+    output.push("Stopping telegraf service gracefully...".to_string());
 
     // First check if telegraf is actually running
     let check_cmd = "pgrep telegraf || echo 'not_running'".to_string();
     let check_result = execute_ssh_command(&session, &check_cmd)?;
 
     if check_result.trim() == "not_running" {
-        println!("Telegraf is not currently running. Proceeding to start.");
+        output.push("Telegraf is not currently running. Proceeding to start.".to_string());
     } else {
         // Attempt graceful stop
         let stop_cmd = format!("echo '{}' | sudo -S service telegraf stop", password);
         match execute_ssh_command(&session, &stop_cmd) {
-            Ok(_) => println!("Service stop command issued"),
-            Err(e) => println!("Warning: Error issuing stop command: {}", e),
+            Ok(_) => output.push("Service stop command issued".to_string()),
+            Err(e) => output.push(format!("Warning: Error issuing stop command: {}", e)),
         }
 
         // Wait up to 10 seconds for telegraf to stop gracefully
-        println!("Waiting up to 10 seconds for telegraf to stop...");
+        output.push("Waiting up to 10 seconds for telegraf to stop...".to_string());
         let mut stopped = false;
         for i in 0..10 {
             thread::sleep(Duration::from_secs(1));
@@ -391,7 +397,7 @@ pub fn restart_telegraf_over_ssh(
             let check_result = execute_ssh_command(&session, &check_cmd)?;
 
             if check_result.trim() == "stopped" {
-                println!("Telegraf stopped gracefully after {} seconds", i + 1);
+                output.push(format!("Telegraf stopped gracefully after {} seconds", i + 1));
                 stopped = true;
                 break;
             }
@@ -399,11 +405,11 @@ pub fn restart_telegraf_over_ssh(
 
         // If still running after 10 seconds, forcefully kill it
         if !stopped {
-            println!("Telegraf didn't stop gracefully within 10 seconds. Killing process...");
+            output.push("Telegraf didn't stop gracefully within 10 seconds. Killing process...".to_string());
             let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
             match execute_ssh_command(&session, &kill_cmd) {
-                Ok(_) => println!("Telegraf process killed forcefully"),
-                Err(e) => println!("Warning: Error killing telegraf: {}", e),
+                Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
+                Err(e) => output.push(format!("Warning: Error killing telegraf: {}", e)),
             }
 
             // Give a moment for the kill to take effect
@@ -412,16 +418,16 @@ pub fn restart_telegraf_over_ssh(
     }
 
     // Step 2: Start the service
-    println!("Starting telegraf service...");
+    output.push("Starting telegraf service...".to_string());
     let start_cmd = format!("echo '{}' | sudo -S service telegraf start", password);
     execute_ssh_command(&session, &start_cmd)?;
 
     // Step 3: Wait for service to initialize
-    println!("Waiting for service to initialize...");
+    output.push("Waiting for service to initialize...".to_string());
     thread::sleep(Duration::from_secs(5));
 
     // Step 4: Check service status
-    println!("Checking service status...");
+    output.push("Checking service status...".to_string());
     let status_cmd = format!(
         "echo '{}' | sudo -S service telegraf status | head -n15",
         password
@@ -435,40 +441,40 @@ pub fn restart_telegraf_over_ssh(
     let is_running = process_check.trim() != "not_running";
 
     if status.contains("Active: active") && is_running {
-        println!("✓ Telegraf restart successful ({:.2?})", elapsed_time);
-        println!("Status:\n{}", status);
+        output.push(format!("✓ Telegraf restart successful ({:.2?})", elapsed_time));
+        output.push(format!("Status:\n{}", status));
     } else {
-        println!("✗ Telegraf restart failed ({:.2?})", elapsed_time);
-        println!("Status:\n{}", status);
+        output.push(format!("✗ Telegraf restart failed ({:.2?})", elapsed_time));
+        output.push(format!("Status:\n{}", status));
 
         if !is_running {
-            println!("WARNING: The telegraf process is not running!");
+            output.push("WARNING: The telegraf process is not running!".to_string());
         }
 
         // Get recent logs if service failed
-        println!("\nRecent logs:");
+        output.push("\nRecent logs:".to_string());
         let logs_cmd = format!(
             "echo '{}' | sudo -S tail -n 10 /var/log/telegraf/telegraf.log 2>/dev/null || echo 'No logs found'", 
             password
         );
         match execute_ssh_command(&session, &logs_cmd) {
-            Ok(logs) => println!("{}", logs),
-            Err(e) => println!("Could not retrieve logs: {}", e),
+            Ok(logs) => output.push(logs),
+            Err(e) => output.push(format!("Could not retrieve logs: {}", e)),
         }
 
         // Get error logs if any
-        println!("\nRecent errors:");
+        output.push("\nRecent errors:".to_string());
         let errors_cmd = format!(
             "echo '{}' | sudo -S grep -E 'E!' /var/log/telegraf/telegraf.log 2>/dev/null | tail -n 10 || echo 'No error logs found'",
             password
         );
         match execute_ssh_command(&session, &errors_cmd) {
-            Ok(errors) => println!("{}", errors),
-            Err(e) => println!("Could not retrieve error logs: {}", e),
+            Ok(errors) => output.push(errors),
+            Err(e) => output.push(format!("Could not retrieve error logs: {}", e)),
         }
     }
 
-    Ok(())
+    Ok(output.join("\n"))
 }
 
 pub fn backup_influxdb(
@@ -476,11 +482,15 @@ pub fn backup_influxdb(
     iot_username: &str,
     iot_password: &str,
     token: Option<&str>,
-) -> Result<(), TelegrafError> {
+) -> Result<String, TelegrafError> {
+    let mut output = Vec::new();
+    
     // Get token from parameter or read from /etc/default/telegraf
     let token = if let Some(token_value) = token {
+        output.push("Using provided InfluxDB token".to_string());
         token_value.to_string()
     } else {
+        output.push("Reading InfluxDB token from remote host...".to_string());
         // Read token from the environment file via SSH
         let command = "cat /etc/default/telegraf | grep INFLUX_TOKEN=";
         let config = SshConfig {
@@ -489,16 +499,17 @@ pub fn backup_influxdb(
             stream_timeout: 10,    // Small file read doesn't need long timeout
         };
         let session = connect_ssh_with_config(iot_host, iot_username, iot_password, &config)?;
-        let output = execute_ssh_command(&session, command)?;
+        let command_output = execute_ssh_command(&session, command)?;
 
         // Parse the token from the output (format: token=value)
-        let token_value = output.trim().strip_prefix("INFLUX_TOKEN=").ok_or_else(|| {
+        let token_value = command_output.trim().strip_prefix("INFLUX_TOKEN=").ok_or_else(|| {
             TelegrafError::SshError(crate::error::SshError::Other(ssh2::Error::new(
                 ssh2::ErrorCode::Session(-1),
                 "Token not found in /etc/default/telegraf",
             )))
         })?;
 
+        output.push("Token retrieved successfully.".to_string());
         token_value.to_string()
     };
 
@@ -506,11 +517,14 @@ pub fn backup_influxdb(
     let backup_folder = format!("/tmp/influx_backup_{}", date);
     let backup_command = format!("influx backup -t {} {}", token, backup_folder);
 
-    println!("Backing up InfluxDB to {}", backup_folder);
-    execute_command_over_ssh(iot_host, iot_username, iot_password, &backup_command)?;
+    output.push(format!("Backing up InfluxDB to {}", backup_folder));
+    let backup_output = execute_command_over_ssh(iot_host, iot_username, iot_password, &backup_command)?;
+    output.push(backup_output);
 
     let local_backup_path = format!("./influx_backup_{}", date);
     std::fs::create_dir_all(&local_backup_path)?;
+    
+    output.push(format!("Downloading backup files to local directory: {}", local_backup_path));
     copy_directory_over_ssh(
         iot_host,
         iot_username,
@@ -519,17 +533,14 @@ pub fn backup_influxdb(
         &local_backup_path,
     )?;
 
-    println!(
-        "Backup completed successfully. Files are located at: {}",
-        local_backup_path
-    );
-    Ok(())
+    output.push(format!("Backup completed successfully. Files are located at: {}", local_backup_path));
+    Ok(output.join("\n"))
 }
 
 /// Executes a command on a remote host via SSH
 /// 
 /// This is a convenience function that establishes an SSH connection,
-/// executes a command, and prints the output. For more control over
+/// executes a command, and returns the output. For more control over
 /// the session lifecycle, use `connect_ssh_with_config` and `execute_ssh_command`.
 /// 
 /// # Arguments
@@ -539,14 +550,14 @@ pub fn backup_influxdb(
 /// * `command` - Shell command to execute on the remote host
 /// 
 /// # Returns
-/// * `Ok(())` - Command executed successfully
+/// * `Ok(String)` - Command executed successfully with output
 /// * `Err(TelegrafError)` - Connection failed or command execution failed
 pub fn execute_command_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
     command: &str,
-) -> Result<(), TelegrafError> {
+) -> Result<String, TelegrafError> {
     // Connect to SSH with appropriate timeouts for potentially long-running commands
     let config = SshConfig {
         connect_timeout: 3,    // Quick connection check - host is either there or it isn't
@@ -557,9 +568,7 @@ pub fn execute_command_over_ssh(
 
     // Execute the command using the centralized execution function
     let output = execute_ssh_command(&session, command)?;
-    println!("Command output: {}", output);
-    println!("Command executed successfully.");
-    Ok(())
+    Ok(format!("Command executed successfully.\nOutput: {}", output))
 }
 
 pub fn copy_directory_over_ssh(
@@ -608,7 +617,9 @@ pub fn backup_grafana_config(
     host: &str,
     username: &str,
     password: &str,
-) -> Result<(), TelegrafError> {
+) -> Result<String, TelegrafError> {
+    let mut output = Vec::new();
+    
     // Connect to SSH with appropriate timeouts for file backup operations
     let config = SshConfig {
         connect_timeout: 3,    // Quick connection check - host is either there or it isn't
@@ -619,7 +630,7 @@ pub fn backup_grafana_config(
 
     // Since /etc/grafana/grafana.ini might require sudo access,
     // first copy it to a temp location with sudo, then download it
-    println!("Copying Grafana config to a temporary location...");
+    output.push("Copying Grafana config to a temporary location...".to_string());
     let temp_path = "/tmp/grafana_backup.ini";
     let copy_cmd = format!(
         "echo '{}' | sudo -S cp /etc/grafana/grafana.ini {}",
@@ -635,6 +646,7 @@ pub fn backup_grafana_config(
 
     // Now use SFTP to download the accessible temp file
     let local_path = "grafana_backup.ini";
+    output.push(format!("Downloading Grafana config to: {}", local_path));
 
     // Create an SFTP session
     let sftp = session.sftp()?;
@@ -651,13 +663,13 @@ pub fn backup_grafana_config(
     // Clean up the temp file
     let cleanup_cmd = format!("echo '{}' | sudo -S rm {}", password, temp_path);
     match execute_ssh_command(&session, &cleanup_cmd) {
-        Ok(_) => println!("Temporary file cleaned up"),
-        Err(e) => println!("Warning: Could not clean up temporary file: {}", e),
+        Ok(_) => output.push("Temporary file cleaned up".to_string()),
+        Err(e) => output.push(format!("Warning: Could not clean up temporary file: {}", e)),
     }
 
-    println!("Grafana configuration backed up to {}", local_path);
+    output.push(format!("Grafana configuration backed up to {}", local_path));
 
-    Ok(())
+    Ok(output.join("\n"))
 }
 
 pub fn get_telegraf_status(

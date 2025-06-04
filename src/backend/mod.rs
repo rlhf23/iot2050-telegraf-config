@@ -365,7 +365,7 @@ impl ConfigGenerator {
         Ok(config_content)
     }
 
-    pub fn send_config(&self) -> Result<(), TelegrafError> {
+    pub fn send_config(&self) -> Result<String, TelegrafError> {
         let config_path = self.config.folder.join("telegraf.conf");
         if !config_path.exists() {
             return Err(TelegrafError::ConfigError(
@@ -382,7 +382,7 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn backup_influx(&self) -> Result<(), TelegrafError> {
+    pub fn backup_influx(&self) -> Result<String, TelegrafError> {
         // Ensure we have an InfluxDB token
         // Get token from config if available, otherwise it will be read from /etc/default/telegraf
         let _influx_token = self.config.influx_token.as_deref();
@@ -395,7 +395,7 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn backup_grafana(&self) -> Result<(), TelegrafError> {
+    pub fn backup_grafana(&self) -> Result<String, TelegrafError> {
         ssh_utils::backup_grafana_config(
             &self.config.iot_host,
             &self.config.iot_username,
