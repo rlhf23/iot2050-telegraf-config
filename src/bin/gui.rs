@@ -5,7 +5,7 @@ use sie_generate_config::{
         ConfigGenerator, ServiceType,
     },
     error::{TelegrafError, XmlFileValidation},
-    TelegrafConfig,
+    TelegrafConfig, WorkerHandle, WorkerCommand, WorkerResponse,
 };
 
 #[derive(Default)]
@@ -15,7 +15,19 @@ struct XmlFileConfig {
     ip: String,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq, Clone)]
+enum OpcUaBrowseState {
+    #[default]
+    Idle,
+    BrowsingNodes,
+    BrowsingNodesFailed(String),
+    BrowsingNodesComplete,
+    GettingNamespaces,
+    GettingNamespacesFailed(String),
+    GettingNamespacesComplete,
+}
+
+#[derive(Default, Debug)]
 struct FormState {
     show_namespace_error: bool, // Track if we should show namespace errors
     show_iot_host_error: bool,  // Track if IOT host is invalid
@@ -32,11 +44,27 @@ struct TelegrafApp {
     form_state: FormState,               // Validation state for the form
     opcua_nodes: Vec<OpcUaNode>,         // Store the complete OPC UA node hierarchy
     show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
-    is_browsing_opcua: bool,             // Flag to indicate if currently browsing OPC UA
     browse_status_message: String,       // Status message for OPC UA browsing
+    worker: Option<WorkerHandle>,        // Background worker for async operations
+    is_working: bool,                   // Whether a background operation is in progress
+    opcua_browse_state: OpcUaBrowseState, // State for OPC UA browsing operations
 }
 
 impl TelegrafApp {
+    /// Helper method to send a command to the worker and update UI state
+    fn send_worker_command(&mut self, command: WorkerCommand, working_message: &str) {
+        if let Some(worker) = &self.worker {
+            if let Err(e) = worker.send_command(command) {
+                self.status_message = format!("Failed to start operation: {}", e);
+            } else {
+                self.is_working = true;
+                self.status_message = working_message.to_string();
+            }
+        } else {
+            self.status_message = "Worker not initialized".to_string();
+        }
+    }
+
     fn load_token(&mut self) {
         if let Ok(token_content) = std::fs::read_to_string(&self.token_file_path) {
             self.config.influx_token = Some(token_content.trim().to_string());
@@ -223,15 +251,14 @@ impl TelegrafApp {
         let selected_nodes = OpcUaNode::convert_selected_nodes_to_config(&self.opcua_nodes);
         self.config.selected_opcua_nodes = selected_nodes;
     }
-}
 
-impl Default for TelegrafApp {
     fn default() -> Self {
         let mut path = std::env::current_exe().unwrap();
-        path.pop();
-
+        path.pop(); // Remove the executable name
         let token_file_path = path.join("token.txt");
 
+        let worker = Some(WorkerHandle::new());
+        
         let mut app = Self {
             config: TelegrafConfig {
                 folder: path.clone(),
@@ -247,7 +274,7 @@ impl Default for TelegrafApp {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(), // Initialize empty vector for selected nodes
+                selected_opcua_nodes: Vec::new(),
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
@@ -257,17 +284,109 @@ impl Default for TelegrafApp {
             form_state: FormState::default(),
             opcua_nodes: Vec::new(),
             show_opcua_browser: false,
-            is_browsing_opcua: false,
             browse_status_message: String::new(),
+            worker,
+            is_working: false,
+            opcua_browse_state: OpcUaBrowseState::default(),
         };
+        
+        // Load initial data
         app.load_xml_files();
         app.load_token();
+        
         app
     }
 }
 
 impl eframe::App for TelegrafApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for worker responses
+        if let Some(worker) = &self.worker {
+            // First, check if we have any responses
+            if let Some(response) = worker.try_get_response() {
+                // Process progress updates separately to maintain working state
+                if let WorkerResponse::ProgressUpdate(progress) = &response {
+                    self.status_message = progress.clone();
+                } else {
+                    self.is_working = false;
+                }
+                
+                // Process the response
+                match response {
+                    WorkerResponse::DummyResponse => {
+                        self.status_message = "Dummy operation completed!".to_string();
+                    }
+                    WorkerResponse::SshCommandOutput(output) => {
+                        self.status_message = format!("SSH command output:\n{}", output);
+                    }
+                    WorkerResponse::SshError(err) => {
+                        self.status_message = format!("SSH error: {}", err);
+                    }
+                    WorkerResponse::FileTransferComplete => {
+                        self.status_message = "File transfer completed successfully".to_string();
+                    }
+                    WorkerResponse::FileTransferError(err) => {
+                        self.status_message = format!("File transfer error: {}", err);
+                    }
+                    WorkerResponse::ProgressUpdate(_) => {
+                        // Already handled above to maintain working state
+                    }
+                    WorkerResponse::OpcUaNodes(nodes) => {
+                        self.opcua_nodes = nodes;
+                        self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesComplete;
+                        self.browse_status_message = if self.opcua_nodes.is_empty() { "OPC UA structure loaded, but no nodes found.".to_string() } else { "OPC UA structure loaded successfully.".to_string() };
+                        // self.is_working is already set to false above for non-progress responses
+                    }
+                    WorkerResponse::OpcUaNamespaces(namespace_map) => {
+                        let mut found_count = 0;
+                        for (file_name, namespace_index) in namespace_map {
+                            if let Some(full_path) = self.xml_files.iter().find(|path| path.ends_with(&file_name)) {
+                                if let Some(config) = self.file_configs.get_mut(full_path) {
+                                    config.namespace = namespace_index.to_string();
+                                    found_count += 1;
+                                }
+                            }
+                        }
+                        if found_count > 0 {
+                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                        } else {
+                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                        }
+                        self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesComplete;
+                        // self.is_working is already set to false above
+                    }
+                    WorkerResponse::OpcUaError(err) => {
+                        // General status message for any OPC UA error
+                        self.status_message = format!("OPC UA operation failed: {}", err);
+                        match self.opcua_browse_state {
+                            OpcUaBrowseState::BrowsingNodes => {
+                                self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesFailed(err.clone());
+                                self.browse_status_message = format!("Failed to browse OPC UA structure: {}", err);
+                            }
+                            OpcUaBrowseState::GettingNamespaces => {
+                                // Status_message is already set above, specific browse_status_message not needed here
+                                self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesFailed(err);
+                            }
+                            // If error occurs in other states, just log to status_message, keep browse_state as is or reset to Idle if appropriate
+                            _ => { 
+                                // Potentially reset to Idle or a generic error state if the current state is not specific to an ongoing opcua op
+                                // For now, we just let status_message show the error.
+                                // If an error occurs during BrowsingNodesComplete, for example, it's likely a new, unrelated error.
+                            }
+                        }
+                        // self.is_working is already set to false above
+                    }
+                }
+                // Always request a repaint when we have a response
+                ctx.request_repaint();
+            } else if self.is_working {
+                // If we're working but don't have a response yet, request a repaint
+                // to keep the spinner animating
+                ctx.request_repaint();
+            }
+        }
+
+        // Show loading indicator next to Command Output when working
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Telegraf Configuration Generator");
             // Configuration Section
@@ -571,74 +690,31 @@ impl eframe::App for TelegrafApp {
                     // OPC UA Browser button
                     if ui.button("Browse OPC UA Structure").clicked() {
                         self.show_opcua_browser = true;
-                        if self.opcua_nodes.is_empty() && !self.is_browsing_opcua {
-                            self.is_browsing_opcua = true;
-                            self.browse_status_message = "Browsing OPC UA structure...".to_string();
-                            
-                            // Start browsing in a separate thread
-                            match OpcUaPoller::new(self.config.clone()) {
-                                Ok(poller) => {
-                                    // Attempt to browse the OPC UA structure
-                                    match poller.browse_complete_structure() {
-                                        Ok(nodes) => {
-                                            self.opcua_nodes = nodes;
-                                            self.browse_status_message = "OPC UA structure loaded successfully.".to_string();
-                                        }
-                                        Err(e) => {
-                                            self.browse_status_message = format!("Error browsing OPC UA structure: {}", e);
-                                        }
-                                    }
-                                    self.is_browsing_opcua = false;
-                                }
-                                Err(e) => {
-                                    self.browse_status_message = format!("Error connecting to OPC UA server: {}", e);
-                                    self.is_browsing_opcua = false;
-                                }
-                            }
+                        // Allow triggering browse if not currently browsing nodes and not already complete from a previous run
+                        if self.opcua_browse_state != OpcUaBrowseState::BrowsingNodes && self.opcua_browse_state != OpcUaBrowseState::BrowsingNodesComplete {
+                            self.opcua_nodes.clear(); // Clear previous nodes for a fresh browse
+                            self.opcua_browse_state = OpcUaBrowseState::BrowsingNodes;
+                            self.browse_status_message = "Requesting OPC UA structure...".to_string();
+                            let command = WorkerCommand::BrowseOpcUaNodes {
+                                config: self.config.clone(),
+                            };
+                            self.send_worker_command(command, "Browsing OPC UA structure...");
+                        } else if self.opcua_browse_state == OpcUaBrowseState::BrowsingNodesComplete {
+                            // If already complete, just show the browser without re-fetching, unless user explicitly refreshes later
+                            self.browse_status_message = "OPC UA structure previously loaded.".to_string();
                         }
                     }
                 
                     if ui.button("Get OPC UA Namespaces").clicked() {
-                        self.status_message = "Connecting to OPC UA server...".to_string();
-                        // TODO: move to mod.rs
-                        // TODO: check multiple endpoints
-                        match OpcUaPoller::new(self.config.clone()) {
-                            Ok(poller) => {
-                                // Get the list of XML files
-                                let xml_files: Vec<String> = self.xml_files.clone();
-
-                                // Call the OPC UA poller to get namespace information
-                                match poller.get_namespace_info(&xml_files) {
-                                    Ok(namespace_map) => {
-                                        // Update the namespace fields in the GUI
-                                        let mut found_count = 0;
-                                        for (file_name, namespace_index) in namespace_map {
-                                            // Find the full path for this file name
-                                            if let Some(full_path) = self.xml_files.iter().find(|path| {
-                                                path.ends_with(&file_name)
-                                            }) {
-                                                // Update the namespace field
-                                                if let Some(config) = self.file_configs.get_mut(full_path) {
-                                                    config.namespace = namespace_index.to_string();
-                                                    found_count += 1;
-                                                }
-                                            }
-                                        }
-
-                                        if found_count > 0 {
-                                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
-                                        } else {
-                                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "OPC UA namespace lookup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "OPC UA connection");
-                            }
+                        // Allow triggering if not currently getting namespaces
+                        if self.opcua_browse_state != OpcUaBrowseState::GettingNamespaces {
+                            self.opcua_browse_state = OpcUaBrowseState::GettingNamespaces;
+                            self.status_message = "Requesting OPC UA namespaces...".to_string();
+                            let command = WorkerCommand::GetOpcUaNamespaces {
+                                config: self.config.clone(),
+                                xml_files: self.xml_files.clone(),
+                            };
+                            self.send_worker_command(command, "Getting OPC UA namespaces...");
                         }
                     }
                     
@@ -746,22 +822,11 @@ impl eframe::App for TelegrafApp {
                 }
 
                 if ui.button("Send Config").clicked() {
-                    self.status_message = "Sending configuration...".to_string();
-                    match ConfigGenerator::new(self.config.clone()) {
-                        Ok(generator) => {
-                            match generator.send_config() {
-                                Ok(detailed_output) => {
-                                    self.status_message = detailed_output;
-                                }
-                                Err(e) => {
-                                    self.status_message = self.handle_error(&e, "send config");
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            self.status_message = self.handle_error(&e, "send config");
-                        }
-                    }
+                    let config = self.config.clone();
+                    self.send_worker_command(
+                        WorkerCommand::SendTelegrafConfig { config },
+                        "Sending configuration..."
+                    );
                 }
             });
 
@@ -769,89 +834,37 @@ impl eframe::App for TelegrafApp {
             ui.collapsing("Other Commands", |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("Backup InfluxDB").clicked() {
-                        self.status_message = "Backing up InfluxDB...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.backup_influx() {
-                                    Ok(detailed_output) => {
-                                        self.status_message = detailed_output;
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "InfluxDB backup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "InfluxDB backup");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::BackupInfluxDB { config },
+                            "Backing up InfluxDB..."
+                        );
                     }
 
                     if ui.button("Backup Grafana").clicked() {
-                        self.status_message = "Backing up Grafana...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.backup_grafana() {
-                                    Ok(detailed_output) => {
-                                        self.status_message = detailed_output;
-                                    }
-                                    Err(e) => {
-                                self.status_message = self.handle_error(&e, "Grafana backup");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "Grafana backup");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::BackupGrafana { config },
+                            "Backing up Grafana..."
+                        );
                     }
                 });
 
                 ui.horizontal(|ui| {
                     if ui.button("Get Telegraf Status").clicked() {
-                        self.status_message = "Retrieving Telegraf status...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.get_telegraf_status() {
-                                    Ok(status) => {
-                                        if status.is_empty() {
-                                            self.status_message = "Error: Telegraf status returned empty. Telegraf may not be running.".to_string();
-                                        } else {
-                                            self.status_message = format!("Telegraf Status:\n{}", status);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "status");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "status");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::GetTelegrafStatus { config },
+                            "Retrieving Telegraf status..."
+                        );
                     }
 
                     if ui.button("Get Telegraf Logs").clicked() {
-                        self.status_message = "Retrieving Telegraf logs...".to_string();
-                        match ConfigGenerator::new(self.config.clone()) {
-                            Ok(generator) => {
-                                match generator.get_telegraf_logs(30) {
-                                    Ok(logs) => {
-                                        if logs.is_empty() {
-                                            self.status_message = "Error: Telegraf logs are empty. The log file may exist but is empty.".to_string();
-                                        } else {
-                                            self.status_message = format!("Telegraf Logs (Last 30 lines):\n{}", logs);
-                                        }
-                                    }
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, "logs");
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                self.status_message = self.handle_error(&e, "logs");
-                            }
-                        }
+                        let config = self.config.clone();
+                        self.send_worker_command(
+                            WorkerCommand::GetTelegrafLogs { config, lines: 30 },
+                            "Retrieving Telegraf logs..."
+                        );
                     }
                 });
 
@@ -870,33 +883,24 @@ impl eframe::App for TelegrafApp {
 
                     if ui.button(format!("Check {} Status", service_name)).clicked() {
                         let service_url = self.config.iot_host.clone();
-
-                                self.status_message = format!("Checking {} status at {}...", service_name, service_url);
-
-                                match ConfigGenerator::new(self.config.clone()) {
-                                    Ok(generator) => {
-                                        let result = if is_prometheus {
-                                            generator.check_service_status(service_url.as_str(), ServiceType::Prometheus, 5)
-                                        } else {
-                                            generator.check_influxdb_status()
-                                        };
-
-                                        match result {
-                                            Ok(true) => {
-                                                self.status_message = format!("✅ {} is responding normally at {}", service_name, service_url);
-                                            },
-                                            Ok(false) => {
-                                                self.status_message = format!("❌ {} is not responding at {}", service_name, service_url);
-                                            },
-                                            Err(e) => {
-                                                self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
-                                            }
-                                        }
-                                    },
-                                    Err(e) => {
-                                        self.status_message = self.handle_error(&e, &format!("check {} status", service_name.to_lowercase()));
-                                    }
-                                }
+                        let config = self.config.clone();
+                        
+                        if is_prometheus {
+                            self.send_worker_command(
+                                WorkerCommand::CheckServiceStatus {
+                                    config,
+                                    service_url: service_url.clone(),
+                                    service_type: ServiceType::Prometheus,
+                                    timeout_secs: 5,
+                                },
+                                &format!("Checking {} status at {}...", service_name, service_url)
+                            );
+                        } else {
+                            self.send_worker_command(
+                                WorkerCommand::CheckInfluxDbStatus { config },
+                                &format!("Checking InfluxDB status at {}...", service_url)
+                            );
+                        }
                     }
                 });
             });
@@ -905,7 +909,13 @@ impl eframe::App for TelegrafApp {
             if !self.status_message.is_empty() {
                 // Add a header to make it more visible
                 ui.separator();
-                ui.heading("Command Output:");
+                ui.horizontal(|ui| {
+                    ui.heading("Command Output:");
+                    if self.is_working {
+                        ui.add(egui::Spinner::new().size(16.0));
+                        ui.label("Working...");
+                    }
+                });
                 // Create a frame with a border to make the output more visible
                 let frame = egui::Frame::dark_canvas(ui.style())
                     .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE));
@@ -930,45 +940,72 @@ impl eframe::App for TelegrafApp {
 
             // OPC UA Browser Panel
             if self.show_opcua_browser {
-                ui.separator();
-                ui.heading("OPC UA Browser");
-                
-                ui.horizontal(|ui| {
-                        ui.label("Status: ");
-                        ui.label(&self.browse_status_message);
-                        
-                        if ui.button("Close Browser").clicked() {
-                            self.show_opcua_browser = false;
+                egui::Window::new("OPC UA Browser")
+                    .default_size([400.0, 600.0])
+                    .show(ctx, |ui| {
+                        match &self.opcua_browse_state {
+                            OpcUaBrowseState::BrowsingNodes => {
+                                ui.horizontal(|ui| {
+                                    ui.spinner();
+                                    ui.label(&self.browse_status_message);
+                                });
+                            }
+                            OpcUaBrowseState::BrowsingNodesComplete => {
+                                if !self.opcua_nodes.is_empty() {
+                                    let mut temp_nodes = std::mem::take(&mut self.opcua_nodes);
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        self.render_node_tree(ui, &mut temp_nodes, 0);
+                                    });
+                                    self.opcua_nodes = temp_nodes;
+                                } else {
+                                    ui.label(&self.browse_status_message); // Will show "...no nodes found."
+                                }
+                            }
+                            OpcUaBrowseState::BrowsingNodesFailed(err) => {
+                                ui.colored_label(egui::Color32::RED, format!("Failed to browse OPC UA structure: {}", err));
+                            }
+                            OpcUaBrowseState::Idle => {
+                                if !self.opcua_nodes.is_empty() { // Show cached nodes if available
+                                    let mut temp_nodes = std::mem::take(&mut self.opcua_nodes);
+                                    egui::ScrollArea::vertical().show(ui, |ui| {
+                                        self.render_node_tree(ui, &mut temp_nodes, 0);
+                                    });
+                                    self.opcua_nodes = temp_nodes;
+                                } else {
+                                    ui.label("Click 'Browse OPC UA Structure' or 'Refresh Structure' to load nodes.");
+                                }
+                            }
+                            // For GettingNamespaces states, this window doesn't show specific feedback, general status is outside.
+                            _ => { 
+                                ui.label(if self.browse_status_message.is_empty() { "OPC UA Browser" } else { &self.browse_status_message });
+                            }
                         }
-                    });
-                    
-                    // Display the node tree with checkboxes
-                    if !self.opcua_nodes.is_empty() {
-                        // Create a clone of opcua_nodes to avoid borrowing issues
-                        let mut nodes_clone = self.opcua_nodes.clone();
-                        ui.push_id("opcua_browser_area", |ui| {
-                            egui::ScrollArea::vertical().max_height(400.0).show(ui, |ui| {
-                                // Render using the cloned nodes
-                                self.render_node_tree(ui, &mut nodes_clone, 0);
-                            });
+
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            if ui.button("Add Selected to Config").clicked() {
+                                self.add_selected_nodes_to_config();
+                                self.status_message = "Selected OPC UA nodes added to configuration.".to_string();
+                                // self.show_opcua_browser = false; // Keep browser open after adding
+                            }
+                            if ui.button("Refresh Structure").clicked() {
+                                 if self.opcua_browse_state != OpcUaBrowseState::BrowsingNodes {
+                                    self.opcua_nodes.clear();
+                                    self.opcua_browse_state = OpcUaBrowseState::BrowsingNodes;
+                                    self.browse_status_message = "Requesting OPC UA structure refresh...".to_string();
+                                    let command = WorkerCommand::BrowseOpcUaNodes {
+                                        config: self.config.clone(),
+                                    };
+                                    self.send_worker_command(command, "Refreshing OPC UA structure...");
+                                }
+                            }
+                            if ui.button("Close").clicked() {
+                                self.show_opcua_browser = false;
+                            }
                         });
-                        
-                        // Update the original nodes with any changes from UI
-                        self.opcua_nodes = nodes_clone;
-                        
-                        // Add selected nodes button
-                        if ui.button("Add Selected Nodes to Configuration").clicked() {
-                            self.add_selected_nodes_to_config();
-                            self.status_message = "Selected nodes added to configuration.".to_string();
-                        }
-                    } else if self.is_browsing_opcua {
-                        ui.spinner();
-                        ui.label("Loading OPC UA structure... This may take a moment.");
-                    } else {
-                        ui.label("No OPC UA structure available. Click 'Browse OPC UA Structure' to load.");
-                    }
-                    
-                    // Display currently selected nodes
+                    });
+                } 
+            // Display currently selected nodes
                     if !self.config.selected_opcua_nodes.is_empty() {
                         ui.heading("Selected Nodes");
                         ui.push_id("selected_nodes_area", |ui| {
@@ -1022,7 +1059,7 @@ impl eframe::App for TelegrafApp {
                             });
                         });
                     }
-                }
+                
         });
     }
 }

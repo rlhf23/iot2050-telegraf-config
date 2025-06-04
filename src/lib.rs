@@ -12,7 +12,7 @@ pub struct SelectedOpcUaNode {
     pub folder_name: Option<String>, // Optional folder name for grouping nodes
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TelegrafConfig {
     pub folder: PathBuf,
     pub ip: String,
@@ -343,6 +343,9 @@ pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
 
 pub mod backend;
 pub mod error;
+pub mod worker;
+
+pub use worker::{WorkerHandle, WorkerCommand, WorkerResponse};
 
 #[cfg(test)]
 mod error_test;
