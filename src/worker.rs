@@ -71,7 +71,6 @@ pub enum WorkerResponse {
 
 pub struct WorkerHandle {
     command_sender: Sender<WorkerCommand>,
-    response_sender: Sender<WorkerResponse>,
     response_receiver: Receiver<WorkerResponse>,
     _thread: thread::JoinHandle<()>,
 }
@@ -81,10 +80,7 @@ impl WorkerHandle {
         let (command_sender, command_receiver) = channel();
         let (response_sender, response_receiver) = channel();
 
-        // Clone the sender for the worker thread
-        let thread_response_sender = response_sender.clone();
-
-        let _thread = thread::spawn(move || {
+        let thread = thread::spawn(move || {
             while let Ok(cmd) = command_receiver.recv() {
                 let response = match cmd {
                     WorkerCommand::DummyCommand => {
@@ -93,7 +89,7 @@ impl WorkerHandle {
                         WorkerResponse::DummyResponse
                     }
                     WorkerCommand::SendTelegrafConfig { config } => {
-                        let worker_response_sender = thread_response_sender.clone();
+                        let response_sender = response_sender.clone();
                         
                         // Use a single thread to handle both SSH operation and progress updates
                         std::thread::spawn(move || {
@@ -102,7 +98,7 @@ impl WorkerHandle {
                             // Clone config for the SSH operation thread
                             let config_clone = config.clone();
                             let ssh_tx = tx.clone();
-                            let ssh_response_sender = worker_response_sender.clone();
+                            let ssh_response_sender = response_sender.clone();
                             
                             // Spawn SSH operation in a separate thread
                             let ssh_handle = std::thread::spawn(move || {
@@ -120,7 +116,7 @@ impl WorkerHandle {
                             loop {
                                 match rx.try_recv() {
                                     Ok(progress) => {
-                                        let _ = worker_response_sender.send(WorkerResponse::ProgressUpdate(progress));
+                                        let _ = ssh_response_sender.send(WorkerResponse::ProgressUpdate(progress));
                                     }
                                     Err(std::sync::mpsc::TryRecvError::Empty) => {
                                         // Check if SSH thread is done
@@ -262,7 +258,7 @@ impl WorkerHandle {
                     }
                 };
                 
-                if thread_response_sender.send(response).is_err() {
+                if response_sender.send(response).is_err() {
                     break; // Channel was disconnected
                 }
             }
@@ -270,9 +266,8 @@ impl WorkerHandle {
 
         Self {
             command_sender,
-            response_sender,
             response_receiver,
-            _thread,
+            _thread: thread,
         }
     }
 
