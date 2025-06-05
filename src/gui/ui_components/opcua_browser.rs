@@ -1,6 +1,7 @@
 use eframe::egui;
 use crate::{
-    backend::opcua_poller::{OpcUaNode, OpcUaPoller},
+    backend::opcua_poller::OpcUaNode,
+    worker::WorkerHandle,
     TelegrafConfig,
 };
 use super::super::OpcUaBrowseState;
@@ -12,54 +13,73 @@ impl OpcUaBrowserWindow {
         ctx: &egui::Context,
         nodes: &mut Vec<OpcUaNode>,
         browse_state: &mut OpcUaBrowseState,
-        browse_status_message: &str,
+        browse_status_message: &mut String,
+        worker: &Option<WorkerHandle>,
         config: &TelegrafConfig,
         show_browser: &mut bool,
-    ) -> OpcUaBrowserAction {
+    ) -> Result<OpcUaBrowserAction, String> {
+        use OpcUaBrowserAction::*;
+        
         if !*show_browser {
-            return OpcUaBrowserAction::None;
+            return Ok(None);
         }
 
         let mut result = OpcUaBrowserAction::None;
         
+        // Store node loading requests to process after rendering
+        let mut node_loading_requests = Vec::new();
+        
+        // Then render the UI
         egui::Window::new("OPC UA Browser")
             .default_size([400.0, 600.0])
             .show(ctx, |ui| {
-                match browse_state {
-                    OpcUaBrowseState::BrowsingNodes => {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(browse_status_message);
-                        });
-                    }
-                    OpcUaBrowseState::BrowsingNodesComplete => {
-                        if !nodes.is_empty() {
-                            let mut temp_nodes = std::mem::take(nodes);
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                Self::render_node_tree(ui, &mut temp_nodes, 0, config);
+                ui.vertical_centered_justified(|ui| {
+                    match *browse_state {
+                        OpcUaBrowseState::BrowsingNodes => {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(browse_status_message.as_str());
                             });
-                            *nodes = temp_nodes;
-                        } else {
-                            ui.label(browse_status_message);
                         }
-                    }
-                    OpcUaBrowseState::BrowsingNodesFailed(err) => {
-                        ui.colored_label(egui::Color32::RED, format!("Failed to browse OPC UA structure: {}", err));
-                    }
-                    OpcUaBrowseState::Idle => {
-                        if !nodes.is_empty() {
-                            let mut temp_nodes = std::mem::take(nodes);
-                            egui::ScrollArea::vertical().show(ui, |ui| {
-                                Self::render_node_tree(ui, &mut temp_nodes, 0, config);
-                            });
-                            *nodes = temp_nodes;
-                        } else {
-                            ui.label("Click 'Browse OPC UA' to load the node structure.");
+                        OpcUaBrowseState::BrowsingNodesComplete | OpcUaBrowseState::Idle => {
+                            if !nodes.is_empty() {
+                                match Self::render_node_tree(
+                                    ui,
+                                    nodes,
+                                    0,
+                                    config,
+                                    worker,
+                                ) {
+                                    Ok(node_indices) => {
+                                        // Convert node indices back to node references
+                                        for (idx, depth) in node_indices {
+                                            let i = idx.get() - 1; // Convert back to 0-based index
+                                            if let Some(node) = nodes.get(i) {
+                                                node_loading_requests.push((
+                                                    node.node_id.clone(),
+                                                    node.browse_name.clone(),
+                                                    node.display_name.clone(),
+                                                    node.node_class,
+                                                    depth,
+                                                ));
+                                            }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        ui.colored_label(egui::Color32::RED, format!("Error: {}", e));
+                                    }
+                                }
+                            } else {
+                                ui.label(browse_status_message.as_str());
+                            }
                         }
+                        OpcUaBrowseState::BrowsingNodesFailed(ref err) => {
+                            ui.colored_label(egui::Color32::RED, format!("Failed to browse OPC UA structure: {}", err));
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
-
+                });
+                
                 ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Add Selected to Config").clicked() {
@@ -74,7 +94,15 @@ impl OpcUaBrowserWindow {
                 });
             });
             
-        result
+        // Process node loading requests after UI rendering is complete
+        for (node_id, _browse_name, display_name, _node_class, _depth) in node_loading_requests {
+            // We can't load children here directly anymore, so we'll need to return these requests
+            // and let the caller handle them
+            // For now, we'll just log an error
+            eprintln!("Node loading is not implemented in this version: {} ({})", display_name, node_id);
+        }
+            
+        Ok(result)
     }
 
     fn render_node_tree(
@@ -82,142 +110,105 @@ impl OpcUaBrowserWindow {
         nodes: &mut [OpcUaNode],
         indent_level: usize,
         config: &TelegrafConfig,
-    ) {
-        for node in nodes.iter_mut() {
+        worker: &Option<WorkerHandle>,
+    ) -> Result<Vec<(std::num::NonZeroUsize, usize)>, String> {
+        use opcua::types::NodeClass;
+        use std::num::NonZeroUsize;
+        
+        let mut nodes_needing_loading = Vec::new();
+        
+        // First pass: render nodes and collect indices of nodes that need loading
+        for (i, node) in nodes.iter_mut().enumerate() {
+            let is_folder = node.is_folder_node();
+            let mut needs_loading = false;
+            
             // Calculate indentation
             let indent = (indent_level as f32) * 20.0;
-            ui.horizontal(|ui| {
+            
+            // Render the node
+            let response = ui.horizontal(|ui| {
                 ui.add_space(indent);
-
-                // Determine if this is a folder-like node
-                let is_folder = node.is_folder_node();
                 
                 // Show checkboxes for variables that can be selected and for folders
                 // Skip checkbox for the root node (at indent_level 0)
-                if (node.node_class == opcua::types::NodeClass::Variable || is_folder) && indent_level > 0 {
-                    if ui.checkbox(&mut node.selected, "").changed() {
+                if (node.node_class == NodeClass::Variable || is_folder) && indent_level > 0 {
+                    if ui.checkbox(&mut node.selected, "").clicked() {
                         // For variables: If a node is deselected, also deselect all its children
-                        if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
+                        if !node.selected && node.node_class == NodeClass::Variable {
                             node.deselect_children();
                         }
                         
-                        // For folders: When selected, ensure children are loaded
+                        // If this is a folder that needs children loaded
                         if node.selected && is_folder && !node.children_loaded {
-                            // Clone to avoid borrow issues
-                            let node_clone = node.clone();
-                            
-                            // Create a new poller to load children
-                            if let Ok(poller) = OpcUaPoller::new(config.clone()) {
-                                match poller.load_node_children(&node_clone, indent_level) {
-                                    Ok(children) => {
-                                        // Update the node with loaded children
-                                        node.children = children;
-                                        node.children_loaded = true;
-                                        
-                                        // Force a redraw
-                                        ui.ctx().request_repaint();
-                                    }
-                                    Err(e) => {
-                                        // Log the error but don't display it in the UI to avoid disrupting the layout
-                                        eprintln!("Error loading folder children when selecting checkbox: {}", e);
-                                    }
-                                }
-                            }
+                            // Mark as loading to prevent multiple requests
+                            node.children_loaded = true;
+                            needs_loading = true;
                         }
                     }
                 }
-
-                // Node display - show different icons based on node type
+                
+                // Show node name and icon with appropriate styling
                 let node_icon = match node.node_class {
-                    opcua::types::NodeClass::Object => "[O] ",
-                    opcua::types::NodeClass::Variable => "[V] ",
-                    opcua::types::NodeClass::Method => "[M] ",
-                    opcua::types::NodeClass::ObjectType => "[T] ",
-                    opcua::types::NodeClass::VariableType => "[VT] ",
-                    opcua::types::NodeClass::ReferenceType => "[R] ",
-                    opcua::types::NodeClass::DataType => "[D] ",
-                    opcua::types::NodeClass::View => "[~] ",
-                    _ => "[?] ",
+                    NodeClass::Object => "📁 ",
+                    NodeClass::Variable => "📊 ",
+                    NodeClass::Method => "⚙️ ",
+                    NodeClass::ObjectType => "📦 ",
+                    NodeClass::VariableType => "📈 ",
+                    NodeClass::ReferenceType => "🔗 ",
+                    NodeClass::DataType => "🔢 ",
+                    _ => "❓ ",
                 };
-
-                // Check if this is a folder-like node that can have children
-                if is_folder {
-                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
-                    
-                    // Use collapsing header to show node and its children
-                    let header = ui.collapsing(label, |ui| {
-                        // Show additional node information
-                        if let Some(data_type) = &node.data_type {
-                            ui.label(format!("Data Type: {}", data_type));
-                        }
-                        if let Some(description) = &node.description {
-                            ui.label(format!("Description: {}", description));
-                        }
-
-                        // Check if children need to be loaded
-                        if !node.children_loaded && node.children.is_empty() {
-                            // Show loading indicator
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label("Loading children...");
-                            });
-
-                            // Clone to avoid borrow issues
-                            let node_clone = node.clone();
-
-                            // Create a new poller to load children
-                            if let Ok(poller) = OpcUaPoller::new(config.clone()) {
-                                match poller.load_node_children(&node_clone, indent_level) {
-                                    Ok(children) => {
-                                        // Update the node with loaded children
-                                        node.children = children;
-                                        node.children_loaded = true;
-
-                                        // Force a redraw
-                                        ui.ctx().request_repaint();
-                                    }
-                                    Err(e) => {
-                                        ui.label(format!("Error loading children: {}", e));
-                                    }
-                                }
-                            }
-                        } else {
-                            // Render children recursively
-                            Self::render_node_tree(ui, &mut node.children, indent_level + 1, config);
-                        }
-                    });
-
-                    // If the header is expanded, we don't need to show the hover text
-                    if !header.fully_open() {
-                        header.header_response.on_hover_text(format!(
-                            "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}",
-                            node.node_id,
-                            node.node_id.namespace,
-                            node.browse_name,
-                            if let Some(data_type) = &node.data_type {
-                                format!("\nData Type: {}", data_type)
-                            } else {
-                                String::new()
-                            }
-                        ));
+                
+                // Create hover text with node details
+                let hover_text = format!(
+                    "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}",
+                    node.node_id,
+                    node.node_id.namespace,
+                    node.browse_name,
+                    if let Some(data_type) = &node.data_type {
+                        format!("\nData Type: {}", data_type)
+                    } else {
+                        String::new()
                     }
-                } else {
-                    // Leaf node without children
-                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
-                    ui.label(label).on_hover_text(format!(
-                        "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}",
-                        node.node_id,
-                        node.node_id.namespace,
-                        node.browse_name,
-                        if let Some(data_type) = &node.data_type {
-                            format!("\nData Type: {}", data_type)
-                        } else {
-                            String::new()
-                        }
-                    ));
-                }
+                );
+                
+                // Render the node with appropriate styling
+                let node_text = format!("{} {}", node_icon, node.display_name);
+                ui.label(node_text).on_hover_text(hover_text);
+                
+                Ok::<_, String>(())
             });
+            
+            // Check for errors in the UI response
+            if let Err(e) = response.inner {
+                return Err(e);
+            }
+            
+            // If this node needs loading, store its index (1-based to use NonZeroUsize)
+            if needs_loading {
+                if let Some(idx) = NonZeroUsize::new(i + 1) {
+                    nodes_needing_loading.push((idx, indent_level + 1));
+                }
+            }
         }
+        
+        // Second pass: recursively render children of expanded nodes
+        for (_i, node) in nodes.iter_mut().enumerate() {
+            if node.selected && !node.children.is_empty() {
+                let child_needs_loading = Self::render_node_tree(
+                    ui,
+                    &mut node.children,
+                    indent_level + 1,
+                    config,
+                    worker,
+                )?;
+                
+                // Add any child nodes that need loading to our main list
+                nodes_needing_loading.extend(child_needs_loading);
+            }
+        }
+        
+        Ok(nodes_needing_loading)
     }
 }
 

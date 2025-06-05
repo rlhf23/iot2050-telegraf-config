@@ -28,6 +28,24 @@ pub struct OpcUaNode {
     pub continuation_point: Option<ByteString>, // Store continuation point for lazy loading
 }
 
+impl Default for OpcUaNode {
+    fn default() -> Self {
+        Self {
+            node_id: NodeId::null(),
+            browse_name: String::new(),
+            display_name: String::new(),
+            node_class: NodeClass::Unspecified,
+            data_type: None,
+            description: None,
+            children: Vec::new(),
+            selected: false,
+            children_loaded: false,
+            has_more_children: false,
+            continuation_point: None,
+        }
+    }
+}
+
 impl OpcUaNode {
     pub fn new(
         node_id: NodeId,

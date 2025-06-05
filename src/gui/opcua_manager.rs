@@ -81,6 +81,45 @@ impl OpcUaManager {
         };
     }
 
+    pub fn handle_node_children_loaded(&mut self, parent_node_id: opcua::types::NodeId, children: Vec<OpcUaNode>) -> bool {
+        // Helper function to find and update the node in the tree
+        fn update_node_children(nodes: &mut [OpcUaNode], parent_id: &opcua::types::NodeId, new_children: Vec<OpcUaNode>) -> bool {
+            for node in nodes.iter_mut() {
+                if &node.node_id == parent_id {
+                    // Found the parent node, update its children
+                    node.children = new_children;
+                    node.children_loaded = true;
+                    return true;
+                } else if !node.children.is_empty() {
+                    // Recursively search in children
+                    if update_node_children(&mut node.children, parent_id, new_children.clone()) {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+
+        update_node_children(&mut self.nodes, &parent_node_id, children)
+    }
+
+    pub fn load_node_children(&mut self, worker: &Option<WorkerHandle>, config: &TelegrafConfig, node: &OpcUaNode, depth: usize) -> Result<(), String> {
+        if let Some(worker) = worker {
+            let command = WorkerCommand::LoadOpcUaNodeChildren {
+                config: config.clone(),
+                node_id: node.node_id.clone(),
+                browse_name: node.browse_name.clone(),
+                display_name: node.display_name.clone(),
+                node_class: node.node_class.clone(),
+                depth,
+            };
+            worker.send_command(command).map_err(|e| format!("Failed to load node children: {}", e))?;
+            Ok(())
+        } else {
+            Err("Worker not initialized".to_string())
+        }
+    }
+
     pub fn handle_namespaces_complete(&mut self, namespace_map: std::collections::HashMap<String, u16>, xml_files: &[String], file_configs: &mut std::collections::HashMap<String, super::config_manager::XmlFileConfig>) -> String {
         let mut found_count = 0;
         for (file_name, namespace_index) in namespace_map {

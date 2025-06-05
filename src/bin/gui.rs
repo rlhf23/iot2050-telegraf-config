@@ -46,6 +46,10 @@ impl eframe::App for TelegrafApp {
                     self.worker_manager.status_message = format!("OPC UA operation failed: {}", err);
                     true
                 }
+                WorkerResponse::OpcUaNodeChildren { parent_node_id, children } => {
+                    self.opcua_manager.handle_node_children_loaded(parent_node_id.clone(), children.to_vec());
+                    true
+                }
                 _ => self.worker_manager.handle_response(response)
             };
 
@@ -80,34 +84,56 @@ impl eframe::App for TelegrafApp {
             SelectedNodesSection::show(ui, &mut self.config_manager);
         });
 
-        // Handle OPC UA Browser Window
-        let browser_action = {
-            OpcUaBrowserWindow::show(
-                ctx,
-                &mut self.opcua_manager.nodes,
-                &mut self.opcua_manager.browse_state,
-                &self.opcua_manager.browse_status_message,
-                &self.config_manager.config,
-                &mut self.opcua_manager.show_browser,
-            )
-        };
-        
-        // Handle browser actions
-        match browser_action {
-            OpcUaBrowserAction::AddSelectedToConfig => {
-                self.opcua_manager.add_selected_nodes_to_config(&mut self.config_manager.config);
-                self.worker_manager.status_message = "Selected OPC UA nodes added to configuration.".to_string();
-            }
-            OpcUaBrowserAction::RefreshStructure => {
-                if let Err(e) = self.opcua_manager.refresh_structure(&self.worker_manager.worker, &self.config_manager.config) {
-                    self.worker_manager.status_message = e;
-                } else {
-                    self.worker_manager.is_working = true;
-                    self.worker_manager.status_message = "Refreshing OPC UA structure...".to_string();
-                }
-            }
-            OpcUaBrowserAction::None => {}
-        }
+       // Take the show_browser value and replace it with false temporarily
+       let should_show_browser = std::mem::take(&mut self.opcua_manager.show_browser);
+       
+       // Handle browser window and actions if it should be shown
+       if should_show_browser {
+           // Show the browser window and get the result
+           let browser_action = OpcUaBrowserWindow::show(
+               ctx,
+               &mut self.opcua_manager.nodes,
+               &mut self.opcua_manager.browse_state,
+               &mut self.opcua_manager.browse_status_message,
+               &self.worker_manager.worker,
+               &self.config_manager.config,
+               &mut self.opcua_manager.show_browser,
+           );
+
+           // Handle the browser action result
+           match browser_action {
+               Ok(action) => match action {
+                   OpcUaBrowserAction::AddSelectedToConfig => {
+                       self.opcua_manager.add_selected_nodes_to_config(&mut self.config_manager.config);
+                       self.worker_manager.status_message = "Selected OPC UA nodes added to configuration.".to_string();
+                   }
+                   OpcUaBrowserAction::RefreshStructure => {
+                       if let Err(e) = self.opcua_manager.refresh_structure(
+                           &self.worker_manager.worker, 
+                           &self.config_manager.config
+                       ) {
+                           self.worker_manager.status_message = e;
+                       } else {
+                           self.worker_manager.is_working = true;
+                           self.worker_manager.status_message = "Refreshing OPC UA structure...".to_string();
+                       }
+                   }
+                   OpcUaBrowserAction::None => {}
+               },
+               Err(e) => {
+                   self.worker_manager.status_message = format!("Error in OPC UA browser: {}", e);
+               }
+           }
+           
+           // Restore the show_browser value if needed
+           if !self.opcua_manager.show_browser {
+               self.opcua_manager.show_browser = should_show_browser;
+           }
+       } else {
+           // Restore the original value
+           self.opcua_manager.show_browser = should_show_browser;
+       }
+
     }
 }
 

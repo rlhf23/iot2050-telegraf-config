@@ -50,6 +50,14 @@ pub enum WorkerCommand {
     BrowseOpcUaNodes {
         config: TelegrafConfig,
     },
+    LoadOpcUaNodeChildren {
+        config: TelegrafConfig,
+        node_id: opcua::types::NodeId,
+        browse_name: String,
+        display_name: String,
+        node_class: opcua::types::NodeClass,
+        depth: usize,
+    },
     GetOpcUaNamespaces {
         config: TelegrafConfig,
         xml_files: Vec<String>,
@@ -65,6 +73,10 @@ pub enum WorkerResponse {
     FileTransferError(String),
     ProgressUpdate(String),
     OpcUaNodes(Vec<crate::backend::opcua_poller::OpcUaNode>),
+    OpcUaNodeChildren {
+        parent_node_id: opcua::types::NodeId,
+        children: Vec<crate::backend::opcua_poller::OpcUaNode>,
+    },
     OpcUaNamespaces(std::collections::HashMap<String, u16>),
     OpcUaError(String),
 }
@@ -251,6 +263,35 @@ impl WorkerHandle {
                                 match poller.get_namespace_info(&xml_files) {
                                     Ok(namespace_map) => WorkerResponse::OpcUaNamespaces(namespace_map),
                                     Err(e) => WorkerResponse::OpcUaError(format!("Error getting namespaces: {}", e)),
+                                }
+                            }
+                            Err(e) => WorkerResponse::OpcUaError(format!("Error creating OPC UA poller: {}", e)),
+                        }
+                    }
+                    WorkerCommand::LoadOpcUaNodeChildren { config, node_id, browse_name, display_name, node_class, depth } => {
+                        match crate::backend::opcua_poller::OpcUaPoller::new(config) {
+                            Ok(poller) => {
+                                // Create a temporary node to load children for
+                                let node = crate::backend::opcua_poller::OpcUaNode {
+                                    node_id: node_id.clone(),
+                                    browse_name: browse_name.clone(),
+                                    display_name: display_name.clone(),
+                                    node_class: node_class.clone(),
+                                    data_type: None,
+                                    description: None,
+                                    children: Vec::new(),
+                                    selected: false,
+                                    children_loaded: false,
+                                    has_more_children: false,
+                                    continuation_point: None,
+                                };
+
+                                match poller.load_node_children(&node, depth) {
+                                    Ok(children) => WorkerResponse::OpcUaNodeChildren {
+                                        parent_node_id: node_id,
+                                        children,
+                                    },
+                                    Err(e) => WorkerResponse::OpcUaError(format!("Error loading node children: {}", e)),
                                 }
                             }
                             Err(e) => WorkerResponse::OpcUaError(format!("Error creating OPC UA poller: {}", e)),

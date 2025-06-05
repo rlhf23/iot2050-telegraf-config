@@ -124,7 +124,8 @@ impl WorkerManager {
             WorkerResponse::ProgressUpdate(_) => {
                 // Already handled above
             }
-            WorkerResponse::OpcUaNodes(_) | WorkerResponse::OpcUaNamespaces(_) | WorkerResponse::OpcUaError(_) => {
+            WorkerResponse::OpcUaNodes(_) | WorkerResponse::OpcUaNamespaces(_) | WorkerResponse::OpcUaError(_) | 
+            WorkerResponse::OpcUaNodeChildren { .. } => {
                 // These responses are handled by the OpcUaManager
                 return true;
             }
