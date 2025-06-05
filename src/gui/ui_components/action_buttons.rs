@@ -14,7 +14,7 @@ impl ActionButtons {
         opcua_manager: &mut OpcUaManager,
         worker_manager: &mut WorkerManager,
     ) -> ActionButtonsResult {
-        let mut result = ActionButtonsResult::default();
+        let result = ActionButtonsResult::default();
 
         // Main Action Buttons
         ui.horizontal(|ui| {

@@ -1,16 +1,18 @@
 use eframe::egui;
-use sie_generate_config::{
+use crate::{
     backend::opcua_poller::{OpcUaNode, OpcUaPoller},
     TelegrafConfig,
 };
-use super::super::{OpcUaManager, OpcUaBrowseState};
+use super::super::OpcUaBrowseState;
 
 pub struct OpcUaBrowserWindow;
 
 impl OpcUaBrowserWindow {
     pub fn show(
         ctx: &egui::Context,
-        opcua_manager: &mut OpcUaManager,
+        nodes: &mut Vec<OpcUaNode>,
+        browse_state: &mut OpcUaBrowseState,
+        browse_status_message: &str,
         config: &TelegrafConfig,
         show_browser: &mut bool,
     ) -> OpcUaBrowserAction {
@@ -23,45 +25,39 @@ impl OpcUaBrowserWindow {
         egui::Window::new("OPC UA Browser")
             .default_size([400.0, 600.0])
             .show(ctx, |ui| {
-                match &opcua_manager.browse_state {
+                match browse_state {
                     OpcUaBrowseState::BrowsingNodes => {
                         ui.horizontal(|ui| {
                             ui.spinner();
-                            ui.label(&opcua_manager.browse_status_message);
+                            ui.label(browse_status_message);
                         });
                     }
                     OpcUaBrowseState::BrowsingNodesComplete => {
-                        if !opcua_manager.nodes.is_empty() {
-                            let mut temp_nodes = std::mem::take(&mut opcua_manager.nodes);
+                        if !nodes.is_empty() {
+                            let mut temp_nodes = std::mem::take(nodes);
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 Self::render_node_tree(ui, &mut temp_nodes, 0, config);
                             });
-                            opcua_manager.nodes = temp_nodes;
+                            *nodes = temp_nodes;
                         } else {
-                            ui.label(&opcua_manager.browse_status_message);
+                            ui.label(browse_status_message);
                         }
                     }
                     OpcUaBrowseState::BrowsingNodesFailed(err) => {
                         ui.colored_label(egui::Color32::RED, format!("Failed to browse OPC UA structure: {}", err));
                     }
                     OpcUaBrowseState::Idle => {
-                        if !opcua_manager.nodes.is_empty() {
-                            let mut temp_nodes = std::mem::take(&mut opcua_manager.nodes);
+                        if !nodes.is_empty() {
+                            let mut temp_nodes = std::mem::take(nodes);
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 Self::render_node_tree(ui, &mut temp_nodes, 0, config);
                             });
-                            opcua_manager.nodes = temp_nodes;
+                            *nodes = temp_nodes;
                         } else {
-                            ui.label("Click 'Browse OPC UA Structure' or 'Refresh Structure' to load nodes.");
+                            ui.label("Click 'Browse OPC UA' to load the node structure.");
                         }
                     }
-                    _ => {
-                        ui.label(if opcua_manager.browse_status_message.is_empty() { 
-                            "OPC UA Browser" 
-                        } else { 
-                            &opcua_manager.browse_status_message 
-                        });
-                    }
+                    _ => {}
                 }
 
                 ui.separator();

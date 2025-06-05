@@ -1,5 +1,4 @@
-use eframe::egui;
-use sie_generate_config::{
+use crate::{
     backend::opcua_poller::OpcUaNode,
     TelegrafConfig, WorkerCommand, WorkerHandle,
 };

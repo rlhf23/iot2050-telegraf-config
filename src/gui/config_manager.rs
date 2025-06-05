@@ -1,5 +1,4 @@
-use eframe::egui;
-use sie_generate_config::{
+use crate::{
     backend::ConfigGenerator,
     error::{TelegrafError, XmlFileValidation},
     TelegrafConfig,
@@ -72,7 +71,7 @@ impl ConfigManager {
     }
 
     pub fn load_xml_files(&mut self) {
-        self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
+        self.xml_files = crate::discover_xml_files(&self.config.folder);
         self.selected_listener_files = vec![false; self.xml_files.len()];
 
         // Initialize configs for new files

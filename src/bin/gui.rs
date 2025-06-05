@@ -1,12 +1,10 @@
 use eframe::egui;
 use sie_generate_config::{
+    gui::{
+        ConfigManager, OpcUaManager, WorkerManager,
+        ui_components::*,
+    },
     WorkerResponse,
-};
-
-mod gui;
-use gui::{
-    ConfigManager, OpcUaManager, WorkerManager,
-    ui_components::*,
 };
 
 struct TelegrafApp {
@@ -82,13 +80,17 @@ impl eframe::App for TelegrafApp {
             SelectedNodesSection::show(ui, &mut self.config_manager);
         });
 
-        // OPC UA Browser Window
-        let browser_action = OpcUaBrowserWindow::show(
-            ctx,
-            &mut self.opcua_manager,
-            &self.config_manager.config,
-            &mut self.opcua_manager.show_browser,
-        );
+        // Handle OPC UA Browser Window
+        let browser_action = {
+            OpcUaBrowserWindow::show(
+                ctx,
+                &mut self.opcua_manager.nodes,
+                &mut self.opcua_manager.browse_state,
+                &self.opcua_manager.browse_status_message,
+                &self.config_manager.config,
+                &mut self.opcua_manager.show_browser,
+            )
+        };
         
         // Handle browser actions
         match browser_action {

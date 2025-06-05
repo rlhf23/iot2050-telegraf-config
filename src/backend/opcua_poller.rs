@@ -55,8 +55,7 @@ impl OpcUaNode {
 
 pub struct OpcUaPoller {
     config: TelegrafConfig,
-    runtime: tokio::runtime::Runtime,
-}
+    runtime: tokio::runtime::Runtime,}
 
 impl OpcUaPoller {
     pub fn new(config: TelegrafConfig) -> Result<Self, TelegrafError> {

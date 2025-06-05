@@ -1,4 +1,4 @@
-use sie_generate_config::{
+use crate::{
     backend::ServiceType,
     WorkerCommand, WorkerHandle, WorkerResponse, TelegrafConfig,
 };

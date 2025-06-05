@@ -343,9 +343,10 @@ pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
 
 pub mod backend;
 pub mod error;
+pub mod gui;
 pub mod worker;
 
-pub use worker::{WorkerHandle, WorkerCommand, WorkerResponse};
+pub use worker::{WorkerCommand, WorkerHandle, WorkerResponse};
 
 #[cfg(test)]
 mod error_test;
