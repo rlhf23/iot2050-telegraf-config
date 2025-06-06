@@ -14,12 +14,13 @@ iot2050-telegraf-config/
 │   │   ├── ssh_utils.rs      # SSH communication with IoT devices
 │   │   └── *_test.rs         # Unit tests for backend modules
 │   ├── bin/                  # Executable entry points and test tools
-│   │   ├── cli.rs            # Command-line interface
-│   │   ├── gui.rs            # Graphical user interface
-│   │   ├── opcua_client_test.rs  # OPC UA client test tool
-│   │   └── opcua_test_server.rs  # OPC UA test server
+│   │   ├── cli.rs            # Main CLI interface (sie_generate_config)
+│   │   ├── gui.rs            # Graphical user interface (sie_generate_config_gui)
+│   │   ├── opcua_client_test.rs  # OPC UA client test tool (opcua_client_test)
+│   │   └── opcua_test_server.rs  # OPC UA test server (opcua_test_server)
 │   ├── lib.rs                # Core library functionality and TelegrafConfig
 │   ├── error.rs              # Error types and handling
+│   ├── worker.rs             # Background task processing
 │   └── *_test.rs             # Library unit tests
 ├── pki/                      # PKI certificates for testing
 ├── pki-server/               # Server certificates for testing
@@ -68,7 +69,13 @@ iot2050-telegraf-config/
    - Transfers configuration files
    - Handles remote command execution and service management
 
-6. **Error Handling (error.rs)**
+6. **Worker Module (worker.rs)**
+   - Background task execution framework
+   - Asynchronous command processing
+   - Thread-safe communication channels
+   - Task queuing and state management
+
+7. **Error Handling (error.rs)**
    - Comprehensive error type hierarchy
    - User-friendly error message formatting
    - Error categorization and context-aware messaging
@@ -76,11 +83,13 @@ iot2050-telegraf-config/
 ### User Interfaces
 
 1. **Command Line Interface (bin/cli.rs)**
+   - Executable: `sie_generate_config`
    - Argument parsing and validation
    - Command execution flow
    - Service checks and configuration deployment
 
 2. **Graphical User Interface (bin/gui.rs)**
+   - Executable: `sie_generate_config_gui`
    - Event-driven UI with eframe
    - Form validation and status feedback
    - Visual configuration management

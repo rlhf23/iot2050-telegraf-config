@@ -66,20 +66,36 @@ Use the "Other Commands" section to:
 
 While the GUI provides the most user-friendly experience, a command-line interface is also available for automation and scripting:
 
+### Main Commands
+
 ```bash
 # Generate configuration
-./config_generator -f <path_to_folder>
+./sie_generate_config -f <path_to_folder>
 
 # Send configuration to IoT device
-./config_generator -s -f <path_to_folder> -a <iot_host> -w <iot_password>
+./sie_generate_config -s -f <path_to_folder> -a <iot_host> -w <iot_password>
 
 # Backup InfluxDB
-./config_generator -b -a <iot_host> -w <iot_password>
+./sie_generate_config -b -a <iot_host> -w <iot_password>
+
+
+# Start the GUI
+./sie_generate_config_gui
+```
+
+### Test Tools
+
+```bash
+# Start OPC UA test server
+./opcua_test_server
+
+# Test OPC UA client connection
+./opcua_client_test
 ```
 
 For more CLI options, run:
 ```bash
-./config_generator --help
+./sie_generate_config --help
 ```
 
 ## Building from Source
