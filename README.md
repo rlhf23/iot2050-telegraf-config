@@ -104,6 +104,49 @@ For more CLI options, run:
 3. Run `cargo build --release`
 4. The executable will be available in `target/release/`
 
+## Development & Testing
+
+### NixOS Container Testing Environment
+This project includes a NixOS container setup for testing SSH operations and Telegraf configurations in an isolated environment.
+
+#### Prerequisites
+- NixOS system
+- nixos-container support
+
+#### Container Management
+
+```bash
+# Start the test container
+./run_test_container.sh start
+
+# Stop and remove the container
+./run_test_container.sh stop
+
+# Restart the container
+./run_test_container.sh restart
+
+# Get container IP address
+./run_test_container.sh ip
+
+# SSH into the container as testuser
+./run_test_container.sh ssh
+
+# Check container status
+./run_test_container.sh status
+
+# Open root shell in container (for debugging)
+./run_test_container.sh shell
+```
+
+#### Container Details
+- **Container name**: `iot2050-test`
+- **Test user**: `testuser` (password: `testpass`)
+- **Root user**: `root` (password: `root`)
+- **Services**: SSH, Telegraf, InfluxDB2
+- **Configuration**: `container.nix`
+
+The container provides a clean, reproducible environment equivalent to the original Docker setup, with all necessary services pre-configured for testing SSH-based deployment and monitoring operations.
+
 ## Test Coverage
 This project includes comprehensive test coverage capabilities using `cargo-tarpaulin`.
 
