@@ -1,7 +1,9 @@
 # NixOS Container configuration equivalent to Dockerfile.minimal
-{ config, pkgs, ... }:
-
 {
+  config,
+  pkgs,
+  ...
+}: {
   system.stateVersion = "23.11";
 
   # SSH Configuration (equivalent to SSH setup in Dockerfile)
@@ -10,6 +12,28 @@
     settings = {
       PermitRootLogin = "yes";
       PasswordAuthentication = true;
+      Macs = [
+        "hmac-sha2-256"
+        "hmac-sha2-512"
+        "hmac-sha1"
+      ];
+      Ciphers = [
+        "aes128-ctr"
+        "aes192-ctr"
+        "aes256-ctr"
+        "aes128-gcm@openssh.com"
+        "aes256-gcm@openssh.com"
+      ];
+      KexAlgorithms = [
+        "curve25519-sha256"
+        "curve25519-sha256@libssh.org"
+        "ecdh-sha2-nistp256"
+        "ecdh-sha2-nistp384"
+        "ecdh-sha2-nistp521"
+        "diffie-hellman-group14-sha256"
+      ];
+      # Enable SFTP subsystem for SCP to work
+      Subsystem = "sftp ${pkgs.openssh}/libexec/sftp-server";
     };
   };
 
@@ -30,12 +54,12 @@
     root = {
       password = "root";
     };
-    
+
     # Test user equivalent to Dockerfile testuser setup
     testuser = {
       isNormalUser = true;
       password = "testpass";
-      extraGroups = [ "wheel" "telegraf" ];  # wheel for sudo, telegraf for telegraf access
+      extraGroups = ["wheel" "telegraf"]; # wheel for sudo, telegraf for telegraf access
       home = "/home/testuser";
       createHome = true;
       shell = pkgs.bash;
@@ -60,7 +84,7 @@
   # Networking configuration (equivalent to EXPOSE 22)
   networking.firewall = {
     enable = true;
-    allowedTCPPorts = [ 22 ];
+    allowedTCPPorts = [22];
   };
 
   # Ensure telegraf directories and permissions are set up properly
@@ -71,5 +95,6 @@
   ];
 
   # Ensure telegraf user can access necessary directories
-  users.groups.telegraf.members = [ "testuser" ];
+  users.groups.telegraf.members = ["testuser"];
 }
+
