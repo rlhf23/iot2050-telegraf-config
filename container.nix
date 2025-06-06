@@ -78,6 +78,7 @@
     gnupg
     openssh
     sudo
+    influxdb2  # Add influx CLI tool
     # ca-certificates and apt-transport-https equivalents are handled by NixOS
   ];
 
@@ -90,9 +91,25 @@
   # Ensure telegraf directories and permissions are set up properly
   # (equivalent to the telegraf directory setup in Dockerfile)
   systemd.tmpfiles.rules = [
+    "d /etc/telegraf 0775 root telegraf -"
     "d /var/log/telegraf 0775 telegraf telegraf -"
     "f /var/log/telegraf/telegraf.log 0664 telegraf telegraf -"
   ];
+  
+  # Set group ownership of existing files
+  system.activationScripts.telegrafPerms = ''
+    chown -R :telegraf /etc/telegraf
+    chmod g+w /etc/telegraf
+  '';
+
+  # Ensure telegraf user exists and is in the right groups
+  users.users.telegraf = {
+    isSystemUser = true;
+    group = "telegraf";
+    extraGroups = [ "telegraf" ];
+  };
+
+  users.groups.telegraf = {};
 
   # Ensure telegraf user can access necessary directories
   users.groups.telegraf.members = ["testuser"];
