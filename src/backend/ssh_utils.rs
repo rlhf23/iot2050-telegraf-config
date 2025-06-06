@@ -411,38 +411,39 @@ pub fn restart_telegraf_over_ssh(
     output.push("Stopping telegraf service gracefully...".to_string());
 
     // First check if telegraf is actually running
-    let check_cmd = "pgrep telegraf || echo 'not_running'".to_string();
+    let check_cmd = "systemctl is-active telegraf || echo 'inactive'".to_string();
     let check_result = execute_ssh_command(&session, &check_cmd)?;
 
-    if check_result.trim() == "not_running" {
+    if check_result.trim() == "inactive" {
         output.push("Telegraf is not currently running. Proceeding to start.".to_string());
     } else {
-        // Attempt graceful stop
-        let stop_cmd = format!("echo '{}' | sudo -S service telegraf stop", password);
+        // Attempt graceful stop using systemctl
+        let stop_cmd = format!("echo '{}' | sudo -S systemctl stop telegraf", password);
         match execute_ssh_command(&session, &stop_cmd) {
             Ok(_) => output.push("Service stop command issued".to_string()),
             Err(e) => output.push(format!("Warning: Error issuing stop command: {}", e)),
         }
 
-        // Wait up to 10 seconds for telegraf to stop gracefully
+        // Wait up to 10 seconds for telegraf to stop
         output.push("Waiting up to 10 seconds for telegraf to stop...".to_string());
         let mut stopped = false;
         for i in 0..10 {
             thread::sleep(Duration::from_secs(1));
-            let check_cmd = "pgrep telegraf || echo 'stopped'".to_string();
+            let check_cmd = "systemctl is-active telegraf || echo 'inactive'".to_string();
             let check_result = execute_ssh_command(&session, &check_cmd)?;
 
-            if check_result.trim() == "stopped" {
-                output.push(format!("Telegraf stopped gracefully after {} seconds", i + 1));
+            if check_result.trim() == "inactive" {
+                output.push(format!("Telegraf stopped after {} seconds", i + 1));
                 stopped = true;
                 break;
             }
         }
 
-        // If still running after 10 seconds, forcefully kill it
+
+        // If still running after 10 seconds, use systemd's force stop
         if !stopped {
-            output.push("Telegraf didn't stop gracefully within 10 seconds. Killing process...".to_string());
-            let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
+            output.push("Telegraf didn't stop within 10 seconds. Forcing stop...".to_string());
+            let kill_cmd = format!("echo '{}' | sudo -S systemctl kill -s KILL telegraf", password);
             match execute_ssh_command(&session, &kill_cmd) {
                 Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
                 Err(e) => output.push(format!("Warning: Error killing telegraf: {}", e)),
@@ -455,7 +456,7 @@ pub fn restart_telegraf_over_ssh(
 
     // Step 2: Start the service
     output.push("Starting telegraf service...".to_string());
-    let start_cmd = format!("echo '{}' | sudo -S service telegraf start", password);
+    let start_cmd = format!("echo '{}' | sudo -S systemctl start telegraf", password);
     execute_ssh_command(&session, &start_cmd)?;
 
     // Step 3: Wait for service to initialize
@@ -465,27 +466,25 @@ pub fn restart_telegraf_over_ssh(
     // Step 4: Check service status
     output.push("Checking service status...".to_string());
     let status_cmd = format!(
-        "echo '{}' | sudo -S service telegraf status | head -n15",
+        "echo '{}' | sudo -S systemctl status telegraf --no-pager | head -n15",
         password
     );
     let status = execute_ssh_command(&session, &status_cmd)?;
 
     let elapsed_time = start_time.elapsed();
 
-    // Also check if the process is actually running
-    let process_check = execute_ssh_command(&session, "pgrep telegraf || echo 'not_running'")?;
-    let is_running = process_check.trim() != "not_running";
+    // Check if the service is active
+    let is_active_cmd = "systemctl is-active telegraf".to_string();
+    let is_active = execute_ssh_command(&session, &is_active_cmd)
+        .map(|s| s.trim() == "active")
+        .unwrap_or(false);
 
-    if status.contains("Active: active") && is_running {
+    if is_active {
         output.push(format!("✓ Telegraf restart successful ({:.2?})", elapsed_time));
         output.push(format!("Status:\n{}", status));
     } else {
         output.push(format!("✗ Telegraf restart failed ({:.2?})", elapsed_time));
         output.push(format!("Status:\n{}", status));
-
-        if !is_running {
-            output.push("WARNING: The telegraf process is not running!".to_string());
-        }
 
         // Get recent logs if service failed
         output.push("\nRecent logs:".to_string());
@@ -725,9 +724,9 @@ pub fn get_telegraf_status(
 
     println!("SSH connection established, running status command");
 
-    // Use service command with non-interactive sudo
-    let command = format!("echo '{}' | sudo -S service telegraf status", password);
-    println!("Executing command with non-interactive sudo");
+    // Use systemctl to get service status with non-interactive sudo
+    let command = format!("echo '{}' | sudo -S systemctl status telegraf --no-pager", password);
+    println!("Executing systemctl status with non-interactive sudo");
 
     let status = execute_ssh_command(&session, &command)?;
     println!(
