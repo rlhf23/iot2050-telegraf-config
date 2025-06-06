@@ -57,7 +57,7 @@ fn exit_with_error(error: impl std::fmt::Display) -> ! {
 
 fn main() {
     let matches = Command::new("IOT2050 config handler")
-        .version("0.6")
+        .version("0.7")
         .about("Generates a config file for Telegraf from XML files in the folder")
         .arg(
             Arg::new("folder")

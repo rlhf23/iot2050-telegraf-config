@@ -13,7 +13,6 @@ use opcua::{
         UserTokenPolicy, Variant,
     },
 };
-use tokio;
 
 #[derive(Debug, Clone)]
 pub struct OpcUaNode {
@@ -55,7 +54,6 @@ impl OpcUaNode {
 
 pub struct OpcUaPoller {
     config: TelegrafConfig,
-    runtime: tokio::runtime::Runtime,
 }
 
 impl OpcUaPoller {
@@ -67,11 +65,7 @@ impl OpcUaPoller {
         opcua::console_logging::init();
 
         // Create a Tokio runtime for async operations
-        let runtime = tokio::runtime::Runtime::new().map_err(|e| {
-            TelegrafError::OpcUaClientError(format!("Failed to create Tokio runtime: {}", e))
-        })?;
-
-        Ok(Self { config, runtime })
+        Ok(Self { config })
     }
 
     /// Get namespace information for XML files by connecting to the OPC UA server once
