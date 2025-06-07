@@ -258,7 +258,7 @@ impl WorkerHandle {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = OpcUaPoller::new(config.clone())
-                                .and_then(|mut poller| poller.browse_complete_structure())
+                                .and_then(|poller| poller.browse_complete_structure())
                                 .map(|nodes| WorkerResponse::OpcUaNodes(nodes))
                                 .unwrap_or_else(|e| WorkerResponse::OpcUaError(e.to_string()));
                             let _ = response_sender.send(result);
@@ -269,17 +269,12 @@ impl WorkerHandle {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = OpcUaPoller::new(config.clone())
-                                .and_then(|mut poller| poller.get_namespace_info(&xml_files))
+                                .and_then(|poller| poller.get_namespace_info(&xml_files))
                                 .map(|namespace_map| WorkerResponse::OpcUaNamespaces(namespace_map))
                                 .unwrap_or_else(|e| WorkerResponse::OpcUaError(format!("Error getting namespaces: {}", e)));
                             let _ = response_sender.send(result);
                         });
                         continue;
-                    }
-                    _ => {
-                        // Send response for unhandled commands
-                        let _ = response_sender.send(WorkerResponse::Error("Command not implemented".to_string()));
-                        continue;  // Skip the rest of the loop iteration
                     }
                 };
                 
