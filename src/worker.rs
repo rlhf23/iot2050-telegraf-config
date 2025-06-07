@@ -1,4 +1,4 @@
-use std::sync::mpsc::{channel, Sender, Receiver, TryRecvError};
+use std::sync::mpsc::{channel, Sender, Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
 
@@ -67,11 +67,12 @@ pub enum WorkerResponse {
     OpcUaNodes(Vec<crate::backend::opcua_poller::OpcUaNode>),
     OpcUaNamespaces(std::collections::HashMap<String, u16>),
     OpcUaError(String),
+    Error(String),  // Generic error response for unhandled commands
 }
 
 pub struct WorkerHandle {
     command_sender: Sender<WorkerCommand>,
-    response_sender: Sender<WorkerResponse>,
+    _response_sender: Sender<WorkerResponse>,
     response_receiver: Receiver<WorkerResponse>,
     _thread: thread::JoinHandle<()>,
 }
@@ -86,23 +87,27 @@ impl WorkerHandle {
 
         let _thread = thread::spawn(move || {
             while let Ok(cmd) = command_receiver.recv() {
-                let response = match cmd {
+                let response_sender = thread_response_sender.clone();
+                
+                match cmd {
                     WorkerCommand::DummyCommand => {
-                        // Simulate work
-                        std::thread::sleep(Duration::from_secs(1));
-                        WorkerResponse::DummyResponse
+                        // Spawn a new thread to handle this command
+                        std::thread::spawn(move || {
+                            // Simulate work
+                            std::thread::sleep(Duration::from_millis(10));
+                            let _ = response_sender.send(WorkerResponse::DummyResponse);
+                        });
+                        continue; // Skip the response sending below since we're handling it in the spawned thread
                     }
                     WorkerCommand::SendTelegrafConfig { config } => {
-                        let worker_response_sender = thread_response_sender.clone();
-                        
-                        // Use a single thread to handle both SSH operation and progress updates
+                        // Spawn a new thread to handle the SSH operation
                         std::thread::spawn(move || {
                             let (tx, rx) = std::sync::mpsc::channel();
                             
                             // Clone config for the SSH operation thread
                             let config_clone = config.clone();
                             let ssh_tx = tx.clone();
-                            let ssh_response_sender = worker_response_sender.clone();
+                            let ssh_response_sender = response_sender.clone();
                             
                             // Spawn SSH operation in a separate thread
                             let ssh_handle = std::thread::spawn(move || {
@@ -117,28 +122,32 @@ impl WorkerHandle {
                             });
                             
                             // Handle progress updates in this thread
+                            let _last_progress = 0;
                             loop {
-                                match rx.try_recv() {
+                                match rx.recv_timeout(Duration::from_millis(100)) {
                                     Ok(progress) => {
-                                        let _ = worker_response_sender.send(WorkerResponse::ProgressUpdate(progress));
+                                        // Just forward the progress update
+                                        let _ = response_sender.send(WorkerResponse::ProgressUpdate(progress));
                                     }
-                                    Err(std::sync::mpsc::TryRecvError::Empty) => {
-                                        // Check if SSH thread is done
+                                    Err(RecvTimeoutError::Timeout) => {
+                                        // No progress update, check if the SSH operation is done
                                         if ssh_handle.is_finished() {
                                             break;
                                         }
-                                        std::thread::sleep(std::time::Duration::from_millis(10));
+                                        // Small sleep to prevent busy waiting
+                                        std::thread::sleep(Duration::from_millis(10));
                                     }
-                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                                    Err(RecvTimeoutError::Disconnected) => {
+                                        // Channel disconnected, exit the loop
                                         break;
                                     }
                                 }
                             }
                             
-                            // Wait for SSH operation to complete and send final result
+                            // Get the final result from the SSH operation
                             match ssh_handle.join() {
                                 Ok(Ok(_)) => {
-                                    let _ = ssh_response_sender.send(WorkerResponse::SshCommandOutput(
+                                    let _ = response_sender.send(WorkerResponse::SshCommandOutput(
                                         "Configuration sent and Telegraf restarted successfully.".to_string()
                                     ));
                                 }
@@ -260,17 +269,21 @@ impl WorkerHandle {
                             Err(e) => WorkerResponse::OpcUaError(format!("Error creating OPC UA poller: {}", e)),
                         }
                     }
+                    _ => {
+                        // Send response for unhandled commands
+                        let _ = response_sender.send(WorkerResponse::Error("Command not implemented".to_string()));
+                        continue;  // Skip the rest of the loop iteration
+                    }
                 };
                 
-                if thread_response_sender.send(response).is_err() {
-                    break; // Channel was disconnected
-                }
+                // Responses are now sent directly in each command handler
+                // This is a no-op since we've already sent the response
             }
         });
 
         Self {
             command_sender,
-            response_sender,
+            _response_sender: response_sender,
             response_receiver,
             _thread,
         }
@@ -281,11 +294,12 @@ impl WorkerHandle {
     }
 
     pub fn try_get_response(&self) -> Option<WorkerResponse> {
-        match self.response_receiver.try_recv() {
+        // Use a small timeout to prevent busy waiting
+        match self.response_receiver.recv_timeout(Duration::from_millis(10)) {
             Ok(response) => Some(response),
-            Err(TryRecvError::Empty) => None,
-            Err(TryRecvError::Disconnected) => {
-                // Handle disconnection if needed
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                eprintln!("Worker response channel disconnected");
                 None
             }
         }

@@ -148,8 +148,6 @@ fn test_worker_multiple_commands() {
     // Try multiple times to account for timing issues
     for attempt in 1..=MAX_ATTEMPTS {
         let worker = WorkerHandle::new();
-        let mut responses_received = 0;
-        
         // Send multiple commands
         for _ in 0..COMMAND_COUNT {
             if worker.send_command(WorkerCommand::DummyCommand).is_err() {
@@ -179,10 +177,8 @@ fn test_worker_multiple_commands() {
             );
         }
         
-        responses_received = responses.len();
-        
         // If we got all responses, we're done
-        if responses_received == COMMAND_COUNT {
+        if responses.len() == COMMAND_COUNT {
             // Verify no extra responses
             thread::sleep(Duration::from_millis(10)); // Small delay to ensure no more responses
             assert!(
@@ -196,7 +192,7 @@ fn test_worker_multiple_commands() {
         if attempt < MAX_ATTEMPTS {
             eprintln!(
                 "Attempt {}/{}: Only received {}/{} responses, retrying...",
-                attempt, MAX_ATTEMPTS, responses_received, COMMAND_COUNT
+                attempt, MAX_ATTEMPTS, responses.len(), COMMAND_COUNT
             );
             continue;
         }
@@ -204,7 +200,7 @@ fn test_worker_multiple_commands() {
         // If we get here, we've exhausted all attempts
         panic!(
             "Failed to receive all responses after {} attempts. Received {}/{} responses.",
-            MAX_ATTEMPTS, responses_received, COMMAND_COUNT
+            MAX_ATTEMPTS, responses.len(), COMMAND_COUNT
         );
     }
 }
