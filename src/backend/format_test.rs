@@ -1,5 +1,5 @@
 use crate::backend::format::{
-    format_config_header, parse_xml, NamespaceInfo, OpcuaConfig, OutputFormat,
+    format_config, format_config_header, parse_xml, NamespaceInfo, OpcuaConfig, OutputFormat,
 };
 use crate::error::TelegrafError;
 use std::fs::File;
@@ -244,5 +244,56 @@ mod tests {
         assert!(!config_str.contains("name=\"Temperature\", identifier=\"2\""));
 
         Ok(())
+    }
+
+    #[test]
+    fn test_format_config_regular() {
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "user",
+            password: "pass",
+            is_listener: false,
+            group_name: "test_group",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 1000,
+        };
+
+        let nodes_str = "test_node";
+        let result = format_config(&config, nodes_str);
+
+        assert!(result.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
+        assert!(result.contains("username = \"user\""));
+        assert!(result.contains("password = \"pass\""));
+        assert!(result.contains("name = \"test_group\""));
+        assert!(result.contains("namespace = \"2\""));
+        assert!(result.contains("interval = \"1000ms\""));
+        assert!(result.contains("test_node"));
+    }
+
+    #[test]
+    fn test_format_config_listener() {
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "user",
+            password: "pass",
+            is_listener: true,
+            group_name: "test_group",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 1000,
+        };
+
+        let nodes_str = "test_node";
+        let result = format_config(&config, nodes_str);
+
+        assert!(result.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
+        assert!(result.contains("username = \"user\""));
+        assert!(result.contains("password = \"pass\""));
+        assert!(result.contains("name = \"test_group\""));
+        assert!(result.contains("namespace = \"2\""));
+        assert!(result.contains("interval = \"1000ms\""));
+        assert!(result.contains("test_node"));
+        assert!(result.contains("[[inputs.opcua_listener]]"));
     }
 }

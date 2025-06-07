@@ -159,7 +159,7 @@ pub fn format_config_header(
     )
 }
 
-fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
+pub fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     if config.is_listener {
         format_listener_config(config, nodes_str)
     } else {

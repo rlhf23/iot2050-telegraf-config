@@ -345,9 +345,11 @@ pub mod backend;
 pub mod error;
 pub mod worker;
 
-pub use worker::{WorkerHandle, WorkerCommand, WorkerResponse};
+pub use worker::{WorkerCommand, WorkerHandle, WorkerResponse};
 
 #[cfg(test)]
 mod error_test;
 #[cfg(test)]
 mod lib_test;
+#[cfg(test)]
+mod worker_tests;

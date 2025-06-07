@@ -125,14 +125,14 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         "Successfully generated configuration from {} XML files",
         xml_files.len()
     );
-    
+
     // Clean up the generated telegraf.conf file if it exists
     let config_path = tests_dir.join("telegraf.conf");
     if config_path.exists() {
         std::fs::remove_file(&config_path)
             .map_err(|e| format!("Failed to clean up telegraf.conf: {}", e))?;
     }
-    
+
     Ok(())
 }
 
