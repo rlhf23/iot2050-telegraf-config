@@ -245,7 +245,7 @@ mod tests {
 
         Ok(())
     }
-    
+
     #[test]
     fn test_format_config_regular() {
         let config = OpcuaConfig {
@@ -258,10 +258,10 @@ mod tests {
             identifier_type: "i",
             interval_ms: 1000,
         };
-        
+
         let nodes_str = "test_node";
         let result = format_config(&config, nodes_str);
-        
+
         assert!(result.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
         assert!(result.contains("username = \"user\""));
         assert!(result.contains("password = \"pass\""));
@@ -270,7 +270,7 @@ mod tests {
         assert!(result.contains("interval = \"1000ms\""));
         assert!(result.contains("test_node"));
     }
-    
+
     #[test]
     fn test_format_config_listener() {
         let config = OpcuaConfig {
@@ -283,10 +283,10 @@ mod tests {
             identifier_type: "i",
             interval_ms: 1000,
         };
-        
+
         let nodes_str = "test_node";
         let result = format_config(&config, nodes_str);
-        
+
         assert!(result.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
         assert!(result.contains("username = \"user\""));
         assert!(result.contains("password = \"pass\""));

@@ -47,17 +47,15 @@ fn create_test_config() -> TelegrafConfig {
 fn test_worker_creation() {
     // Test that we can create a worker
     let worker = WorkerHandle::new();
-    
+
     // Test that we can send a command
     worker.send_command(WorkerCommand::DummyCommand).unwrap();
-    
+
     // Wait for response with a timeout
-    let received = wait_for_response(
-        &worker, 
-        Duration::from_secs(2), 
-        |resp| matches!(resp, WorkerResponse::DummyResponse)
-    );
-    
+    let received = wait_for_response(&worker, Duration::from_secs(2), |resp| {
+        matches!(resp, WorkerResponse::DummyResponse)
+    });
+
     assert!(received, "Expected DummyResponse but didn't receive it");
 }
 
@@ -107,12 +105,12 @@ fn test_worker_command_serialization() {
     ];
 
     let worker = WorkerHandle::new();
-    
+
     for cmd in commands {
         worker.send_command(cmd).unwrap();
         // Give the worker some time to process
         thread::sleep(Duration::from_millis(50));
-        
+
         // Skip response checking since we're just testing command serialization
         // and some commands don't send responses
         let _ = worker.try_get_response();
@@ -122,29 +120,34 @@ fn test_worker_command_serialization() {
 #[test]
 fn test_worker_response_handling() {
     let worker = WorkerHandle::new();
-    
+
     // Test that we can send a command and get a response
     worker.send_command(WorkerCommand::DummyCommand).unwrap();
-    
+
     // Wait for the first response
-    let first_response = wait_for_response(
-        &worker, 
-        Duration::from_secs(2), 
-        |resp| matches!(resp, WorkerResponse::DummyResponse)
+    let first_response = wait_for_response(&worker, Duration::from_secs(2), |resp| {
+        matches!(resp, WorkerResponse::DummyResponse)
+    });
+
+    assert!(
+        first_response,
+        "Expected first response to be DummyResponse"
     );
-    
-    assert!(first_response, "Expected first response to be DummyResponse");
-    
+
     // Second try should get none
     let second_response = worker.try_get_response();
-    assert!(second_response.is_none(), "Expected no second response, got: {:?}", second_response);
+    assert!(
+        second_response.is_none(),
+        "Expected no second response, got: {:?}",
+        second_response
+    );
 }
 
 #[test]
 fn test_worker_multiple_commands() {
     const COMMAND_COUNT: usize = 5;
     const MAX_ATTEMPTS: usize = 10;
-    
+
     // Try multiple times to account for timing issues
     for attempt in 1..=MAX_ATTEMPTS {
         let worker = WorkerHandle::new();
@@ -154,12 +157,12 @@ fn test_worker_multiple_commands() {
                 panic!("Failed to send command");
             }
         }
-        
+
         // Wait for all responses with a timeout
         let start = Instant::now();
         let timeout = Duration::from_secs(2);
         let mut responses = Vec::new();
-        
+
         while start.elapsed() < timeout && responses.len() < COMMAND_COUNT {
             if let Some(response) = worker.try_get_response() {
                 responses.push(response);
@@ -167,7 +170,7 @@ fn test_worker_multiple_commands() {
                 thread::sleep(Duration::from_millis(10));
             }
         }
-        
+
         // Verify all responses are DummyResponse
         for response in &responses {
             assert!(
@@ -176,7 +179,7 @@ fn test_worker_multiple_commands() {
                 response
             );
         }
-        
+
         // If we got all responses, we're done
         if responses.len() == COMMAND_COUNT {
             // Verify no extra responses
@@ -187,20 +190,25 @@ fn test_worker_multiple_commands() {
             );
             return; // Test passed
         }
-        
+
         // If this isn't the last attempt, log and retry
         if attempt < MAX_ATTEMPTS {
             eprintln!(
                 "Attempt {}/{}: Only received {}/{} responses, retrying...",
-                attempt, MAX_ATTEMPTS, responses.len(), COMMAND_COUNT
+                attempt,
+                MAX_ATTEMPTS,
+                responses.len(),
+                COMMAND_COUNT
             );
             continue;
         }
-        
+
         // If we get here, we've exhausted all attempts
         panic!(
             "Failed to receive all responses after {} attempts. Received {}/{} responses.",
-            MAX_ATTEMPTS, responses.len(), COMMAND_COUNT
+            MAX_ATTEMPTS,
+            responses.len(),
+            COMMAND_COUNT
         );
     }
 }

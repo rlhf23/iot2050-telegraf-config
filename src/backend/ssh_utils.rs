@@ -1,10 +1,10 @@
 //! SSH utilities for remote IoT device communication
-//! 
+//!
 //! This module provides functions for establishing SSH connections to IoT devices,
 //! transferring files, executing commands, and managing services like Telegraf.
-//! 
+//!
 //! # Examples
-//! 
+//!
 //! ```no_run
 //! // Example usage is available through the public API in ConfigGenerator
 //! use std::path::Path;
@@ -35,22 +35,22 @@ pub struct SshConfig {
 impl Default for SshConfig {
     fn default() -> Self {
         Self {
-            connect_timeout: 3,      // Host is either there or it isn't - keep connection attempts short
-            operation_timeout: 60,   // SSH operations like file transfer, command execution
-            stream_timeout: 15,      // Data stream read/write operations
+            connect_timeout: 3, // Host is either there or it isn't - keep connection attempts short
+            operation_timeout: 60, // SSH operations like file transfer, command execution
+            stream_timeout: 15, // Data stream read/write operations
         }
     }
 }
 
 /// Validates that a host string follows the required hostname:port format
-/// 
+///
 /// # Arguments
 /// * `host` - The host string to validate (e.g., "192.168.1.2:22")
-/// 
+///
 /// # Returns
 /// * `Ok(())` if the host format is valid
 /// * `Err(TelegrafError::HostFormatError)` if the format is invalid
-/// 
+///
 /// # Examples
 /// ```
 /// # // Internal function - examples would require module to be public
@@ -88,13 +88,13 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
 }
 
 /// Establishes an SSH connection with configurable timeouts
-/// 
+///
 /// # Arguments
 /// * `host` - The remote host in hostname:port format (e.g., "192.168.1.2:22")
 /// * `username` - SSH username for authentication
 /// * `password` - SSH password for authentication  
 /// * `config` - SSH configuration containing timeout values
-/// 
+///
 /// # Returns
 /// * `Ok(Session)` - Successfully established SSH session
 /// * `Err(TelegrafError)` - Connection failed with specific error details
@@ -128,15 +128,20 @@ fn connect_ssh_with_config(
     };
 
     for socket_addr in socket_addrs {
-        match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(config.connect_timeout)) {
+        match TcpStream::connect_timeout(&socket_addr, Duration::from_secs(config.connect_timeout))
+        {
             Ok(tcp) => {
                 // Configure TCP stream with stream timeout (separate from connection timeout)
-                if let Err(e) = tcp.set_read_timeout(Some(Duration::from_secs(config.stream_timeout))) {
+                if let Err(e) =
+                    tcp.set_read_timeout(Some(Duration::from_secs(config.stream_timeout)))
+                {
                     println!("Failed to set read timeout: {}", e);
                     continue;
                 }
 
-                if let Err(e) = tcp.set_write_timeout(Some(Duration::from_secs(config.stream_timeout))) {
+                if let Err(e) =
+                    tcp.set_write_timeout(Some(Duration::from_secs(config.stream_timeout)))
+                {
                     println!("Failed to set write timeout: {}", e);
                     continue;
                 }
@@ -188,13 +193,13 @@ fn connect_ssh_with_config(
 }
 
 /// Backward-compatible wrapper for connect_ssh_with_config using default timeouts
-/// 
+///
 /// # Arguments  
 /// * `host` - The remote host in hostname:port format
 /// * `username` - SSH username for authentication
 /// * `password` - SSH password for authentication
 /// * `timeout_seconds` - Timeout in seconds (used for all timeout types)
-/// 
+///
 /// # Returns
 /// * `Ok(Session)` - Successfully established SSH session
 /// * `Err(TelegrafError)` - Connection failed with specific error details
@@ -213,17 +218,17 @@ fn connect_ssh_with_timeout(
 }
 
 /// Sends a Telegraf configuration file to an IoT device and restarts the service
-/// 
+///
 /// This is a convenience function that combines file transfer and service restart
 /// in a single operation for deploying Telegraf configurations.
-/// 
+///
 /// # Arguments
 /// * `config_path` - Local path to the Telegraf configuration file
 /// * `remote_path` - Remote destination path for the configuration file
 /// * `iot_host` - IoT device host in hostname:port format
 /// * `iot_username` - SSH username for the IoT device
 /// * `iot_password` - SSH password for the IoT device
-/// 
+///
 /// # Returns
 /// * `Ok(String)` - Configuration deployed and service restarted successfully with detailed output
 /// * `Err(TelegrafError)` - File transfer or service restart failed
@@ -236,9 +241,12 @@ pub fn send_and_restart_telegraf_with_progress(
     progress_sender: Sender<String>,
 ) -> Result<(), TelegrafError> {
     // Send the telegraf.conf file to the IOT box
-    progress_sender.send("Sending configuration file...".to_string())
-        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
-        
+    progress_sender
+        .send("Sending configuration file...".to_string())
+        .map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
+        })?;
+
     send_file_over_ssh(
         config_path,
         remote_path,
@@ -246,18 +254,25 @@ pub fn send_and_restart_telegraf_with_progress(
         iot_username,
         iot_password,
     )?;
-    
-    progress_sender.send("Configuration file sent successfully.".to_string())
-        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+
+    progress_sender
+        .send("Configuration file sent successfully.".to_string())
+        .map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
+        })?;
 
     // Restart the telegraf service on the IOT box
-    progress_sender.send("Restarting Telegraf service...".to_string())
-        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
-        
+    progress_sender
+        .send("Restarting Telegraf service...".to_string())
+        .map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
+        })?;
+
     let restart_output = restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
-    
-    progress_sender.send(restart_output)
-        .map_err(|e| TelegrafError::ConfigError(format!("Failed to send progress update: {}", e)))?;
+
+    progress_sender.send(restart_output).map_err(|e| {
+        TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
+    })?;
 
     Ok(())
 }
@@ -270,7 +285,7 @@ pub fn send_and_restart_telegraf(
     iot_password: &str,
 ) -> Result<String, TelegrafError> {
     let mut output = Vec::new();
-    
+
     // Send the telegraf.conf file to the IOT box
     output.push("Sending configuration file...".to_string());
     send_file_over_ssh(
@@ -290,14 +305,14 @@ pub fn send_and_restart_telegraf(
 }
 
 /// Sends a file over SSH to a specified remote host using SCP
-/// 
+///
 /// # Arguments
 /// * `local_path` - Path to the local file to transfer
 /// * `remote_path` - Destination path on the remote host
 /// * `remote_host` - Remote host in hostname:port format
 /// * `username` - SSH username for authentication
 /// * `password` - SSH password for authentication
-/// 
+///
 /// # Returns
 /// * `Ok(())` - File transferred successfully
 /// * `Err(TelegrafError)` - Connection failed or file transfer failed
@@ -312,9 +327,9 @@ pub fn send_file_over_ssh(
 
     // Connect to SSH with appropriate timeouts for file transfer operations
     let config = SshConfig {
-        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        connect_timeout: 3, // Quick connection check - host is either there or it isn't
         operation_timeout: 120, // Allow time for file transfer operations
-        stream_timeout: 30,    // Reasonable timeout for file data transfer
+        stream_timeout: 30, // Reasonable timeout for file data transfer
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
@@ -340,15 +355,15 @@ pub fn send_file_over_ssh(
 }
 
 /// Executes a command on an established SSH session and returns the output
-/// 
+///
 /// # Arguments
 /// * `session` - Active SSH session to execute the command on
 /// * `command` - Shell command to execute on the remote host
-/// 
+///
 /// # Returns
 /// * `Ok(String)` - Command output if execution successful (exit status 0)
 /// * `Err(TelegrafError)` - Command failed or returned non-zero exit status
-/// 
+///
 /// # Examples
 /// ```no_run
 /// # // Internal function - examples would require module to be public
@@ -433,7 +448,10 @@ pub fn restart_telegraf_over_ssh(
             let check_result = execute_ssh_command(&session, &check_cmd)?;
 
             if check_result.trim() == "stopped" {
-                output.push(format!("Telegraf stopped gracefully after {} seconds", i + 1));
+                output.push(format!(
+                    "Telegraf stopped gracefully after {} seconds",
+                    i + 1
+                ));
                 stopped = true;
                 break;
             }
@@ -441,7 +459,9 @@ pub fn restart_telegraf_over_ssh(
 
         // If still running after 10 seconds, forcefully kill it
         if !stopped {
-            output.push("Telegraf didn't stop gracefully within 10 seconds. Killing process...".to_string());
+            output.push(
+                "Telegraf didn't stop gracefully within 10 seconds. Killing process...".to_string(),
+            );
             let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
             match execute_ssh_command(&session, &kill_cmd) {
                 Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
@@ -477,7 +497,10 @@ pub fn restart_telegraf_over_ssh(
     let is_running = process_check.trim() != "not_running";
 
     if status.contains("Active: active") && is_running {
-        output.push(format!("✓ Telegraf restart successful ({:.2?})", elapsed_time));
+        output.push(format!(
+            "✓ Telegraf restart successful ({:.2?})",
+            elapsed_time
+        ));
         output.push(format!("Status:\n{}", status));
     } else {
         output.push(format!("✗ Telegraf restart failed ({:.2?})", elapsed_time));
@@ -520,7 +543,7 @@ pub fn backup_influxdb(
     token: Option<&str>,
 ) -> Result<String, TelegrafError> {
     let mut output = Vec::new();
-    
+
     // Get token from parameter or read from /etc/default/telegraf
     let token = if let Some(token_value) = token {
         output.push("Using provided InfluxDB token".to_string());
@@ -538,12 +561,15 @@ pub fn backup_influxdb(
         let command_output = execute_ssh_command(&session, command)?;
 
         // Parse the token from the output (format: token=value)
-        let token_value = command_output.trim().strip_prefix("INFLUX_TOKEN=").ok_or_else(|| {
-            TelegrafError::SshError(crate::error::SshError::Other(ssh2::Error::new(
-                ssh2::ErrorCode::Session(-1),
-                "Token not found in /etc/default/telegraf",
-            )))
-        })?;
+        let token_value = command_output
+            .trim()
+            .strip_prefix("INFLUX_TOKEN=")
+            .ok_or_else(|| {
+                TelegrafError::SshError(crate::error::SshError::Other(ssh2::Error::new(
+                    ssh2::ErrorCode::Session(-1),
+                    "Token not found in /etc/default/telegraf",
+                )))
+            })?;
 
         output.push("Token retrieved successfully.".to_string());
         token_value.to_string()
@@ -554,13 +580,17 @@ pub fn backup_influxdb(
     let backup_command = format!("influx backup -t {} {}", token, backup_folder);
 
     output.push(format!("Backing up InfluxDB to {}", backup_folder));
-    let backup_output = execute_command_over_ssh(iot_host, iot_username, iot_password, &backup_command)?;
+    let backup_output =
+        execute_command_over_ssh(iot_host, iot_username, iot_password, &backup_command)?;
     output.push(backup_output);
 
     let local_backup_path = format!("./influx_backup_{}", date);
     std::fs::create_dir_all(&local_backup_path)?;
-    
-    output.push(format!("Downloading backup files to local directory: {}", local_backup_path));
+
+    output.push(format!(
+        "Downloading backup files to local directory: {}",
+        local_backup_path
+    ));
     copy_directory_over_ssh(
         iot_host,
         iot_username,
@@ -569,22 +599,25 @@ pub fn backup_influxdb(
         &local_backup_path,
     )?;
 
-    output.push(format!("Backup completed successfully. Files are located at: {}", local_backup_path));
+    output.push(format!(
+        "Backup completed successfully. Files are located at: {}",
+        local_backup_path
+    ));
     Ok(output.join("\n"))
 }
 
 /// Executes a command on a remote host via SSH
-/// 
+///
 /// This is a convenience function that establishes an SSH connection,
 /// executes a command, and returns the output. For more control over
 /// the session lifecycle, use `connect_ssh_with_config` and `execute_ssh_command`.
-/// 
+///
 /// # Arguments
 /// * `remote_host` - The remote host in hostname:port format
 /// * `username` - SSH username for authentication
 /// * `password` - SSH password for authentication  
 /// * `command` - Shell command to execute on the remote host
-/// 
+///
 /// # Returns
 /// * `Ok(String)` - Command executed successfully with output
 /// * `Err(TelegrafError)` - Connection failed or command execution failed
@@ -596,15 +629,18 @@ pub fn execute_command_over_ssh(
 ) -> Result<String, TelegrafError> {
     // Connect to SSH with appropriate timeouts for potentially long-running commands
     let config = SshConfig {
-        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        connect_timeout: 3, // Quick connection check - host is either there or it isn't
         operation_timeout: 360, // Allow long time for potentially long-running commands
-        stream_timeout: 60,    // Extended stream timeout for large command output
+        stream_timeout: 60, // Extended stream timeout for large command output
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
     // Execute the command using the centralized execution function
     let output = execute_ssh_command(&session, command)?;
-    Ok(format!("Command executed successfully.\nOutput: {}", output))
+    Ok(format!(
+        "Command executed successfully.\nOutput: {}",
+        output
+    ))
 }
 
 pub fn copy_directory_over_ssh(
@@ -616,9 +652,9 @@ pub fn copy_directory_over_ssh(
 ) -> Result<(), TelegrafError> {
     // Connect to SSH with appropriate timeouts for directory operations
     let config = SshConfig {
-        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
+        connect_timeout: 3, // Quick connection check - host is either there or it isn't
         operation_timeout: 180, // Directory operations may take longer depending on size
-        stream_timeout: 60,    // File transfers need reasonable stream timeout
+        stream_timeout: 60, // File transfers need reasonable stream timeout
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
@@ -655,7 +691,7 @@ pub fn backup_grafana_config(
     password: &str,
 ) -> Result<String, TelegrafError> {
     let mut output = Vec::new();
-    
+
     // Connect to SSH with appropriate timeouts for file backup operations
     let config = SshConfig {
         connect_timeout: 3,    // Quick connection check - host is either there or it isn't
@@ -827,7 +863,7 @@ pub enum ServiceType {
 }
 
 /// Checks if a service (InfluxDB or Prometheus) is responding
-/// 
+///
 /// # Arguments
 /// * `remote_host` - The remote host in hostname:port format
 /// * `username` - SSH username for authentication
@@ -835,7 +871,7 @@ pub enum ServiceType {
 /// * `service_url` - Service URL (currently unused, kept for API compatibility)
 /// * `service_type` - Type of service to check
 /// * `timeout_seconds` - Timeout for the SSH connection and command execution
-/// 
+///
 /// # Returns
 /// * `Ok(true)` - Service is responding normally
 /// * `Ok(false)` - Service is not responding or returned an error
@@ -867,13 +903,13 @@ pub fn check_service_status(
 }
 
 /// Checks if InfluxDB is responding on the remote host
-/// 
+///
 /// # Arguments
 /// * `remote_host` - The remote host in hostname:port format
 /// * `username` - SSH username for authentication
 /// * `password` - SSH password for authentication
 /// * `timeout_seconds` - Timeout for the SSH connection and command execution
-/// 
+///
 /// # Returns
 /// * `Ok(true)` - InfluxDB is responding normally (returns "OK" to ping)
 /// * `Ok(false)` - InfluxDB is not responding or returned an error

@@ -1,4 +1,4 @@
-use crate::backend::ssh_utils::{self, SshConfig, ServiceType};
+use crate::backend::ssh_utils::{self, ServiceType, SshConfig};
 use std::path::PathBuf;
 use tempfile::tempdir;
 
@@ -19,16 +19,25 @@ mod tests {
     #[test]
     fn test_ssh_config_default() {
         let config = SshConfig::default();
-        assert_eq!(config.connect_timeout, 3, "Default connect timeout should be 3 seconds");
-        assert_eq!(config.operation_timeout, 60, "Default operation timeout should be 60 seconds");
-        assert_eq!(config.stream_timeout, 15, "Default stream timeout should be 15 seconds");
+        assert_eq!(
+            config.connect_timeout, 3,
+            "Default connect timeout should be 3 seconds"
+        );
+        assert_eq!(
+            config.operation_timeout, 60,
+            "Default operation timeout should be 60 seconds"
+        );
+        assert_eq!(
+            config.stream_timeout, 15,
+            "Default stream timeout should be 15 seconds"
+        );
     }
 
     #[test]
     fn test_ssh_config_clone() {
         let config1 = SshConfig::default();
         let config2 = config1.clone();
-        
+
         assert_eq!(config1.connect_timeout, config2.connect_timeout);
         assert_eq!(config1.operation_timeout, config2.operation_timeout);
         assert_eq!(config1.stream_timeout, config2.stream_timeout);
@@ -50,7 +59,7 @@ mod tests {
     fn test_service_type_debug() {
         let influx = ServiceType::InfluxDB;
         let prometheus = ServiceType::Prometheus;
-        
+
         // Ensure Debug trait is implemented
         assert!(format!("{:?}", influx).contains("InfluxDB"));
         assert!(format!("{:?}", prometheus).contains("Prometheus"));
@@ -61,7 +70,7 @@ mod tests {
         let influx1 = ServiceType::InfluxDB;
         let influx2 = influx1; // Copy trait
         let influx3 = influx1.clone(); // Clone trait
-        
+
         // All should be the same
         assert!(matches!(influx1, ServiceType::InfluxDB));
         assert!(matches!(influx2, ServiceType::InfluxDB));
@@ -78,12 +87,12 @@ mod tests {
             let result = ssh_utils::check_service_status(
                 "127.0.0.1:1", // Invalid host will fail quickly
                 "user",
-                "pass", 
+                "pass",
                 "http://localhost:9090",
                 ServiceType::Prometheus,
-                1
+                1,
             );
-            
+
             // Should fail but we're testing that it properly routes to the unimplemented branch
             assert!(result.is_err());
         }
@@ -95,11 +104,11 @@ mod tests {
                 "127.0.0.1:1", // Invalid host will fail connection
                 "user",
                 "pass",
-                "http://localhost:8086", 
+                "http://localhost:8086",
                 ServiceType::InfluxDB,
-                1
+                1,
             );
-            
+
             // Should fail due to connection, confirming delegation works
             assert!(result.is_err());
         }
@@ -113,17 +122,17 @@ mod tests {
         #[test]
         fn test_send_file_over_ssh_missing_file() {
             let nonexistent_path = std::path::Path::new("/tmp/nonexistent_file_test_12345");
-            
+
             // Note: send_file_over_ssh tries SSH connection BEFORE reading file,
             // so with invalid host it fails at connection stage, not file stage
             let result = ssh_utils::send_file_over_ssh(
                 &nonexistent_path,
                 "/remote/path",
                 "127.0.0.1:1", // Invalid port will cause connection failure first
-                "user", 
-                "pass"
+                "user",
+                "pass",
             );
-            
+
             assert!(result.is_err());
             // With invalid host, expect SSH/connection error, not file error
             match result.unwrap_err() {
@@ -132,22 +141,23 @@ mod tests {
             }
         }
 
-        #[test]  
+        #[test]
         fn test_send_file_over_ssh_with_valid_file() {
             let dir = tempdir().unwrap();
-            let file_path = create_test_file(&dir.path().to_path_buf(), "test.conf", "test content");
-            
+            let file_path =
+                create_test_file(&dir.path().to_path_buf(), "test.conf", "test content");
+
             // This should fail at SSH connection stage, not file reading stage
             let result = ssh_utils::send_file_over_ssh(
                 &file_path,
-                "/remote/path", 
+                "/remote/path",
                 "127.0.0.1:1", // Invalid port
                 "user",
-                "pass"
+                "pass",
             );
-            
+
             assert!(result.is_err());
-            // Should be SSH connection error, not file error  
+            // Should be SSH connection error, not file error
             match result.unwrap_err() {
                 TelegrafError::SshError(_) | TelegrafError::HostFormatError(_) => (), // Expected
                 TelegrafError::IoError(_) => panic!("Should not be IoError since file exists"),

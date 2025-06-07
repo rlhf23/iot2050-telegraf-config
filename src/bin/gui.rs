@@ -5,7 +5,7 @@ use sie_generate_config::{
         ConfigGenerator, ServiceType,
     },
     error::{TelegrafError, XmlFileValidation},
-    TelegrafConfig, WorkerHandle, WorkerCommand, WorkerResponse,
+    TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ struct TelegrafApp {
     show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
     browse_status_message: String,       // Status message for OPC UA browsing
     worker: Option<WorkerHandle>,        // Background worker for async operations
-    is_working: bool,                   // Whether a background operation is in progress
+    is_working: bool,                    // Whether a background operation is in progress
     opcua_browse_state: OpcUaBrowseState, // State for OPC UA browsing operations
 }
 
@@ -258,7 +258,7 @@ impl TelegrafApp {
         let token_file_path = path.join("token.txt");
 
         let worker = Some(WorkerHandle::new());
-        
+
         let mut app = Self {
             config: TelegrafConfig {
                 folder: path.clone(),
@@ -289,11 +289,11 @@ impl TelegrafApp {
             is_working: false,
             opcua_browse_state: OpcUaBrowseState::default(),
         };
-        
+
         // Load initial data
         app.load_xml_files();
         app.load_token();
-        
+
         app
     }
 }
@@ -310,7 +310,7 @@ impl eframe::App for TelegrafApp {
                 } else {
                     self.is_working = false;
                 }
-                
+
                 // Process the response
                 match response {
                     WorkerResponse::DummyResponse => {
@@ -334,13 +334,21 @@ impl eframe::App for TelegrafApp {
                     WorkerResponse::OpcUaNodes(nodes) => {
                         self.opcua_nodes = nodes;
                         self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesComplete;
-                        self.browse_status_message = if self.opcua_nodes.is_empty() { "OPC UA structure loaded, but no nodes found.".to_string() } else { "OPC UA structure loaded successfully.".to_string() };
+                        self.browse_status_message = if self.opcua_nodes.is_empty() {
+                            "OPC UA structure loaded, but no nodes found.".to_string()
+                        } else {
+                            "OPC UA structure loaded successfully.".to_string()
+                        };
                         // self.is_working is already set to false above for non-progress responses
                     }
                     WorkerResponse::OpcUaNamespaces(namespace_map) => {
                         let mut found_count = 0;
                         for (file_name, namespace_index) in namespace_map {
-                            if let Some(full_path) = self.xml_files.iter().find(|path| path.ends_with(&file_name)) {
+                            if let Some(full_path) = self
+                                .xml_files
+                                .iter()
+                                .find(|path| path.ends_with(&file_name))
+                            {
                                 if let Some(config) = self.file_configs.get_mut(full_path) {
                                     config.namespace = namespace_index.to_string();
                                     found_count += 1;
@@ -348,7 +356,8 @@ impl eframe::App for TelegrafApp {
                             }
                         }
                         if found_count > 0 {
-                            self.status_message = format!("Found namespaces for {} XML files!", found_count);
+                            self.status_message =
+                                format!("Found namespaces for {} XML files!", found_count);
                         } else {
                             self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
                         }
@@ -360,15 +369,18 @@ impl eframe::App for TelegrafApp {
                         self.status_message = format!("OPC UA operation failed: {}", err);
                         match self.opcua_browse_state {
                             OpcUaBrowseState::BrowsingNodes => {
-                                self.opcua_browse_state = OpcUaBrowseState::BrowsingNodesFailed(err.clone());
-                                self.browse_status_message = format!("Failed to browse OPC UA structure: {}", err);
+                                self.opcua_browse_state =
+                                    OpcUaBrowseState::BrowsingNodesFailed(err.clone());
+                                self.browse_status_message =
+                                    format!("Failed to browse OPC UA structure: {}", err);
                             }
                             OpcUaBrowseState::GettingNamespaces => {
                                 // Status_message is already set above, specific browse_status_message not needed here
-                                self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesFailed(err);
+                                self.opcua_browse_state =
+                                    OpcUaBrowseState::GettingNamespacesFailed(err);
                             }
                             // If error occurs in other states, just log to status_message, keep browse_state as is or reset to Idle if appropriate
-                            _ => { 
+                            _ => {
                                 // Potentially reset to Idle or a generic error state if the current state is not specific to an ongoing opcua op
                                 // For now, we just let status_message show the error.
                                 // If an error occurs during BrowsingNodesComplete, for example, it's likely a new, unrelated error.
