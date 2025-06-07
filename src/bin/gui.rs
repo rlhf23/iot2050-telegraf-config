@@ -48,6 +48,7 @@ struct TelegrafApp {
     worker: Option<WorkerHandle>,        // Background worker for async operations
     is_working: bool,                    // Whether a background operation is in progress
     opcua_browse_state: OpcUaBrowseState, // State for OPC UA browsing operations
+    should_scroll: bool, // Whether to scroll to bottom on next render
 }
 
 impl TelegrafApp {
@@ -288,12 +289,12 @@ impl TelegrafApp {
             worker,
             is_working: false,
             opcua_browse_state: OpcUaBrowseState::default(),
+            should_scroll: true, // Start with auto-scroll enabled
         };
 
         // Load initial data
         app.load_xml_files();
         app.load_token();
-
         app
     }
 }
@@ -306,9 +307,14 @@ impl eframe::App for TelegrafApp {
             if let Some(response) = worker.try_get_response() {
                 // Process progress updates separately to maintain working state
                 if let WorkerResponse::ProgressUpdate(progress) = &response {
-                    self.status_messages.push(progress.clone());
+                    // Only add if different from last message to avoid duplicates
+                    if self.status_messages.last() != Some(progress) {
+                        self.status_messages.push(progress.clone());
+                        self.should_scroll = true; // Set flag to scroll on next render
+                    }
                 } else {
                     self.is_working = false;
+                    self.should_scroll = true; // Set flag to scroll on next render
                 }
 
                 // Process the response
@@ -949,6 +955,7 @@ impl eframe::App for TelegrafApp {
                     // Add a clear button
                     if ui.button("Clear").clicked() {
                         self.status_messages.clear();
+                        self.should_scroll = true;
                     }
                 });
                 
@@ -974,12 +981,17 @@ impl eframe::App for TelegrafApp {
                                 }
                             }
                             
-                            // Auto-scroll to bottom
-                            ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover())
-                                .on_hover_cursor(egui::CursorIcon::Default);
-                            
-                            // This will scroll the area to the cursor (which we just placed at the bottom)
-                            ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
+                            // Only auto-scroll if we have new content and the user hasn't scrolled up
+                            if self.should_scroll {
+                                ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover())
+                                    .on_hover_cursor(egui::CursorIcon::Default);
+                                
+                                // This will scroll the area to the cursor (which we just placed at the bottom)
+                                ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
+                                
+                                // Reset the scroll flag after scrolling
+                                self.should_scroll = false;
+                            }
                         });
                     
                     // Add status message count for reference
@@ -1038,6 +1050,7 @@ impl eframe::App for TelegrafApp {
                             if ui.button("Add Selected to Config").clicked() {
                                 self.add_selected_nodes_to_config();
                                 self.status_messages.push("Selected OPC UA nodes added to configuration.".to_string());
+                                self.should_scroll = true;
                                 // self.show_opcua_browser = false; // Keep browser open after adding
                             }
                             if ui.button("Refresh Structure").clicked() {
