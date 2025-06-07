@@ -31,19 +31,21 @@ services:
     image: telegraf:latest
     container_name: telegraf
     volumes:
-      - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-      - /:/hostfs:ro
+      - ../config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - HOST_PROC=/hostfs/proc
-      - HOST_SYS=/hostfs/sys
-      - HOST_ETC=/hostfs/etc
-      - HOST_MOUNT_PREFIX=/hostfs
-    depends_on:
-      - influxdb
+      - HOSTNAME=${HOSTNAME}
     networks:
       - monitoring
     restart: unless-stopped
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "telegraf", "--test"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   grafana:
     image: grafana/grafana:latest

@@ -5,7 +5,7 @@
 !README.md
 
 # Generated configuration files
-telegraf.conf
+# telegraf.conf
 
 # Coverage reports
 /coverage
