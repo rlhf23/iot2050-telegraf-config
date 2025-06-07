@@ -16,6 +16,13 @@ use ssh2::Session;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+
+/// Checks if Telegraf is running in a Docker container
+fn is_telegraf_containerized(session: &Session) -> Result<bool, TelegrafError> {
+    let check_cmd = "if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^telegraf$'; then echo 'containerized'; fi";
+    let output = execute_ssh_command(session, check_cmd)?;
+    Ok(output.contains("containerized"))
+}
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -410,30 +417,55 @@ pub fn restart_telegraf_over_ssh(
     username: &str,
     password: &str,
 ) -> Result<String, TelegrafError> {
-    let mut output = Vec::new();
-    output.push("Restarting telegraf service on the remote host...".to_string());
-    let start_time = Instant::now();
-
-    // Connect to SSH with appropriate timeouts for service management operations
+    // Connect to SSH
     let config = SshConfig {
-        connect_timeout: 3,    // Quick connection check - host is either there or it isn't
-        operation_timeout: 60, // Service operations should be reasonably quick
-        stream_timeout: 15,    // Command output doesn't need long stream timeout
+        connect_timeout: 3,
+        operation_timeout: 60,
+        stream_timeout: 15,
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
+    
+    // Check if Telegraf is containerized
+    let is_containerized = is_telegraf_containerized(&session)?;
+    let mut output = Vec::new();
+    output.push(if is_containerized {
+        "Detected containerized Telegraf".to_string()
+    } else {
+        "Detected system Telegraf".to_string()
+    });
+    
+    output.push("Restarting telegraf service on the remote host...".to_string());
+    let start_time = Instant::now();
+    
+    // Define commands based on containerization
+    let (check_cmd, stop_cmd, start_cmd, status_cmd, log_path) = if is_containerized {
+        (
+            "docker ps --format '{{.Names}}' | grep -q '^telegraf$' || echo 'not_running'",
+            format!("echo '{}' | sudo -S docker stop telegraf", password),
+            format!("echo '{}' | sudo -S docker start telegraf", password),
+            "docker ps --filter 'name=telegraf' --format '{{.Status}}'",
+            "/var/lib/docker/containers/$(docker ps -aqf 'name=telegraf')/"
+        )
+    } else {
+        (
+            "pgrep telegraf || echo 'not_running'",
+            format!("echo '{}' | sudo -S service telegraf stop", password),
+            format!("echo '{}' | sudo -S service telegraf start", password),
+            "service telegraf status | head -n15",
+            "/var/log/telegraf/telegraf.log"
+        )
+    };
 
     // Step 1: Try graceful stop first with timeout
     output.push("Stopping telegraf service gracefully...".to_string());
 
     // First check if telegraf is actually running
-    let check_cmd = "pgrep telegraf || echo 'not_running'".to_string();
-    let check_result = execute_ssh_command(&session, &check_cmd)?;
+    let check_result = execute_ssh_command(&session, check_cmd)?;
 
     if check_result.trim() == "not_running" {
         output.push("Telegraf is not currently running. Proceeding to start.".to_string());
     } else {
         // Attempt graceful stop
-        let stop_cmd = format!("echo '{}' | sudo -S service telegraf stop", password);
         match execute_ssh_command(&session, &stop_cmd) {
             Ok(_) => output.push("Service stop command issued".to_string()),
             Err(e) => output.push(format!("Warning: Error issuing stop command: {}", e)),
@@ -444,8 +476,7 @@ pub fn restart_telegraf_over_ssh(
         let mut stopped = false;
         for i in 0..10 {
             thread::sleep(Duration::from_secs(1));
-            let check_cmd = "pgrep telegraf || echo 'stopped'".to_string();
-            let check_result = execute_ssh_command(&session, &check_cmd)?;
+            let check_result = execute_ssh_command(&session, &format!("{} || echo 'stopped'", check_cmd))?;
 
             if check_result.trim() == "stopped" {
                 output.push(format!(
@@ -460,9 +491,14 @@ pub fn restart_telegraf_over_ssh(
         // If still running after 10 seconds, forcefully kill it
         if !stopped {
             output.push(
-                "Telegraf didn't stop gracefully within 10 seconds. Killing process...".to_string(),
+                "Telegraf didn't stop gracefully within 10 seconds. Forcing stop...".to_string(),
             );
-            let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
+            let kill_cmd = if is_containerized {
+                format!("echo '{}' | sudo -S docker rm -f telegraf", password)
+            } else {
+                format!("echo '{}' | sudo -S pkill -9 telegraf", password)
+            };
+            
             match execute_ssh_command(&session, &kill_cmd) {
                 Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
                 Err(e) => output.push(format!("Warning: Error killing telegraf: {}", e)),
@@ -475,7 +511,6 @@ pub fn restart_telegraf_over_ssh(
 
     // Step 2: Start the service
     output.push("Starting telegraf service...".to_string());
-    let start_cmd = format!("echo '{}' | sudo -S service telegraf start", password);
     execute_ssh_command(&session, &start_cmd)?;
 
     // Step 3: Wait for service to initialize
@@ -484,19 +519,22 @@ pub fn restart_telegraf_over_ssh(
 
     // Step 4: Check service status
     output.push("Checking service status...".to_string());
-    let status_cmd = format!(
-        "echo '{}' | sudo -S service telegraf status | head -n15",
-        password
-    );
-    let status = execute_ssh_command(&session, &status_cmd)?;
+    let status = execute_ssh_command(&session, status_cmd)?;
 
     let elapsed_time = start_time.elapsed();
 
-    // Also check if the process is actually running
-    let process_check = execute_ssh_command(&session, "pgrep telegraf || echo 'not_running'")?;
+    // Check if the process is actually running
+    let process_check = execute_ssh_command(&session, &format!("{} || echo 'not_running'", check_cmd))?;
     let is_running = process_check.trim() != "not_running";
+    
+    // For containerized, we'll consider it successful if the container is running
+    let is_success = if is_containerized {
+        is_running
+    } else {
+        status.contains("Active: active") && is_running
+    };
 
-    if status.contains("Active: active") && is_running {
+    if is_success {
         output.push(format!(
             "✓ Telegraf restart successful ({:.2?})",
             elapsed_time
@@ -512,10 +550,12 @@ pub fn restart_telegraf_over_ssh(
 
         // Get recent logs if service failed
         output.push("\nRecent logs:".to_string());
-        let logs_cmd = format!(
-            "echo '{}' | sudo -S tail -n 10 /var/log/telegraf/telegraf.log 2>/dev/null || echo 'No logs found'", 
-            password
-        );
+        let logs_cmd = if is_containerized {
+            format!("echo '{}' | sudo -S docker logs --tail 10 telegraf 2>&1 || echo 'No logs found'", password)
+        } else {
+            format!("echo '{}' | sudo -S tail -n 10 {} 2>/dev/null || echo 'No logs found'", password, log_path)
+        };
+        
         match execute_ssh_command(&session, &logs_cmd) {
             Ok(logs) => output.push(logs),
             Err(e) => output.push(format!("Could not retrieve logs: {}", e)),
@@ -523,10 +563,12 @@ pub fn restart_telegraf_over_ssh(
 
         // Get error logs if any
         output.push("\nRecent errors:".to_string());
-        let errors_cmd = format!(
-            "echo '{}' | sudo -S grep -E 'E!' /var/log/telegraf/telegraf.log 2>/dev/null | tail -n 10 || echo 'No error logs found'",
-            password
-        );
+        let errors_cmd = if is_containerized {
+            format!("echo '{}' | sudo -S docker logs telegraf 2>&1 | grep -E 'E!' | tail -n 10 || echo 'No error logs found'", password)
+        } else {
+            format!("echo '{}' | sudo -S grep -E 'E!' {} 2>/dev/null | tail -n 10 || echo 'No error logs found'", password, log_path)
+        };
+        
         match execute_ssh_command(&session, &errors_cmd) {
             Ok(errors) => output.push(errors),
             Err(e) => output.push(format!("Could not retrieve error logs: {}", e)),
