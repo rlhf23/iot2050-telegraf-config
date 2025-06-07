@@ -305,14 +305,8 @@ impl eframe::App for TelegrafApp {
         if let Some(worker) = &self.worker {
             // First, check if we have any responses
             if let Some(response) = worker.try_get_response() {
-                // Process progress updates separately to maintain working state
-                if let WorkerResponse::ProgressUpdate(progress) = &response {
-                    // Only add if different from last message to avoid duplicates
-                    if self.status_messages.last() != Some(progress) {
-                        self.status_messages.push(progress.clone());
-                        self.should_scroll = true; // Set flag to scroll on next render
-                    }
-                } else {
+                // Set working state for non-progress responses
+                if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
                     self.is_working = false;
                     self.should_scroll = true; // Set flag to scroll on next render
                 }
@@ -335,16 +329,17 @@ impl eframe::App for TelegrafApp {
                         self.status_messages.push(format!("File transfer error: {}", err));
                     }
                     WorkerResponse::ProgressUpdate(progress) => {
-                        // Append progress updates
+                        // Update or add progress message
                         if let Some(last_msg) = self.status_messages.last_mut() {
                             if last_msg.starts_with("Progress:") {
                                 *last_msg = progress;
-                            } else {
+                            } else if last_msg != &progress {  // Only add if different
                                 self.status_messages.push(progress);
                             }
                         } else {
                             self.status_messages.push(progress);
                         }
+                        self.should_scroll = true; // Ensure we scroll for progress updates
                     }
                     WorkerResponse::OpcUaNodes(nodes) => {
                         self.opcua_nodes = nodes;
