@@ -7,6 +7,56 @@ This document outlines the approach for deploying a containerized monitoring sta
 - Grafana (visualization)
 - (Optional) Prometheus (alternative metrics collection)
 
+## Testing Without Hardware
+
+### 1. Quick Emulation with Docker
+
+Test ARM64 containers using Docker's built-in emulation:
+
+```bash
+# Enable QEMU for ARM emulation (Linux/macOS)
+docker run --privileged --rm tonistiigi/binfmt --install all
+
+# Test an ARM64 container
+docker run --rm -it --platform linux/arm64 arm64v8/ubuntu uname -m
+# Should output: aarch64
+```
+
+### 2. Test the Full Stack
+
+1. First, enable ARM emulation as above
+2. Create a test directory and add the docker-compose.yml
+3. Start the stack:
+   ```bash
+   docker-compose up -d
+   ```
+4. Verify:
+   ```bash
+   # Check containers are running
+   docker ps
+   
+   # Check logs
+   docker-compose logs -f
+   
+   # Access services
+   # Grafana: http://localhost:3000
+   # InfluxDB: http://localhost:8086
+   ```
+
+### 3. Testing OPC UA (Optional)
+
+To test OPC UA connectivity:
+
+```bash
+# Run an OPC UA test server
+docker run -d --name opcua-server -p 4840:4840 msiminnalucca/opcua-server
+
+# Test connection from an ARM64 container
+docker run --rm -it --network host \
+  ghcr.io/opcua/opcua-client opcua-client \
+  --endpoint opc.tcp://localhost:4840
+```
+
 ## Deployment Strategies
 
 ### Option 1: Local Build and Transfer (Easier)
