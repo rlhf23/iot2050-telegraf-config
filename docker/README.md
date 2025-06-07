@@ -47,6 +47,29 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
 
 ## Deployment to IOT2050
 
+### Option 1: Build on Device (Simpler, requires internet)
+
+1. **SSH into your IOT2050**:
+   ```bash
+   ssh ${DEFAULT_IOT_USERNAME}@${DEFAULT_IOT_IP}
+   ```
+
+2. **Clone and run**:
+   ```bash
+   git clone <your-repo-url>
+   cd iot2050-telegraf-config/docker
+   chmod +x scripts/*.sh
+   ./scripts/setup.sh
+   ./scripts/start.sh
+   ```
+
+   **⚠️ Note**: 
+   - Requires internet access during build
+   - Slower than pre-built images
+   - Needs sufficient disk space for build cache
+
+### Option 2: Pre-build and Transfer (Offline-friendly)
+
 1. **Build and save images** (on your dev machine):
    ```bash
    cd docker
@@ -72,9 +95,9 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    ./scripts/start.sh
    ```
 
-4. **Access remotely**:
-   - Grafana: http://[device-ip]:3000
-   - InfluxDB: http://[device-ip]:8086
+### Access Remotely
+- Grafana: http://[device-ip]:3000
+- InfluxDB: http://[device-ip]:8086
 
 ## Data Management
 
