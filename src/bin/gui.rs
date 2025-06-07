@@ -39,7 +39,7 @@ struct TelegrafApp {
     xml_files: Vec<String>,
     selected_listener_files: Vec<bool>, // Checkboxes for listener selection
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
-    status_message: String,
+    status_messages: Vec<String>, // Changed from status_message to store multiple messages
     token_file_path: std::path::PathBuf, // Store the complete token file path
     form_state: FormState,               // Validation state for the form
     opcua_nodes: Vec<OpcUaNode>,         // Store the complete OPC UA node hierarchy
@@ -55,13 +55,13 @@ impl TelegrafApp {
     fn send_worker_command(&mut self, command: WorkerCommand, working_message: &str) {
         if let Some(worker) = &self.worker {
             if let Err(e) = worker.send_command(command) {
-                self.status_message = format!("Failed to start operation: {}", e);
+                self.status_messages.push(format!("Failed to start operation: {}", e));
             } else {
                 self.is_working = true;
-                self.status_message = working_message.to_string();
+                self.status_messages.push(working_message.to_string());
             }
         } else {
-            self.status_message = "Worker not initialized".to_string();
+            self.status_messages.push("Worker not initialized".to_string());
         }
     }
 
@@ -279,7 +279,7 @@ impl TelegrafApp {
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
             file_configs: std::collections::HashMap::new(),
-            status_message: String::new(),
+            status_messages: Vec::new(), // Initialize with empty vector for status messages
             token_file_path, // Default to token.txt in the current directory
             form_state: FormState::default(),
             opcua_nodes: Vec::new(),
@@ -306,7 +306,7 @@ impl eframe::App for TelegrafApp {
             if let Some(response) = worker.try_get_response() {
                 // Process progress updates separately to maintain working state
                 if let WorkerResponse::ProgressUpdate(progress) = &response {
-                    self.status_message = progress.clone();
+                    self.status_messages.push(progress.clone());
                 } else {
                     self.is_working = false;
                 }
@@ -314,22 +314,31 @@ impl eframe::App for TelegrafApp {
                 // Process the response
                 match response {
                     WorkerResponse::DummyResponse => {
-                        self.status_message = "Dummy operation completed!".to_string();
+                        self.status_messages.push("Dummy operation completed!".to_string());
                     }
                     WorkerResponse::SshCommandOutput(output) => {
-                        self.status_message = format!("SSH command output:\n{}", output);
+                        self.status_messages.push(format!("SSH command output:\n{}", output));
                     }
                     WorkerResponse::SshError(err) => {
-                        self.status_message = format!("SSH error: {}", err);
+                        self.status_messages.push(format!("SSH error: {}", err));
                     }
                     WorkerResponse::FileTransferComplete => {
-                        self.status_message = "File transfer completed successfully".to_string();
+                        self.status_messages.push("File transfer completed successfully".to_string());
                     }
                     WorkerResponse::FileTransferError(err) => {
-                        self.status_message = format!("File transfer error: {}", err);
+                        self.status_messages.push(format!("File transfer error: {}", err));
                     }
-                    WorkerResponse::ProgressUpdate(_) => {
-                        // Already handled above to maintain working state
+                    WorkerResponse::ProgressUpdate(progress) => {
+                        // Append progress updates
+                        if let Some(last_msg) = self.status_messages.last_mut() {
+                            if last_msg.starts_with("Progress:") {
+                                *last_msg = progress;
+                            } else {
+                                self.status_messages.push(progress);
+                            }
+                        } else {
+                            self.status_messages.push(progress);
+                        }
                     }
                     WorkerResponse::OpcUaNodes(nodes) => {
                         self.opcua_nodes = nodes;
@@ -356,17 +365,18 @@ impl eframe::App for TelegrafApp {
                             }
                         }
                         if found_count > 0 {
-                            self.status_message =
-                                format!("Found namespaces for {} XML files!", found_count);
+                            self.status_messages.push(
+                                format!("Found namespaces for {} XML files!", found_count)
+                            );
                         } else {
-                            self.status_message = "No matching namespaces found. Check XML filenames match namespace names.".to_string();
+                            self.status_messages.push("No matching namespaces found. Check XML filenames match namespace names.".to_string());
                         }
                         self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesComplete;
                         // self.is_working is already set to false above
                     }
                     WorkerResponse::OpcUaError(err) => {
                         // General status message for any OPC UA error
-                        self.status_message = format!("OPC UA operation failed: {}", err);
+                        self.status_messages.push(format!("OPC UA operation failed: {}", err));
                         match self.opcua_browse_state {
                             OpcUaBrowseState::BrowsingNodes => {
                                 self.opcua_browse_state =
@@ -390,7 +400,7 @@ impl eframe::App for TelegrafApp {
                     }
                     WorkerResponse::Error(err) => {
                         // Handle generic worker errors
-                        self.status_message = format!("Worker error: {}", err);
+                        self.status_messages.push(format!("Worker error: {}", err));
                         // Reset any ongoing operations
                         self.is_working = false;
                     }
@@ -727,7 +737,7 @@ impl eframe::App for TelegrafApp {
                         // Allow triggering if not currently getting namespaces
                         if self.opcua_browse_state != OpcUaBrowseState::GettingNamespaces {
                             self.opcua_browse_state = OpcUaBrowseState::GettingNamespaces;
-                            self.status_message = "Requesting OPC UA namespaces...".to_string();
+                            self.status_messages.push("Requesting OPC UA namespaces...".to_string());
                             let command = WorkerCommand::GetOpcUaNamespaces {
                                 config: self.config.clone(),
                                 xml_files: self.xml_files.clone(),
@@ -777,7 +787,7 @@ impl eframe::App for TelegrafApp {
                                 }
                             }
 
-                            self.status_message = format!("Validation errors: {}", error_messages.join("; "));
+                            self.status_messages.push(format!("Validation errors: {}", error_messages.join("; ")));
                             return;
                         }
                     }
@@ -824,17 +834,20 @@ impl eframe::App for TelegrafApp {
                             match generator
                                 .generate_config(&self.xml_files, &self.config.listener_files)
                             {
-                                Ok(_) => {
-                                    self.status_message =
-                                        "Configuration generated successfully!".to_string();
+                                Ok(output_path) => {
+                                    self.status_messages.push(
+                                        format!("Successfully generated config in {:?}", output_path)
+                                    );
                                 }
                                 Err(e) => {
-                                    self.status_message = self.handle_error(&e, "generating config");
+                                    let error_message = self.handle_error(&e, "generating config");
+                                    self.status_messages.push(error_message);
                                 }
                             }
                         }
                         Err(e) => {
-                            self.status_message = self.handle_error(&e, "generating config");
+                            let error_message = self.handle_error(&e, "generating config");
+                            self.status_messages.push(error_message);
                         }
                     }
                 }
@@ -923,8 +936,8 @@ impl eframe::App for TelegrafApp {
                 });
             });
 
-            // Status Message
-            if !self.status_message.is_empty() {
+            // Status Messages
+            if !self.status_messages.is_empty() {
                 // Add a header to make it more visible
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -933,26 +946,40 @@ impl eframe::App for TelegrafApp {
                         ui.add(egui::Spinner::new().size(16.0));
                         ui.label("Working...");
                     }
+                    // Add a clear button
+                    if ui.button("Clear").clicked() {
+                        self.status_messages.clear();
+                    }
                 });
+                
                 // Create a frame with a border to make the output more visible
                 let frame = egui::Frame::dark_canvas(ui.style())
                     .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE));
+                    
                 frame.show(ui, |ui| {
                     // Use scrollable area with fixed height for multiline text
                     egui::ScrollArea::vertical()
                         .max_height(400.0)
                         .show(ui, |ui| {
-                            // Use a selectable label with monospace font for output
                             ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                            let content = self.status_message.clone();
-                            // Split by lines and display each line separately
-                            for line in content.lines() {
-                                ui.label(line);
+                            
+                            // Display all messages with separators
+                            for (i, message) in self.status_messages.iter().enumerate() {
+                                if i > 0 {
+                                    ui.separator();
+                                }
+                                // Split by lines and display each line separately
+                                for line in message.lines() {
+                                    ui.label(line);
+                                }
                             }
                         });
-                    // Add status message length for debugging
+                    
+                    // Add status message count for reference
                     ui.separator();
-                    ui.label(format!("Output length: {} characters", self.status_message.len()));
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Showing {} message(s)", self.status_messages.len()));
+                    });
                 });
             }
 
@@ -1003,7 +1030,7 @@ impl eframe::App for TelegrafApp {
                         ui.horizontal(|ui| {
                             if ui.button("Add Selected to Config").clicked() {
                                 self.add_selected_nodes_to_config();
-                                self.status_message = "Selected OPC UA nodes added to configuration.".to_string();
+                                self.status_messages.push("Selected OPC UA nodes added to configuration.".to_string());
                                 // self.show_opcua_browser = false; // Keep browser open after adding
                             }
                             if ui.button("Refresh Structure").clicked() {
