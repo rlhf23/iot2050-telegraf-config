@@ -1,11 +1,17 @@
 # Monitoring Stack for IoT2050
 
-This directory contains the Docker-based monitoring stack for the IoT2050 device.
+A portable Docker-based monitoring stack for local development and ARM64 devices like the Siemens IOT2050.
+
+## Features
+
+- **Multi-architecture**: Works on x86_64 (development) and ARM64 (production)
+- **Self-contained**: Versioned configurations and automated setup
+- **Production-ready**: Secure defaults and persistent storage
 
 ## Components
 
 - **InfluxDB 2.7**: Time-series database
-- **Telegraf**: Metrics collection
+- **Telegraf**: Metrics collection (system, Docker, custom)
 - **Grafana**: Visualization dashboard
 
 ## Prerequisites
@@ -21,7 +27,7 @@ This directory contains the Docker-based monitoring stack for the IoT2050 device
 1. **Initialize the environment**:
    ```bash
    chmod +x scripts/*.sh
-   ./scripts/setup.sh
+   ./scripts/setup.sh  # Creates .env with random credentials
    ```
 
 2. **Start the stack**:
@@ -32,40 +38,67 @@ This directory contains the Docker-based monitoring stack for the IoT2050 device
 3. **Access the services**:
    - Grafana: http://localhost:3000
    - InfluxDB: http://localhost:8086
+   - Default credentials are in `.env`
 
 4. **Stop the stack**:
    ```bash
    ./scripts/stop.sh
    ```
 
-## Configuration
+## Deployment to IOT2050
 
-- Edit `.env` to change default credentials
-- Edit `config/telegraf/telegraf.conf` to modify metrics collection
-
-## Deployment to IoT2050
-
-1. Build and save the images:
+1. **Build and save images** (on your dev machine):
    ```bash
+   cd docker
    docker-compose build
    docker save $(docker-compose config --images) -o monitoring-stack.tar
    ```
 
-2. Transfer to device:
+2. **Transfer to device**:
    ```bash
    scp -r . ${DEFAULT_IOT_USERNAME}@${DEFAULT_IOT_IP}:~/monitoring
    scp monitoring-stack.tar ${DEFAULT_IOT_USERNAME}@${DEFAULT_IOT_IP}:~/
    ```
 
-3. On the device:
+3. **On the IOT2050**:
    ```bash
-   docker load -i monitoring-stack.tar
-   cd monitoring
+   # Load Docker images
+   docker load -i ~/monitoring-stack.tar
+   
+   # Start the stack
+   cd ~/monitoring
+   chmod +x scripts/*.sh
+   ./scripts/setup.sh
    ./scripts/start.sh
    ```
 
+4. **Access remotely**:
+   - Grafana: http://[device-ip]:3000
+   - InfluxDB: http://[device-ip]:8086
+
+## Data Management
+
+- **Persistent data** is stored in Docker volumes:
+  - `influxdb_data`: Time-series data
+  - `grafana_data`: Dashboards and settings
+
+- **Backup InfluxDB data**:
+  ```bash
+  docker run --rm -v influxdb_data:/source -v $(pwd):/backup alpine tar czf /backup/influxdb_backup.tar.gz -C /source .
+  ```
+
 ## Troubleshooting
 
-- View logs: `docker-compose logs -f`
-- Check container status: `docker ps`
-- Access container shell: `docker exec -it <container_name> sh`
+- **View logs**: `docker-compose logs -f`
+- **Check containers**: `docker ps`
+- **Access shell**: `docker exec -it <container_name> sh`
+- **Reset everything**:
+  ```bash
+  ./scripts/stop.sh
+  docker-compose down -v
+  ```
+
+## Configuration
+
+- Edit `.env` to change default credentials
+- Customize `config/telegraf/telegraf.conf` for metrics collection
