@@ -13,7 +13,7 @@
 # Output to InfluxDB
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${INFLUXDB_TOKEN}"
+  token = "${TELEGRAF_TOKEN}"  # Using dedicated Telegraf token
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
 

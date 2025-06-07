@@ -8,6 +8,8 @@ services:
       - "8086:8086"
     volumes:
       - influxdb_data:/var/lib/influxdb2
+      - ./config/influxdb/init-influxdb.sh:/docker-entrypoint-initdb.d/init-influxdb.sh
+      - ./.env:/docker-entrypoint-initdb.d/../../.env
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-admin}
@@ -15,9 +17,15 @@ services:
       - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-iot2050}
       - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-telegraf}
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-supersecrettoken}
+      - TELEGRAF_TOKEN=${TELEGRAF_TOKEN:-}
     networks:
       - monitoring
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   telegraf:
     image: telegraf:latest
