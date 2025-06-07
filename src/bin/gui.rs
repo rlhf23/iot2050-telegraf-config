@@ -973,6 +973,13 @@ impl eframe::App for TelegrafApp {
                                     ui.label(line);
                                 }
                             }
+                            
+                            // Auto-scroll to bottom
+                            ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover())
+                                .on_hover_cursor(egui::CursorIcon::Default);
+                            
+                            // This will scroll the area to the cursor (which we just placed at the bottom)
+                            ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
                         });
                     
                     // Add status message count for reference
