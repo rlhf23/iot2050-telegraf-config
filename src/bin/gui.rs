@@ -376,6 +376,12 @@ impl eframe::App for TelegrafApp {
                         }
                         // self.is_working is already set to false above
                     }
+                    WorkerResponse::Error(err) => {
+                        // Handle generic worker errors
+                        self.status_message = format!("Worker error: {}", err);
+                        // Reset any ongoing operations
+                        self.is_working = false;
+                    }
                 }
                 // Always request a repaint when we have a response
                 ctx.request_repaint();
