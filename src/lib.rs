@@ -351,3 +351,5 @@ pub use worker::{WorkerHandle, WorkerCommand, WorkerResponse};
 mod error_test;
 #[cfg(test)]
 mod lib_test;
+#[cfg(test)]
+mod worker_tests;
