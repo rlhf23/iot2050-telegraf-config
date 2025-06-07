@@ -1,0 +1,30 @@
+FROM telegraf:latest
+
+# Install SSH server and tools
+RUN apt-get update && apt-get install -y \
+    openssh-server \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure SSH
+RUN mkdir /run/sshd
+RUN echo 'root:password' | chpasswd
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# Create log directory with correct permissions
+RUN mkdir -p /var/log/telegraf && \
+    chown -R telegraf:telegraf /var/log/telegraf && \
+    chmod 755 /var/log/telegraf
+
+# SSH login fix
+RUN sed 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' -i /etc/pam.d/sshd
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Expose SSH port
+EXPOSE 22
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["telegraf"]
