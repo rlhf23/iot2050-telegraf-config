@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 set -e
 
-cd "$(dirname "$0")/../.."
-
 echo "🚀 Starting monitoring stack..."
 
+# Change to the script's directory
+cd "$(dirname "$0")/.."
+
 # Check if .env exists
-if [ ! -f docker/.env ]; then
-    echo "❌ Error: docker/.env not found. Run setup.sh first."
+if [ ! -f .env ]; then
+    echo "❌ Error: .env not found. Run setup.sh first."
     exit 1
 fi
 
 # Load environment variables
 set -a
-source docker/.env
+source .env
 set +a
 
 # Start the stack
-docker-compose -f docker/docker-compose.yml up -d
+docker-compose -f docker-compose.yml up -d
 
 echo "✅ Stack started successfully!"
 echo ""
@@ -29,5 +30,10 @@ echo "📈 InfluxDB: http://localhost:8086"
 echo "   - User: $INFLUXDB_USER"
 [ -n "$INFLUXDB_PASSWORD" ] && echo "   - Password: $INFLUXDB_PASSWORD"
 echo "   - Token: $INFLUXDB_TOKEN"
-
-echo "\n🔄 To view logs: docker-compose -f docker/docker-compose.yml logs -f"
+echo ""
+echo "📡 Telegraf SSH Access:"
+echo "   - Port: 2222"
+echo "   - User: root"
+[ -n "$TELEGRAF_SSH_PASSWORD" ] && echo "   - Password: $TELEGRAF_SSH_PASSWORD"
+echo ""
+echo "🔄 To view logs: docker-compose -f docker-compose.yml logs -f"

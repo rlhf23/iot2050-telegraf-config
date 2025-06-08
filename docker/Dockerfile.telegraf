@@ -7,8 +7,9 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure SSH
+ARG TELEGRAF_SSH_PASSWORD
 RUN mkdir /run/sshd
-RUN echo 'root:password' | chpasswd
+RUN echo "root:${TELEGRAF_SSH_PASSWORD:-password}" | chpasswd
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # Create log directory with correct permissions

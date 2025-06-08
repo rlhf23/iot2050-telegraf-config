@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   influxdb:
     image: influxdb:2.7
@@ -36,6 +34,7 @@ services:
     environment:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
+      - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD:-password}
     ports:
       - "2222:22"  # Expose SSH port
     volumes:
