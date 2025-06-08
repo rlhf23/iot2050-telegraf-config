@@ -412,7 +412,26 @@ fn execute_ssh_command(session: &Session, command: &str) -> Result<String, Teleg
     Ok(output)
 }
 
-pub fn restart_telegraf_over_ssh(
+/// Restarts Telegraf when running as a Docker container on the remote host
+pub fn restart_telegraf_docker_over_ssh(
+    session: &Session,
+) -> Result<String, TelegrafError> {
+    println!("Attempting to restart Telegraf Docker container...");
+    let command = "docker restart telegraf";
+    match execute_ssh_command(session, command) {
+        Ok(output) => {
+            println!("Telegraf Docker container restart command executed. Output: {}", output);
+            Ok(format!("Telegraf Docker container restarted successfully.\nOutput: {}", output))
+        }
+        Err(e) => {
+            eprintln!("Failed to restart Telegraf Docker container: {:?}", e);
+            // Propagate the error from execute_ssh_command, which is already a TelegrafError
+            Err(e) 
+        }
+    }
+}
+
+fn restart_telegraf_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
@@ -426,40 +445,25 @@ pub fn restart_telegraf_over_ssh(
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
     
     // Check if Telegraf is containerized
-    let is_containerized = is_telegraf_containerized(&session)?;
+    if is_telegraf_containerized(&session)? {
+        println!("Telegraf is containerized. Using Docker restart logic.");
+        return restart_telegraf_docker_over_ssh(&session);
+    }
+
+    println!("Telegraf is not containerized or check failed. Using system service restart logic.");
     let mut output = Vec::new();
-    output.push(if is_containerized {
-        "Detected containerized Telegraf".to_string()
-    } else {
-        "Detected system Telegraf".to_string()
-    });
-    
+    output.push("Detected system Telegraf".to_string());
     output.push("Restarting telegraf service on the remote host...".to_string());
     let start_time = Instant::now();
     
-    // Define commands based on containerization
-    let (check_cmd, stop_cmd, start_cmd, status_cmd, log_path) = if is_containerized {
-        (
-            // Check if container is running
-            "docker ps --format '{{.Names}}' | grep -q '^telegraf$' || echo 'not_running'",
-            // Stop the container
-            format!("echo '{}' | sudo -S docker stop telegraf", password),
-            // Start the container
-            format!("echo '{}' | sudo -S docker start telegraf", password),
-            // Get container status
-            "docker ps --filter 'name=telegraf' --format '{{.Status}}'",
-            // Get logs directly from the container
-            "docker logs telegraf --tail 20"
-        )
-    } else {
-        (
-            "pgrep telegraf || echo 'not_running'",
-            format!("echo '{}' | sudo -S service telegraf stop", password),
-            format!("echo '{}' | sudo -S service telegraf start", password),
-            "service telegraf status | head -n15",
-            "/var/log/telegraf/telegraf.log"
-        )
-    };
+    // Define commands for system service
+    let (check_cmd, stop_cmd, start_cmd, status_cmd, log_path) = (
+        "pgrep telegraf || echo 'not_running'",
+        format!("echo '{}' | sudo -S service telegraf stop", password),
+        format!("echo '{}' | sudo -S service telegraf start", password),
+        "service telegraf status | head -n15",
+        "/var/log/telegraf/telegraf.log"
+    );
 
     // Step 1: Try graceful stop first with timeout
     output.push("Stopping telegraf service gracefully...".to_string());
@@ -498,11 +502,7 @@ pub fn restart_telegraf_over_ssh(
             output.push(
                 "Telegraf didn't stop gracefully within 10 seconds. Forcing stop...".to_string(),
             );
-            let kill_cmd = if is_containerized {
-                format!("echo '{}' | sudo -S docker rm -f telegraf", password)
-            } else {
-                format!("echo '{}' | sudo -S pkill -9 telegraf", password)
-            };
+            let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
             
             match execute_ssh_command(&session, &kill_cmd) {
                 Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
@@ -533,11 +533,11 @@ pub fn restart_telegraf_over_ssh(
     let is_running = process_check.trim() != "not_running";
     
     // For containerized, we'll consider it successful if the container is running
-    let is_success = if is_containerized {
-        is_running
-    } else {
-        status.contains("Active: active") && is_running
-    };
+    // For non-containerized, success is determined by the 'status' command output.
+    // 'is_running' (from pgrep) is also implicitly checked by these status strings.
+    let is_success = status.contains("active (running)") // Systemd status
+        || status.contains("is running") // Init.d status
+        || (!status.contains("not running") && !status.contains("dead") && !status.contains("inactive")); // General check for other init systems
 
     if is_success {
         output.push(format!(
@@ -555,11 +555,7 @@ pub fn restart_telegraf_over_ssh(
 
         // Get recent logs if service failed
         output.push("\nRecent logs:".to_string());
-        let logs_cmd = if is_containerized {
-            format!("echo '{}' | sudo -S docker logs --tail 10 telegraf 2>&1 || echo 'No logs found'", password)
-        } else {
-            format!("echo '{}' | sudo -S tail -n 10 {} 2>/dev/null || echo 'No logs found'", password, log_path)
-        };
+        let logs_cmd = format!("tail -n 10 {}", log_path);
         
         match execute_ssh_command(&session, &logs_cmd) {
             Ok(logs) => output.push(logs),
@@ -568,11 +564,8 @@ pub fn restart_telegraf_over_ssh(
 
         // Get error logs if any
         output.push("\nRecent errors:".to_string());
-        let errors_cmd = if is_containerized {
-            format!("echo '{}' | sudo -S docker logs telegraf 2>&1 | grep -E 'E!' | tail -n 10 || echo 'No error logs found'", password)
-        } else {
-            format!("echo '{}' | sudo -S grep -E 'E!' {} 2>/dev/null | tail -n 10 || echo 'No error logs found'", password, log_path)
-        };
+        // Since we are in the non-containerized path, is_containerized is effectively false.
+        let errors_cmd = format!("echo '{}' | sudo -S grep -E 'E!' {} 2>/dev/null | tail -n 10 || echo 'No error logs found'", password, log_path);
         
         match execute_ssh_command(&session, &errors_cmd) {
             Ok(errors) => output.push(errors),
@@ -825,6 +818,29 @@ pub fn get_telegraf_status(
     Ok(status)
 }
 
+/// Fetches logs from Telegraf when running as a Docker container
+fn get_telegraf_logs_docker(
+    session: &Session,
+    lines: usize,
+) -> Result<String, TelegrafError> {
+    println!(
+        "Attempting to fetch last {} lines of Telegraf Docker container logs...",
+        lines
+    );
+    let command = format!("docker logs telegraf --tail {}", lines);
+    match execute_ssh_command(session, &command) {
+        Ok(output) => {
+            println!("Telegraf Docker logs fetched successfully.");
+            Ok(output)
+        }
+        Err(e) => {
+            eprintln!("Failed to fetch Telegraf Docker logs: {:?}", e);
+            // Propagate the error from execute_ssh_command, which is already a TelegrafError
+            Err(e)
+        }
+    }
+}
+
 pub fn get_telegraf_logs(
     remote_host: &str,
     username: &str,
@@ -843,8 +859,15 @@ pub fn get_telegraf_logs(
 
     println!("SSH connection established, retrieving logs");
 
+    // Check if Telegraf is containerized
+    if is_telegraf_containerized(&session)? {
+        println!("Telegraf is containerized. Using Docker log retrieval.");
+        return get_telegraf_logs_docker(&session, lines);
+    }
+
+    println!("Telegraf is not containerized or check failed. Using system service log retrieval.");
     // Try to check if the log file exists first with non-interactive sudo
-    println!("Checking if log file exists");
+    println!("Checking if log file exists for system service Telegraf");
     let check_cmd = format!("echo '{}' | sudo -S test -f /var/log/telegraf/telegraf.log && echo 'exists' || echo 'missing'", password);
     let check_result = execute_ssh_command(&session, &check_cmd)?;
 
