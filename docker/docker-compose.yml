@@ -5,6 +5,8 @@ services:
   influxdb:
     image: influxdb:2.7
     container_name: influxdb
+    env_file:
+      - .env
     ports:
       - "8086:8086"
     volumes:
@@ -12,12 +14,13 @@ services:
       - ./config/influxdb/init-influxdb.sh:/docker-entrypoint-initdb.d/init-influxdb.sh
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-admin}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-admin123}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-iot2050}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-telegraf}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-supersecrettoken}
-      - TELEGRAF_TOKEN=${TELEGRAF_TOKEN:-}
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
+      - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
+      - INFLUXD_HTTP_BIND_ADDRESS=:8086
     networks:
       - monitoring
     restart: unless-stopped
@@ -33,6 +36,8 @@ services:
       dockerfile: Dockerfile.telegraf
       args:
         - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD}
+    env_file:
+      - .env
     container_name: telegraf
     restart: unless-stopped
     environment:
@@ -62,14 +67,16 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    env_file:
+      - .env
     ports:
       - "3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
     environment:
-      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     depends_on:
       - influxdb
