@@ -38,18 +38,13 @@ GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 
 
 # Telegraf
 TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
-TELEGRAF_SSH_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 
 # Docker
 HOST_DOCKER_GID=${DOCKER_GID}
 EOL
     echo "✅ Created .env file"
 else
-    echo "ℹ️  .env file already exists, updating Docker GID if needed..."
-    if [ -n "$DOCKER_GID" ] && ! grep -q "^HOST_DOCKER_GID=" .env 2>/dev/null; then
-        echo "HOST_DOCKER_GID=$DOCKER_GID" >> .env
-        echo "✅ Added HOST_DOCKER_GID to .env"
-    fi
+    echo "ℹ️  .env file already exists"
 fi
 
 # Enable ARM emulation if not on ARM64

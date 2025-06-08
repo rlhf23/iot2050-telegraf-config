@@ -4,6 +4,7 @@
 services:
   influxdb:
     image: influxdb:2.7
+    command: influxd --http-bind-address=:8086
     container_name: influxdb
     env_file:
       - .env
@@ -31,11 +32,7 @@ services:
       retries: 3
 
   telegraf:
-    build:
-      context: .
-      dockerfile: Dockerfile.telegraf
-      args:
-        - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD}
+    image: telegraf:1.30 # Using a specific version for stability
     env_file:
       - .env
     container_name: telegraf
@@ -44,17 +41,14 @@ services:
     environment:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
-      - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD:?TELEGRAF_SSH_PASSWORD must be set}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
       - HOST_DOCKER_GID=${HOST_DOCKER_GID}
-    ports:
-      - "2222:22"  # Expose SSH port
     volumes:
       - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
-      - /var/run/docker.sock:/var/run/docker.sock:rw  # Changed to rw for Docker access
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - /sys:/host/sys:ro
       - /proc:/host/proc:ro
       - /etc:/host/etc:ro
@@ -65,7 +59,7 @@ services:
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD", "telegraf", "--test"]
+      test: ["CMD", "telegraf", "--test", "--config", "/etc/telegraf/telegraf.conf"]
       interval: 30s
       timeout: 10s
       retries: 3
