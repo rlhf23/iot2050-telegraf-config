@@ -18,6 +18,9 @@ if [ ! -f config/telegraf/telegraf.conf ] && [ -f config/telegraf/telegraf.conf.
     cp config/telegraf/telegraf.conf.example config/telegraf/telegraf.conf
 fi
 
+# Get Docker GID
+DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
+
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
     echo "Creating .env file with default values..."
@@ -36,10 +39,17 @@ GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 
 # Telegraf
 TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 TELEGRAF_SSH_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+# Docker
+HOST_DOCKER_GID=${DOCKER_GID}
 EOL
     echo "✅ Created .env file"
 else
-    echo "ℹ️  .env file already exists, skipping creation"
+    echo "ℹ️  .env file already exists, updating Docker GID if needed..."
+    if [ -n "$DOCKER_GID" ] && ! grep -q "^HOST_DOCKER_GID=" .env 2>/dev/null; then
+        echo "HOST_DOCKER_GID=$DOCKER_GID" >> .env
+        echo "✅ Added HOST_DOCKER_GID to .env"
+    fi
 fi
 
 # Enable ARM emulation if not on ARM64

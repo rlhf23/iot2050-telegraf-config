@@ -39,6 +39,7 @@ services:
     env_file:
       - .env
     container_name: telegraf
+    user: "telegraf:${HOST_DOCKER_GID}"  # Use host's docker group ID from environment
     restart: unless-stopped
     environment:
       - HOST_PROC=/host/proc
@@ -52,7 +53,7 @@ services:
       - "2222:22"  # Expose SSH port
     volumes:
       - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw  # Changed to rw for Docker access
       - /sys:/host/sys:ro
       - /proc:/host/proc:ro
       - /etc:/host/etc:ro
