@@ -440,11 +440,16 @@ pub fn restart_telegraf_over_ssh(
     // Define commands based on containerization
     let (check_cmd, stop_cmd, start_cmd, status_cmd, log_path) = if is_containerized {
         (
+            // Check if container is running
             "docker ps --format '{{.Names}}' | grep -q '^telegraf$' || echo 'not_running'",
+            // Stop the container
             format!("echo '{}' | sudo -S docker stop telegraf", password),
+            // Start the container
             format!("echo '{}' | sudo -S docker start telegraf", password),
+            // Get container status
             "docker ps --filter 'name=telegraf' --format '{{.Status}}'",
-            "/var/lib/docker/containers/$(docker ps -aqf 'name=telegraf')/"
+            // Get logs directly from the container
+            "docker logs telegraf --tail 20"
         )
     } else {
         (
