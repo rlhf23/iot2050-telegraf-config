@@ -23,6 +23,20 @@ DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
 
 # Create .env file if it doesn't exist
 if [ ! -f .env ]; then
+    echo "ℹ️ .env file not found. New credentials will be generated."
+    echo "To ensure new credentials (especially for InfluxDB and Grafana) take effect,"
+    echo "it's recommended to remove existing data volumes."
+    read -r -p "Do you want to remove 'docker_influxdb_data' and 'docker_grafana_data' volumes? (yes/NO): " confirmation
+    if [[ "$confirmation" =~ ^[Yy][Ee][Ss]$ ]]; then
+        echo "Attempting to remove InfluxDB data volume..."
+        docker volume rm docker_influxdb_data 2>/dev/null || echo "InfluxDB data volume not found or could not be removed."
+        echo "Attempting to remove Grafana data volume..."
+        docker volume rm docker_grafana_data 2>/dev/null || echo "Grafana data volume not found or could not be removed."
+        echo "✅ Volumes removal process finished."
+    else
+        echo "Skipping volume removal. Existing data will be preserved."
+        echo "If you experience issues with old credentials, manually remove the volumes and re-run setup."
+    fi
     echo "Creating .env file with default values..."
     cat > .env <<EOL
 # InfluxDB
