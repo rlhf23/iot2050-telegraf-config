@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 set -e
 
+# Change to the script's directory
+cd "$(dirname "$0")/.."
+
 echo "🚀 Setting up monitoring stack..."
 
 # Create necessary directories
-mkdir -p ../docker/config/grafana/provisioning/datasources
-mkdir -p ../docker/config/grafana/provisioning/dashboards
+echo "Creating required directories..."
+mkdir -p config/grafana/provisioning/datasources
+mkdir -p config/grafana/provisioning/dashboards
+mkdir -p config/telegraf
 
 # Copy example config if it doesn't exist
-if [ ! -f ../docker/config/telegraf/telegraf.conf ]; then
-    echo "ℹ️ Creating telegraf.conf from example..."
-    cp ../docker/config/telegraf/telegraf.conf.example ../docker/config/telegraf/telegraf.conf
+if [ ! -f config/telegraf/telegraf.conf ] && [ -f config/telegraf/telegraf.conf.example ]; then
+    echo "Creating telegraf.conf from example..."
+    cp config/telegraf/telegraf.conf.example config/telegraf/telegraf.conf
 fi
 
 # Create .env file if it doesn't exist
-if [ ! -f ../docker/.env ]; then
-    echo "ℹ️ Creating .env file with default values..."
-    cat > ../docker/.env <<EOL
+if [ ! -f .env ]; then
+    echo "Creating .env file with default values..."
+    cat > .env <<EOL
 # InfluxDB
 INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
@@ -32,20 +37,17 @@ GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 
 TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 TELEGRAF_SSH_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 EOL
+    echo "✅ Created .env file"
+else
+    echo "ℹ️  .env file already exists, skipping creation"
 fi
-
-# Load environment variables
-echo "📋 Loading environment variables..."
-set -a
-source ../docker/.env
-set +a
 
 # Enable ARM emulation if not on ARM64
 if [ "$(uname -m)" != "aarch64" ]; then
-    echo "🔧 Enabling ARM emulation..."
-    docker run --privileged --rm tonistiigi/binfmt --install all
+    echo "Enabling ARM emulation..."
+    if ! docker run --privileged --rm tonistiigi/binfmt --install all; then
+        echo "⚠️  Failed to enable ARM emulation (this might be expected in some environments)" >&2
+    fi
 fi
 
 echo "✅ Setup complete!"
-echo "🔑 Generated credentials are in docker/.env"
-echo "🔄 Start the stack with: docker-compose up -d"
