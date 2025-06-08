@@ -1,3 +1,6 @@
+# Load environment variables from .env file in the same directory as docker-compose.yml
+# This makes all variables available in the docker-compose file
+
 services:
   influxdb:
     image: influxdb:2.7
@@ -7,7 +10,6 @@ services:
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - ./config/influxdb/init-influxdb.sh:/docker-entrypoint-initdb.d/init-influxdb.sh
-      - ./.env:/docker-entrypoint-initdb.d/../../.env
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER:-admin}
@@ -29,12 +31,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.telegraf
+      args:
+        - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD}
     container_name: telegraf
     restart: unless-stopped
     environment:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
-      - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD:-password}
+      - TELEGRAF_SSH_PASSWORD=${TELEGRAF_SSH_PASSWORD:?TELEGRAF_SSH_PASSWORD must be set}
     ports:
       - "2222:22"  # Expose SSH port
     volumes:

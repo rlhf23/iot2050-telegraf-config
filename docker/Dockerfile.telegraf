@@ -8,8 +8,9 @@ RUN apt-get update && apt-get install -y \
 
 # Configure SSH
 ARG TELEGRAF_SSH_PASSWORD
+RUN if [ -z "$TELEGRAF_SSH_PASSWORD" ]; then echo "Error: TELEGRAF_SSH_PASSWORD must be set" && exit 1; fi
 RUN mkdir /run/sshd
-RUN echo "root:${TELEGRAF_SSH_PASSWORD:-password}" | chpasswd
+RUN echo "root:$TELEGRAF_SSH_PASSWORD" | chpasswd
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # Create log directory with correct permissions
