@@ -6,16 +6,25 @@ cd "$(dirname "$0")/.."
 
 echo "🚀 Setting up monitoring stack..."
 
-# Create necessary directories
-echo "Creating required directories..."
+# Create necessary directories for Grafana
+echo "Creating required Grafana directories..."
 mkdir -p config/grafana/provisioning/datasources
 mkdir -p config/grafana/provisioning/dashboards
-mkdir -p config/telegraf
 
-# Copy example config if it doesn't exist
-if [ ! -f config/telegraf/telegraf.conf ] && [ -f config/telegraf/telegraf.conf.example ]; then
-    echo "Creating telegraf.conf from example..."
-    cp config/telegraf/telegraf.conf.example config/telegraf/telegraf.conf
+# Install Telegraf configuration from example
+if [ -f config/telegraf/telegraf.conf.example ]; then
+    echo "Found config/telegraf/telegraf.conf.example. Installing to /etc/telegraf/telegraf.conf..."
+    if [ ! -d /etc/telegraf ]; then
+        echo "Creating /etc/telegraf directory..."
+        sudo mkdir -p /etc/telegraf
+    fi
+    sudo cp config/telegraf/telegraf.conf.example /etc/telegraf/telegraf.conf
+    sudo chown root:root /etc/telegraf/telegraf.conf # Ensure correct ownership
+    sudo chmod 644 /etc/telegraf/telegraf.conf      # Ensure correct permissions
+    echo "✅ Telegraf configuration installed to /etc/telegraf/telegraf.conf from example."
+else
+    echo "⚠️  WARNING: config/telegraf/telegraf.conf.example not found!"
+    echo "Telegraf will likely use a default or no configuration."
 fi
 
 # Get Docker GID
