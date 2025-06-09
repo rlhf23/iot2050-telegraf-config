@@ -36,7 +36,7 @@ jobs:
           use-tool-cache: true
 
       - name: Run cargo-tarpaulin
-        run: cargo tarpaulin --config .tarpaulin.toml
+        run: cargo tarpaulin --config .tarpaulin.toml -- --test-threads=1
         continue-on-error: false
 
       - name: Archive code coverage results

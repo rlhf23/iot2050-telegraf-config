@@ -13,7 +13,7 @@ echo "Running cargo test to ensure all tests pass..."
 cargo test
 
 echo "Running cargo tarpaulin to generate coverage reports..."
-cargo tarpaulin --config .tarpaulin.toml
+cargo tarpaulin --config .tarpaulin.toml -- --test-threads=1
 
 echo "Coverage reports have been generated in the 'coverage' directory."
 echo "Open coverage/tarpaulin-report.html in your browser to view the HTML report."
