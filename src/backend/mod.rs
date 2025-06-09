@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[cfg(test)]
 mod config_generator_test;
+pub mod deployment;
 mod format;
 #[cfg(test)]
 mod format_test;
