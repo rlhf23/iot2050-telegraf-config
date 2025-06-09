@@ -15,6 +15,8 @@ mod opcua_poller_test;
 pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
+#[cfg(test)]
+mod deployment_test;
 
 pub use format::OutputFormat;
 pub use ssh_utils::{check_service_status, ServiceType};

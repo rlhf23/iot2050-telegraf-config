@@ -46,6 +46,14 @@ pub struct IoTDeployer {
 }
 
 impl IoTDeployer {
+    /// Get the host for this deployer
+    pub fn host(&self) -> &str {
+        &self.config.host
+    }
+    /// Get the user for this deployer
+    pub fn user(&self) -> &str {
+        &self.config.user
+    }
     pub fn new(config: DeploymentConfig) -> Self {
         Self { config }
     }
@@ -292,7 +300,7 @@ impl IoTDeployer {
     }
 
     /// Create SSH session
-    fn create_ssh_session(&self) -> Result<Session, TelegrafError> {
+    pub(crate) fn create_ssh_session(&self) -> Result<Session, TelegrafError> {
         let tcp = TcpStream::connect((self.config.host.as_str(), self.config.port))
             .map_err(|e| TelegrafError::SshOperationError(format!("Failed to connect: {}", e)))?;
         
