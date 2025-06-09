@@ -16,6 +16,10 @@ pub enum TelegrafError {
     #[error("SSH error: {0}")]
     SshError(#[from] SshError),
 
+    #[error("SSH operation error: {0}")]
+    SshOperationError(String),
+
+
     #[error("Validation error: {0}")]
     ValidationError(String),
 
@@ -169,6 +173,8 @@ impl TelegrafError {
             TelegrafError::OpcUaTimeoutError(e) => format!("⚠️ OPC UA Timeout Error: {}\n\nThe OPC UA server did not respond in time. Please check the server status and network connectivity.", e),
             
             TelegrafError::OpcUaClientError(e) => format!("⚠️ OPC UA Client Error: {}", e),
+            
+            TelegrafError::SshOperationError(e) => format!("⚠️ SSH Operation Error: {}", e),
         }
     }
 }

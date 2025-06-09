@@ -1,11 +1,114 @@
-use clap::{Arg, ArgAction, Command};
+use clap::{Arg, ArgAction, Command, Subcommand};
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
+    backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig,
 };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate Telegraf configuration and manage OPC UA connections
+    Config,
+    /// Deploy monitoring stack to IoT devices
+    Deploy {
+        #[command(subcommand)]
+        action: DeployAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeployAction {
+    /// Provision a new IoT device with Docker and requirements
+    Provision {
+        /// Device IP address
+        host: String,
+        /// SSH username
+        #[arg(short, long, default_value = "admin")]
+        user: String,
+        /// SSH password
+        #[arg(short, long)]
+        password: Option<String>,
+        /// SSH private key file path
+        #[arg(short, long)]
+        key_file: Option<String>,
+        /// SSH port
+        #[arg(long, default_value = "22")]
+        port: u16,
+    },
+    /// Deploy monitoring stack to provisioned device
+    Setup {
+        /// Device IP address
+        host: String,
+        /// SSH username
+        #[arg(short, long, default_value = "admin")]
+        user: String,
+        /// SSH password
+        #[arg(short, long)]
+        password: Option<String>,
+        /// SSH private key file path
+        #[arg(short, long)]
+        key_file: Option<String>,
+        /// SSH port
+        #[arg(long, default_value = "22")]
+        port: u16,
+        /// Build images locally instead of on device
+        #[arg(long)]
+        build_local: bool,
+    },
+    /// Check deployment status
+    Status {
+        /// Device IP address
+        host: String,
+        /// SSH username
+        #[arg(short, long, default_value = "admin")]
+        user: String,
+        /// SSH password
+        #[arg(short, long)]
+        password: Option<String>,
+        /// SSH private key file path
+        #[arg(short, long)]
+        key_file: Option<String>,
+        /// SSH port
+        #[arg(long, default_value = "22")]
+        port: u16,
+    },
+    /// Start monitoring stack
+    Start {
+        /// Device IP address
+        host: String,
+        /// SSH username
+        #[arg(short, long, default_value = "admin")]
+        user: String,
+        /// SSH password
+        #[arg(short, long)]
+        password: Option<String>,
+        /// SSH private key file path
+        #[arg(short, long)]
+        key_file: Option<String>,
+        /// SSH port
+        #[arg(long, default_value = "22")]
+        port: u16,
+    },
+    /// Stop monitoring stack
+    Stop {
+        /// Device IP address
+        host: String,
+        /// SSH username
+        #[arg(short, long, default_value = "admin")]
+        user: String,
+        /// SSH password
+        #[arg(short, long)]
+        password: Option<String>,
+        /// SSH private key file path
+        #[arg(short, long)]
+        key_file: Option<String>,
+        /// SSH port
+        #[arg(long, default_value = "22")]
+        port: u16,
+    },
+}
 
 fn get_default_path() -> PathBuf {
     let mut path = std::env::current_exe().unwrap();
@@ -55,10 +158,151 @@ fn exit_with_error(error: impl std::fmt::Display) -> ! {
     wrap_up(1)
 }
 
+fn handle_deploy_command(matches: &clap::ArgMatches) {
+    match matches.subcommand() {
+        Some(("provision", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            
+            if let Err(e) = deployer.test_connection() {
+                exit_with_error(format!("Connection failed: {}", e));
+            }
+            
+            if let Err(e) = deployer.provision() {
+                exit_with_error(format!("Provisioning failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("setup", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let build_local = sub_matches.get_flag("build_local");
+            
+            if let Err(e) = deployer.test_connection() {
+                exit_with_error(format!("Connection failed: {}", e));
+            }
+            
+            if let Err(e) = deployer.deploy(build_local) {
+                exit_with_error(format!("Deployment failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("status", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            
+            if let Err(e) = deployer.status() {
+                exit_with_error(format!("Status check failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("start", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            
+            if let Err(e) = deployer.start() {
+                exit_with_error(format!("Start failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("stop", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            
+            if let Err(e) = deployer.stop() {
+                exit_with_error(format!("Stop failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        _ => {
+            eprintln!("No deployment action specified");
+            wrap_up(1);
+        }
+    }
+}
+
+fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
+    let host = matches.get_one::<String>("host").unwrap().clone();
+    let user = matches.get_one::<String>("iot_username").unwrap().clone();
+    
+    // Parse host:port - use default port 22 if not specified
+    let (hostname, port) = if host.contains(':') {
+        let parts: Vec<&str> = host.splitn(2, ':').collect();
+        let port = parts[1].parse().unwrap_or(22);
+        (parts[0].to_string(), port)
+    } else {
+        (host, 22)
+    };
+    
+    let mut config = DeploymentConfig::new(hostname, user).with_port(port);
+    
+    if let Some(password) = matches.get_one::<String>("iot_password") {
+        config = config.with_password(password.clone());
+    }
+    
+    if let Some(key_file) = matches.get_one::<String>("key_file") {
+        config = config.with_key_file(key_file.clone());
+    }
+    
+    config
+}
+
 fn main() {
     let matches = Command::new("IOT2050 config handler")
         .version("0.7")
-        .about("Generates a config file for Telegraf from XML files in the folder")
+        .about("Generates Telegraf configs and deploys monitoring stack to IoT devices")
+        .subcommand(
+            Command::new("deploy")
+                .about("Deploy monitoring stack to IoT devices")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    Command::new("provision")
+                        .about("Provision a new IoT device with Docker and requirements")
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("setup")
+                        .about("Deploy monitoring stack to provisioned device")
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(Arg::new("build_local").long("build-local").action(ArgAction::SetTrue).help("Build images locally instead of on device"))
+                )
+                .subcommand(
+                    Command::new("status")
+                        .about("Check deployment status")
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("start")
+                        .about("Start monitoring stack")
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("stop")
+                        .about("Stop monitoring stack")
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+        )
         .arg(
             Arg::new("folder")
             .short('f')
@@ -180,7 +424,13 @@ fn main() {
         )
         .get_matches();
 
-    // print the current config
+    // Handle deployment commands
+    if let Some(deploy_matches) = matches.subcommand_matches("deploy") {
+        handle_deploy_command(deploy_matches);
+        return;
+    }
+
+    // print the current config (for legacy config mode)
     print_config(&matches);
 
     let mut config = TelegrafConfig {

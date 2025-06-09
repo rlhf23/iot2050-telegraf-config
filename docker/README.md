@@ -7,6 +7,7 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
 - **Multi-architecture**: Works on x86_64 (development) and ARM64 (production)
 - **Self-contained**: Versioned configurations and automated setup
 - **Production-ready**: Secure defaults and persistent storage
+- **Automated provisioning**: Scripts for device setup and deployment
 
 ## Components
 
@@ -22,7 +23,7 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
   docker run --privileged --rm tonistiigi/binfmt --install all
   ```
 
-## Quick Start
+## Quick Start (Local Development)
 
 1. **Initialize the environment**:
    ```bash
@@ -45,9 +46,71 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    ./scripts/stop.sh
    ```
 
-## Deployment to IOT2050
+## IoT Device Deployment (Recommended)
 
-### Option 1: Build on Device (Simpler, requires internet)
+### Step 1: Provision the Device
+
+Use the `init.sh` script to provision a new IoT device with Docker and required dependencies:
+
+```bash
+# Basic usage
+./scripts/init.sh 192.168.1.100
+
+# With custom SSH settings
+./scripts/init.sh -u iot2050 -p 2222 192.168.1.100
+
+# With SSH key
+./scripts/init.sh --key ~/.ssh/iot_key 192.168.1.100
+
+# See all options
+./scripts/init.sh --help
+```
+
+**What it does:**
+- Installs Docker and Docker Compose
+- Sets up user permissions
+- Configures the system for monitoring stack deployment
+- Works with Debian/Armbian based systems
+
+### Step 2: Deploy the Stack
+
+Use the `deploy.sh` script to build locally and deploy to the provisioned device:
+
+```bash
+# Build and deploy in one command
+./scripts/deploy.sh 192.168.1.100
+
+# With custom SSH settings
+./scripts/deploy.sh -u iot2050 -p 2222 192.168.1.100
+
+# Build only (for later deployment)
+./scripts/deploy.sh --build-only
+
+# Deploy without rebuilding
+./scripts/deploy.sh --no-build 192.168.1.100
+
+# See all options
+./scripts/deploy.sh --help
+```
+
+**What it does:**
+- Builds Docker images locally (with ARM64 support)
+- Transfers images and configuration to the device
+- Loads images on the remote device
+- Sets up and starts the monitoring stack
+- Reports service status and credentials
+
+### Step 3: Access Your Services
+
+After deployment, access your services at:
+- **Grafana**: http://[device-ip]:3000
+- **InfluxDB**: http://[device-ip]:8086
+
+Credentials will be displayed after successful deployment.
+
+## Manual Deployment Methods
+
+### Option 1: Build on Device (Requires Internet)
 
 1. **SSH into your IOT2050**:
    ```bash
@@ -68,7 +131,7 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    - Slower than pre-built images
    - Needs sufficient disk space for build cache
 
-### Option 2: Pre-build and Transfer (Offline-friendly)
+### Option 2: Manual Pre-build and Transfer
 
 1. **Build and save images** (on your dev machine):
    ```bash
@@ -94,10 +157,6 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    ./scripts/setup.sh
    ./scripts/start.sh
    ```
-
-### Access Remotely
-- Grafana: http://[device-ip]:3000
-- InfluxDB: http://[device-ip]:8086
 
 ## Data Management
 
