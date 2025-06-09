@@ -228,12 +228,20 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
 
 fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     let host = matches.get_one::<String>("host").unwrap().clone();
-    let user = matches.get_one::<String>("user").unwrap().clone();
-    let port = matches.get_one::<String>("port").unwrap().parse().unwrap_or(22);
+    let user = matches.get_one::<String>("iot_username").unwrap().clone();
     
-    let mut config = DeploymentConfig::new(host, user).with_port(port);
+    // Parse host:port - use default port 22 if not specified
+    let (hostname, port) = if host.contains(':') {
+        let parts: Vec<&str> = host.splitn(2, ':').collect();
+        let port = parts[1].parse().unwrap_or(22);
+        (parts[0].to_string(), port)
+    } else {
+        (host, 22)
+    };
     
-    if let Some(password) = matches.get_one::<String>("password") {
+    let mut config = DeploymentConfig::new(hostname, user).with_port(port);
+    
+    if let Some(password) = matches.get_one::<String>("iot_password") {
         config = config.with_password(password.clone());
     }
     
@@ -256,48 +264,43 @@ fn main() {
                 .subcommand(
                     Command::new("provision")
                         .about("Provision a new IoT device with Docker and requirements")
-                        .arg(Arg::new("host").help("Device IP address").required(true))
-                        .arg(Arg::new("user").short('u').long("user").default_value("admin").help("SSH username"))
-                        .arg(Arg::new("password").short('p').long("password").help("SSH password"))
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(Arg::new("port").long("port").default_value("22").help("SSH port"))
                 )
                 .subcommand(
                     Command::new("setup")
                         .about("Deploy monitoring stack to provisioned device")
-                        .arg(Arg::new("host").help("Device IP address").required(true))
-                        .arg(Arg::new("user").short('u').long("user").default_value("admin").help("SSH username"))
-                        .arg(Arg::new("password").short('p').long("password").help("SSH password"))
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(Arg::new("port").long("port").default_value("22").help("SSH port"))
                         .arg(Arg::new("build_local").long("build-local").action(ArgAction::SetTrue).help("Build images locally instead of on device"))
                 )
                 .subcommand(
                     Command::new("status")
                         .about("Check deployment status")
-                        .arg(Arg::new("host").help("Device IP address").required(true))
-                        .arg(Arg::new("user").short('u').long("user").default_value("admin").help("SSH username"))
-                        .arg(Arg::new("password").short('p').long("password").help("SSH password"))
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(Arg::new("port").long("port").default_value("22").help("SSH port"))
                 )
                 .subcommand(
                     Command::new("start")
                         .about("Start monitoring stack")
-                        .arg(Arg::new("host").help("Device IP address").required(true))
-                        .arg(Arg::new("user").short('u').long("user").default_value("admin").help("SSH username"))
-                        .arg(Arg::new("password").short('p').long("password").help("SSH password"))
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(Arg::new("port").long("port").default_value("22").help("SSH port"))
                 )
                 .subcommand(
                     Command::new("stop")
                         .about("Stop monitoring stack")
-                        .arg(Arg::new("host").help("Device IP address").required(true))
-                        .arg(Arg::new("user").short('u').long("user").default_value("admin").help("SSH username"))
-                        .arg(Arg::new("password").short('p').long("password").help("SSH password"))
+                        .arg(Arg::new("host").help("Device IP address (host or host:port)").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(Arg::new("port").long("port").default_value("22").help("SSH port"))
                 )
         )
         .arg(

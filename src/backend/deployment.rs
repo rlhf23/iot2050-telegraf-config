@@ -91,26 +91,9 @@ impl IoTDeployer {
         
         if !docker_installed {
             println!("🐳 Installing Docker...");
-            
-            // Add Docker's GPG key
             self.run_command(
                 &session,
-                "curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg",
-                "Adding Docker GPG key"
-            )?;
-            
-            // Add Docker repository
-            self.run_command(
-                &session,
-                r#"echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"#,
-                "Adding Docker repository"
-            )?;
-            
-            // Update and install Docker
-            self.run_command(&session, "sudo apt-get update", "Updating package lists")?;
-            self.run_command(
-                &session,
-                "sudo apt-get install -y docker-ce docker-ce-cli containerd.io",
+                "sudo apt-get install -y docker.io",
                 "Installing Docker"
             )?;
         } else {
@@ -124,14 +107,8 @@ impl IoTDeployer {
             println!("📦 Installing Docker Compose...");
             self.run_command(
                 &session,
-                r#"sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.1/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose"#,
-                "Downloading Docker Compose"
-            )?;
-            
-            self.run_command(
-                &session,
-                "sudo chmod +x /usr/local/bin/docker-compose",
-                "Making Docker Compose executable"
+                "sudo apt-get install -y docker-compose",
+                "Installing Docker Compose"
             )?;
         } else {
             println!("✅ Docker Compose is already installed");
@@ -177,32 +154,31 @@ impl IoTDeployer {
 
     /// Deploy using remote build approach
     fn deploy_remote_build(&self, session: &Session) -> Result<(), TelegrafError> {
-        // Clone or update the repository
-        let repo_url = "https://github.com/rlhf23/iot2050-telegraf-config.git";
+        // Download docker folder using git archive
+        println!("📥 Downloading docker configuration...");
         
-        // Check if repo already exists
-        let repo_exists = self.check_command(session, "test -d ~/monitoring/.git")?;
-        
-        if repo_exists {
-            println!("📥 Updating existing repository...");
-            self.run_command(
-                session,
-                "cd ~/monitoring && git pull origin docker-everything",
-                "Updating repository"
-            )?;
-        } else {
-            println!("📥 Cloning repository...");
-            self.run_command(
-                session,
-                &format!("git clone -b docker-everything {} ~/monitoring", repo_url),
-                "Cloning repository"
-            )?;
-        }
-        
-        // Change to docker directory and make scripts executable
+        // Remove existing monitoring directory if it exists
         self.run_command(
             session,
-            "cd ~/monitoring/docker && chmod +x scripts/*.sh",
+            "rm -rf ~/monitoring",
+            "Cleaning up existing monitoring directory"
+        )?;
+        
+        // Create monitoring directory
+        self.run_command(session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
+        
+        // Download and extract docker folder from the repository
+        // Using docker-everything branch since that's where the docker folder is
+        self.run_command(
+            session,
+            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/docker-everything.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-docker-everything/docker",
+            "Downloading docker configuration"
+        )?;
+        
+        // Change to monitoring directory and make scripts executable
+        self.run_command(
+            session,
+            "cd ~/monitoring && chmod +x scripts/*.sh",
             "Making scripts executable"
         )?;
         
@@ -210,7 +186,7 @@ impl IoTDeployer {
         println!("⚙️  Running setup script...");
         self.run_command(
             session,
-            "cd ~/monitoring/docker && ./scripts/setup.sh",
+            "cd ~/monitoring && ./scripts/setup.sh",
             "Running setup"
         )?;
         
@@ -218,14 +194,14 @@ impl IoTDeployer {
         println!("🚀 Starting monitoring stack...");
         self.run_command(
             session,
-            "cd ~/monitoring/docker && ./scripts/start.sh",
+            "cd ~/monitoring && ./scripts/start.sh",
             "Starting monitoring stack"
         )?;
         
         // Get service status
         println!("📊 Checking service status...");
         let mut channel = session.channel_session()?;
-        channel.exec("cd ~/monitoring/docker && docker-compose ps")?;
+        channel.exec("cd ~/monitoring && docker-compose ps")?;
         
         let mut output = String::new();
         channel.read_to_string(&mut output)?;
@@ -254,7 +230,7 @@ impl IoTDeployer {
         
         // Check container status
         let mut channel = session.channel_session()?;
-        channel.exec("cd ~/monitoring/docker && docker-compose ps")?;
+        channel.exec("cd ~/monitoring && docker-compose ps")?;
         
         let mut output = String::new();
         channel.read_to_string(&mut output)?;
@@ -265,7 +241,7 @@ impl IoTDeployer {
         
         // Get credentials
         let mut channel = session.channel_session()?;
-        channel.exec("cd ~/monitoring/docker && cat .env | grep -E '(GRAFANA_ADMIN_|INFLUXDB_)' | grep -E '(USER|PASSWORD|TOKEN)='")?;
+        channel.exec("cd ~/monitoring && cat .env | grep -E '(GRAFANA_ADMIN_|INFLUXDB_)' | grep -E '(USER|PASSWORD|TOKEN)='")?;
         
         let mut credentials = String::new();
         channel.read_to_string(&mut credentials)?;
@@ -291,7 +267,7 @@ impl IoTDeployer {
         
         self.run_command(
             &session,
-            "cd ~/monitoring/docker && ./scripts/stop.sh",
+            "cd ~/monitoring && ./scripts/stop.sh",
             "Stopping monitoring stack"
         )?;
         
@@ -307,7 +283,7 @@ impl IoTDeployer {
         
         self.run_command(
             &session,
-            "cd ~/monitoring/docker && ./scripts/start.sh",
+            "cd ~/monitoring && ./scripts/start.sh",
             "Starting monitoring stack"
         )?;
         
