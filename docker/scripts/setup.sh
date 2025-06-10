@@ -26,15 +26,15 @@ if [ ! -f .env ]; then
     echo "ℹ️ .env file not found. New credentials will be generated."
     
     # Only ask about removing volumes if they exist
-    if docker volume ls | grep -q 'docker_influxdb_data\|docker_grafana_data\|docker_prometheus_data'; then
-        echo "To ensure new credentials (especially for InfluxDB and Grafana) take effect,"
+    if docker volume ls | grep -q 'influxdb_data\|grafana_data\|prometheus_data\|monitoring_influxdb_data\|monitoring_grafana_data\|monitoring_prometheus_data'; then
+        echo "To ensure new credentials (especially for InfluxDB, Grafana, and Prometheus) take effect,"
         echo "it's recommended to remove existing data volumes."
-        read -r -p "Do you want to remove 'docker_influxdb_data' and 'docker_grafana_data' volumes? (yes/NO): " confirmation
+        read -r -p "Do you want to remove influxdb_data, grafana_data, prometheus_data (with or without 'monitoring_' prefix) volumes? (yes/NO): " confirmation
         if [[ "$confirmation" =~ ^[Yy][Ee][Ss]$ ]]; then
-            echo "Attempting to remove InfluxDB data volume..."
-            docker volume rm docker_influxdb_data 2>/dev/null || echo "InfluxDB data volume not found or could not be removed."
-            echo "Attempting to remove Grafana data volume..."
-            docker volume rm docker_grafana_data 2>/dev/null || echo "Grafana data volume not found or could not be removed."
+            for v in influxdb_data grafana_data prometheus_data monitoring_influxdb_data monitoring_grafana_data monitoring_prometheus_data; do
+                echo "Attempting to remove $v..."
+                docker volume rm "$v" 2>/dev/null || echo "$v not found or could not be removed."
+            done
             echo "✅ Volumes removal process finished."
         else
             echo "Skipping volume removal. Existing data will be preserved."
