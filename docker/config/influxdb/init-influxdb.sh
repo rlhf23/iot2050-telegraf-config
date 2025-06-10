@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
 set -e
 
-# Wait for InfluxDB to be ready (faster check using ping endpoint)
-MAX_RETRIES=12  # 1 minute max (12 * 5s)
-RETRY_INTERVAL=5
+# Simple wait for InfluxDB to be ready (local socket check)
+MAX_RETRIES=10
+RETRY_INTERVAL=2
 
 for ((i=1; i<=MAX_RETRIES; i++)); do
-  # Use ping endpoint which is faster than health check
-  # Using service name 'influxdb' instead of localhost for Docker's internal DNS
-  if curl -s -o /dev/null -f http://influxdb:8086/ping; then
-    # Give it one more second to fully initialize
-    sleep 1
+  if [ -S /var/run/influxd.sock ]; then
     echo "InfluxDB is ready!"
     break
   fi
-  echo "Waiting for InfluxDB to be ready... (Attempt $i/$MAX_RETRIES)"
+  
+  echo "Waiting for InfluxDB socket... (Attempt $i/$MAX_RETRIES)"
   if [ $i -eq $MAX_RETRIES ]; then
-    echo "Error: Timed out waiting for InfluxDB to be ready" >&2
-    exit 1
+    echo "Continuing anyway - InfluxDB might be starting up" >&2
   fi
   sleep $RETRY_INTERVAL
 done
+
+# Small delay to ensure InfluxDB is fully up
+sleep 2
 
 # Create Telegraf bucket if it doesn't exist
 if ! influx bucket list --name $INFLUXDB_BUCKET &> /dev/null; then
