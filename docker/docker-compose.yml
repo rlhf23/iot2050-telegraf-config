@@ -59,7 +59,7 @@ services:
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD", "telegraf", "--test", "--config", "/etc/telegraf/telegraf.conf"]
+      test: ["CMD", "sh", "-c", "telegraf --test --config /etc/telegraf/telegraf.conf || sleep 30; exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
