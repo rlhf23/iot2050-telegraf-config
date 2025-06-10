@@ -1,10 +1,21 @@
 #!/usr/bin/env bash
 set -e
 
-# Wait for InfluxDB to be ready
-until curl -s http://localhost:8086/health; do
-  echo "Waiting for InfluxDB to be ready..."
-  sleep 5
+# Wait for InfluxDB to be ready with timeout (5 minutes max)
+MAX_RETRIES=60
+RETRY_INTERVAL=5
+
+for ((i=1; i<=MAX_RETRIES; i++)); do
+  if curl -s -o /dev/null http://localhost:8086/health; then
+    echo "InfluxDB is ready!"
+    break
+  fi
+  echo "Waiting for InfluxDB to be ready... (Attempt $i/$MAX_RETRIES)"
+  if [ $i -eq $MAX_RETRIES ]; then
+    echo "Error: Timed out waiting for InfluxDB to be ready" >&2
+    exit 1
+  fi
+  sleep $RETRY_INTERVAL
 done
 
 # Create Telegraf bucket if it doesn't exist

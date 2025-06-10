@@ -26,10 +26,11 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+      start_period: 30s
 
   telegraf:
     image: telegraf:1.30 # Using a specific version for stability
@@ -59,10 +60,11 @@ services:
     networks:
       - monitoring
     healthcheck:
-      test: ["CMD", "sh", "-c", "telegraf --test --config /etc/telegraf/telegraf.conf || sleep 30; exit 1"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "sh", "-c", "telegraf --test --config /etc/telegraf/telegraf.conf || sleep 10; exit 1"]
+      interval: 60s
+      timeout: 30s
       retries: 3
+      start_period: 60s
 
   grafana:
     image: grafana/grafana:latest
