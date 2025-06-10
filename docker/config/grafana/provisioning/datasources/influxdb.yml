@@ -10,6 +10,7 @@ datasources:
       organization: ${INFLUXDB_ORG}
       defaultBucket: ${INFLUXDB_BUCKET}
       tlsSkipVerify: true
+      version: 'Flux'
     secureJsonData:
       token: ${INFLUXDB_TOKEN}
     version: 1
