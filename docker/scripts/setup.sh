@@ -6,11 +6,6 @@ cd "$(dirname "$0")/.."
 
 echo "🚀 Setting up monitoring stack..."
 
-# Create necessary directories for Grafana
-echo "Creating required Grafana directories..."
-mkdir -p config/grafana/provisioning/datasources
-mkdir -p config/grafana/provisioning/dashboards
-
 # Install Telegraf configuration from example
 if [ -f config/telegraf/telegraf.conf.example ]; then
     echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf/telegraf.conf..."
@@ -31,7 +26,7 @@ if [ ! -f .env ]; then
     echo "ℹ️ .env file not found. New credentials will be generated."
     
     # Only ask about removing volumes if they exist
-    if docker volume ls | grep -q 'docker_influxdb_data\|docker_grafana_data'; then
+    if docker volume ls | grep -q 'docker_influxdb_data\|docker_grafana_data\|docker_prometheus_data'; then
         echo "To ensure new credentials (especially for InfluxDB and Grafana) take effect,"
         echo "it's recommended to remove existing data volumes."
         read -r -p "Do you want to remove 'docker_influxdb_data' and 'docker_grafana_data' volumes? (yes/NO): " confirmation
