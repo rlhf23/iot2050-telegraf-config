@@ -142,7 +142,7 @@ impl IoTDeployer {
 
     /// Deploy the monitoring stack to the device
     pub fn deploy(&self, build_locally: bool) -> Result<(), TelegrafError> {
-        println!("🚀 Starting deployment...");
+        println!("🚀 Starting setup...");
         
         let session = self.create_ssh_session()?;
         
@@ -156,7 +156,7 @@ impl IoTDeployer {
             self.deploy_remote_build(&session)?;
         }
         
-        println!("✅ Deployment completed successfully!");
+        println!("✅ Setup completed successfully!");
         Ok(())
     }
 
@@ -198,6 +198,7 @@ impl IoTDeployer {
             "Running setup"
         )?;
         
+        //TODO:skipped auto-start
         // Start the monitoring stack
         // println!("🚀 Starting monitoring stack...");
         // self.run_command(
@@ -207,16 +208,16 @@ impl IoTDeployer {
         // )?;
         
         // Get service status
-        println!("📊 Checking service status...");
-        let mut channel = session.channel_session()?;
-        channel.exec("cd ~/monitoring && docker-compose ps")?;
+        // println!("📊 Checking service status...");
+        // let mut channel = session.channel_session()?;
+        // channel.exec("cd ~/monitoring && docker-compose ps")?;
         
-        let mut output = String::new();
-        channel.read_to_string(&mut output)?;
-        channel.wait_close()?;
+        // let mut output = String::new();
+        // channel.read_to_string(&mut output)?;
+        // channel.wait_close()?;
         
-        println!("Service Status:");
-        println!("{}", output);
+        // println!("Service Status:");
+        // println!("{}", output);
         
         Ok(())
     }
