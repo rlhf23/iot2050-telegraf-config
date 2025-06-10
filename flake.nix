@@ -39,6 +39,7 @@
             rustup
             rust-analyzer
             cargo-machete
+            cargo-insta
             pkg-config
             zlib
             openssl
