@@ -794,6 +794,16 @@ pub fn backup_grafana_config(
     Ok(output.join("\n"))
 }
 
+/// Gets the status of Telegraf, checking both containerized and non-containerized instances
+///
+/// # Arguments
+/// * `remote_host` - The remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+///
+/// # Returns
+/// * `Ok(String)` - Detailed status information about Telegraf
+/// * `Err(TelegrafError)` - If there was an error checking the status
 pub fn get_telegraf_status(
     remote_host: &str,
     username: &str,
@@ -808,24 +818,29 @@ pub fn get_telegraf_status(
         stream_timeout: 10,    // Status output is usually small
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
+    println!("SSH connection established, checking Telegraf status");
 
-    println!("SSH connection established, running status command");
-
-    // Use service command with non-interactive sudo
-    let command = format!("echo '{}' | sudo -S service telegraf status", password);
-    println!("Executing command with non-interactive sudo");
-
-    let status = execute_ssh_command(&session, &command)?;
-    println!(
-        "Telegraf status retrieved successfully, length: {}",
-        status.len()
-    );
-
-    if status.is_empty() {
-        println!("Warning: Empty status returned!");
+    // Check if Telegraf is running in a container
+    let is_containerized = is_telegraf_containerized(&session).unwrap_or(false);
+    
+    if is_containerized {
+        println!("Detected containerized Telegraf");
+        let (is_healthy, status_msg) = check_containerized_telegraf_status(&session)?;
+        let status = if is_healthy { "running" } else { "degraded" };
+        Ok(format!("Telegraf container is {}\n{}", status, status_msg))
+    } else {
+        println!("Checking non-containerized Telegraf service");
+        // Use service command with non-interactive sudo for non-containerized Telegraf
+        let command = format!("echo '{}' | sudo -S service telegraf status || true", password);
+        let status = execute_ssh_command(&session, &command)?;
+        
+        if status.is_empty() {
+            println!("Warning: Empty status returned!");
+            Ok("Telegraf service status unknown (empty response)".to_string())
+        } else {
+            Ok(status)
+        }
     }
-
-    Ok(status)
 }
 
 /// Fetches logs from Telegraf when running as a Docker container
@@ -1029,44 +1044,92 @@ pub fn check_influxdb_status(
     }
 }
 
-/// Checks if a containerized InfluxDB instance is responding
+/// Checks the status of a containerized service
 ///
 /// # Arguments
 /// * `session` - Active SSH session
+/// * `container_name` - Name of the container to check
+/// * `health_check_cmd` - Command to run inside the container to check health (empty string for no check)
+/// * `service_name` - Human-readable name of the service (for status messages)
 ///
 /// # Returns
 /// * `Ok((bool, String))` - A tuple with health status and status message
 /// * `Err(TelegrafError)` - If there's an error executing the check
-fn check_containerized_influxdb_status(session: &Session) -> Result<(bool, String), TelegrafError> {
-    // First check if the container is running
-    let container_status_cmd = "docker inspect --format='{{.State.Running}}' influxdb 2>/dev/null || echo 'false'";
-    let container_running = execute_ssh_command(session, container_status_cmd)?;
+fn check_container_status(
+    session: &Session,
+    container_name: &str,
+    health_check_cmd: &str,
+    service_name: &str,
+) -> Result<(bool, String), TelegrafError> {
+    // Check if container is running
+    let container_status_cmd = format!(
+        "docker inspect --format='{{{{.State.Running}}}}' {} 2>/dev/null || echo 'false'",
+        container_name
+    );
+    let container_running = execute_ssh_command(session, &container_status_cmd)?;
     
     if container_running.trim() != "true" {
-        return Ok((false, "InfluxDB container is not running".to_string()));
+        return Ok((false, format!("{} container is not running", service_name)));
     }
     
-    // If container is running, try to ping InfluxDB
-    let ping_cmd = "docker exec influxdb influx ping";
-    let output = execute_ssh_command(session, ping_cmd);
+    // Get container logs for debugging
+    let logs_cmd = format!("docker logs --tail 5 {} 2>&1 || echo 'Failed to get logs'", container_name);
+    let logs = execute_ssh_command(session, &logs_cmd)
+        .unwrap_or_else(|_| "Failed to retrieve logs".to_string());
     
-    // Get the last 5 lines of container logs for debugging
-    let logs_cmd = "docker logs --tail 5 influxdb 2>&1 || echo 'Failed to get logs'";
-    let logs = execute_ssh_command(session, logs_cmd).unwrap_or_else(|_| "Failed to retrieve logs".to_string());
+    // Run the health check command if provided
+    let health_status = if !health_check_cmd.is_empty() {
+        let full_cmd = format!("docker exec {} {}", container_name, health_check_cmd);
+        match execute_ssh_command(session, &full_cmd) {
+            Ok(output) if output.trim() == "OK" => {
+                (true, format!("{} container is running and healthy", service_name))
+            }
+            Ok(output) => {
+                (false, format!("{} container is running but health check failed: {}", service_name, output))
+            }
+            Err(e) => {
+                // If health check failed, get more detailed logs
+                let detailed_logs_cmd = format!("docker logs --tail 20 {} 2>&1", container_name);
+                let detailed_logs = execute_ssh_command(session, &detailed_logs_cmd)
+                    .unwrap_or_else(|_| "Failed to retrieve detailed logs".to_string());
+                
+                (false, format!(
+                    "{} container health check error: {}\nRecent logs:\n{}",
+                    service_name, e, detailed_logs
+                ))
+            }
+        }
+    } else {
+        // If no health check command, just report the container is running
+        (true, format!("{} container is running", service_name))
+    };
     
-    match output {
-        Ok(output) if output.trim() == "OK" => {
-            Ok((true, format!("InfluxDB container is running and responding. Recent logs:\n{}", logs)))
-        }
-        Ok(output) => {
-            Ok((false, format!("InfluxDB container is running but not responding correctly: {}\nRecent logs:\n{}", output, logs)))
-        }
-        Err(e) => {
-            // If ping failed, include the error and logs in the message
-            let logs_cmd = "docker logs --tail 20 influxdb 2>&1 | tail -n 20";
-            let logs = execute_ssh_command(session, logs_cmd).unwrap_or_else(|_| "Failed to retrieve logs".to_string());
-            
-            Ok((false, format!("Failed to ping InfluxDB container: {}\nLast logs:\n{}", e, logs)))
-        }
-    }
+    // Always include the recent logs in the status
+    let status_message = format!(
+        "{}\nRecent logs:\n{}",
+        health_status.1,
+        logs
+    );
+    
+    Ok((health_status.0, status_message))
+}
+
+/// Checks the status of a containerized InfluxDB instance
+fn check_containerized_influxdb_status(session: &Session) -> Result<(bool, String), TelegrafError> {
+    check_container_status(
+        session,
+        "influxdb",
+        "influx ping",
+        "InfluxDB"
+    )
+}
+
+/// Checks the status of a containerized Telegraf instance
+fn check_containerized_telegraf_status(session: &Session) -> Result<(bool, String), TelegrafError> {
+    check_container_status(
+        session,
+        "telegraf",
+        "pgrep -x telegraf",
+        "Telegraf"
+    )
 }
