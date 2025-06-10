@@ -3,10 +3,7 @@
 
 services:
   influxdb:
-    image: influxdb:2.7
-    command: 
-      - --http-bind-address=:8086
-      - --log-level=warn
+    image: influxdb:2
     container_name: influxdb
     env_file:
       - .env
@@ -14,7 +11,6 @@ services:
       - "8086:8086"
     volumes:
       - influxdb_data:/var/lib/influxdb2
-      - ./config/influxdb/init-influxdb.sh:/docker-entrypoint-initdb.d/init-influxdb.sh
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER}
@@ -23,7 +19,6 @@ services:
       - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
-      - INFLUXD_HTTP_BIND_ADDRESS=:8086
       - INFLUXD_LOGGING_LEVEL=warn
     networks:
       - monitoring
@@ -33,10 +28,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
   telegraf:
     image: telegraf:1.30 # Using a specific version for stability
