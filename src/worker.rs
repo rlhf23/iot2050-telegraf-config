@@ -114,7 +114,7 @@ impl WorkerHandle {
                             let ssh_handle = std::thread::spawn(move || {
                                 ssh_utils::send_and_restart_telegraf_with_progress(
                                     &config_clone.folder.join("telegraf.conf"),
-                                    "/etc/telegraf/telegraf.conf",
+                                    "telegraf/telegraf.conf",
                                     &config_clone.iot_host,
                                     &config_clone.iot_username,
                                     &config_clone.iot_password,

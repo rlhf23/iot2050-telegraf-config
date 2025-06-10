@@ -378,7 +378,7 @@ impl ConfigGenerator {
 
         ssh_utils::send_and_restart_telegraf(
             &config_path,
-            "/etc/telegraf/telegraf.conf",
+            "telegraf/telegraf.conf",
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,

@@ -51,12 +51,13 @@ pub fn format_config_header(
     let output_config = match output_format {
         OutputFormat::InfluxDB => format!(
             r#"# Configuration for sending metrics to InfluxDB 2.0
+# Output to InfluxDB
 [[outputs.influxdb_v2]]
-  urls = ["http://127.0.0.1:8086"]
-  token = "{}"
-  organization = "org"
-  bucket = "{}""#,
-            influx_token, bucket_name
+  urls = ["http://influxdb:8086"]
+  token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
+  organization = "${{INFLUXDB_ORG}}"
+  bucket = "${{INFLUXDB_BUCKET}}"
+"#,
         ),
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
 [[outputs.prometheus_client]]
@@ -135,10 +136,6 @@ pub fn format_config_header(
   # debug = false
   ## Log only error level messages.
   # quiet = false
-
-  logfile = "/var/log/telegraf/telegraf.log"
-  logfile_rotation_max_size = "25MB"
-  logfile_rotation_max_archives = 4
 
   hostname = ""
   omit_hostname = false
