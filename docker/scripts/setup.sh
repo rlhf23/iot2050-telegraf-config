@@ -13,15 +13,11 @@ mkdir -p config/grafana/provisioning/dashboards
 
 # Install Telegraf configuration from example
 if [ -f config/telegraf/telegraf.conf.example ]; then
-    echo "Found config/telegraf/telegraf.conf.example. Installing to /etc/telegraf/telegraf.conf..."
-    if [ ! -d /etc/telegraf ]; then
-        echo "Creating /etc/telegraf directory..."
-        sudo mkdir -p /etc/telegraf
-    fi
-    sudo cp config/telegraf/telegraf.conf.example /etc/telegraf/telegraf.conf
-    sudo chown root:root /etc/telegraf/telegraf.conf # Ensure correct ownership
-    sudo chmod 644 /etc/telegraf/telegraf.conf      # Ensure correct permissions
-    echo "✅ Telegraf configuration installed to /etc/telegraf/telegraf.conf from example."
+    echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf-config/telegraf.conf..."
+    mkdir -p ~/telegraf-config
+    cp config/telegraf/telegraf.conf.example ~/telegraf-config/telegraf.conf
+    chmod 644 ~/telegraf-config/telegraf.conf      # Ensure correct permissions
+    echo "✅ Telegraf configuration installed to ~/telegraf-config/telegraf.conf from example."
 else
     echo "⚠️  WARNING: config/telegraf/telegraf.conf.example not found!"
     echo "Telegraf will likely use a default or no configuration."
