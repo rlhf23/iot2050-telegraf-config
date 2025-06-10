@@ -1050,15 +1050,19 @@ fn check_containerized_influxdb_status(session: &Session) -> Result<(bool, Strin
     let ping_cmd = "docker exec influxdb influx ping";
     let output = execute_ssh_command(session, ping_cmd);
     
+    // Get the last 5 lines of container logs for debugging
+    let logs_cmd = "docker logs --tail 5 influxdb 2>&1 || echo 'Failed to get logs'";
+    let logs = execute_ssh_command(session, logs_cmd).unwrap_or_else(|_| "Failed to retrieve logs".to_string());
+    
     match output {
         Ok(output) if output.trim() == "OK" => {
-            Ok((true, "InfluxDB container is running and responding".to_string()))
+            Ok((true, format!("InfluxDB container is running and responding. Recent logs:\n{}", logs)))
         }
         Ok(output) => {
-            Ok((false, format!("InfluxDB container is running but not responding correctly: {}", output)))
+            Ok((false, format!("InfluxDB container is running but not responding correctly: {}\nRecent logs:\n{}", output, logs)))
         }
         Err(e) => {
-            // If ping failed, try to get container logs
+            // If ping failed, include the error and logs in the message
             let logs_cmd = "docker logs --tail 20 influxdb 2>&1 | tail -n 20";
             let logs = execute_ssh_command(session, logs_cmd).unwrap_or_else(|_| "Failed to retrieve logs".to_string());
             
