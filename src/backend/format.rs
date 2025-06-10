@@ -214,7 +214,6 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   connect_fail_behavior = "ignore"
   connect_timeout = "300s"
   request_timeout = "10s"
-  session_timeout = "20m"
   security_policy = "Basic256Sha256"
   security_mode = "SignAndEncrypt"
   certificate = ""
