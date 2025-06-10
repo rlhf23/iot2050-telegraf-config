@@ -4,7 +4,9 @@
 services:
   influxdb:
     image: influxdb:2.7
-    command: influxd --http-bind-address=:8086
+    command: 
+      - --http-bind-address=:8086
+      - --log-level=warn
     container_name: influxdb
     env_file:
       - .env
@@ -22,12 +24,16 @@ services:
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
       - INFLUXD_HTTP_BIND_ADDRESS=:8086
+      - INFLUXD_LOGGING_LEVEL=warn
     networks:
       - monitoring
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
       interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
