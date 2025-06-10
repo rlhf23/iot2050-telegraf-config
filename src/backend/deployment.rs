@@ -338,8 +338,17 @@ impl IoTDeployer {
     fn run_command(&self, session: &Session, command: &str, description: &str) -> Result<(), TelegrafError> {
         println!("🔧 {}", description);
         
+        // Check if this is a sudo command and we have a password
+        let command = if command.contains("sudo ") && self.config.password.is_some() {
+            // Use the -S flag to read password from stdin
+            let password = self.config.password.as_ref().unwrap();
+            format!("echo '{}' | sudo -S {}", password, command.replace("sudo ", ""))
+        } else {
+            command.to_string()
+        };
+        
         let mut channel = session.channel_session()?;
-        channel.exec(command)?;
+        channel.exec(&command)?;
         
         let mut output = String::new();
         channel.read_to_string(&mut output)?;
