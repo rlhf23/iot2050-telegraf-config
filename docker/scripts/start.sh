@@ -8,8 +8,8 @@ cd "$(dirname "$0")/.."
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ Error: .env not found. Run setup.sh first."
-    exit 1
+  echo "❌ Error: .env not found. Run setup.sh first."
+  exit 1
 fi
 
 # Load environment variables
@@ -21,24 +21,24 @@ set +a
 docker-compose -f docker-compose.yml up -d
 
 # Wait for all running containers to be healthy or exited (timeout after 60 seconds)
-timeout=60
+timeout=10
 interval=2
 elapsed=0
 
 echo "⏳ Waiting for all containers to be healthy..."
 
 while true; do
-    unhealthy=$(docker ps --filter "health=unhealthy" --format '{{.Names}}')
-    starting=$(docker ps --filter "health=starting" --format '{{.Names}}')
-    if [ -z "$unhealthy" ] && [ -z "$starting" ]; then
-        break
-    fi
-    sleep $interval
-    elapsed=$((elapsed + interval))
-    if [ $elapsed -ge $timeout ]; then
-        echo "⚠️  Timeout waiting for containers to become healthy."
-        break
-    fi
+  unhealthy=$(docker ps --filter "health=unhealthy" --format '{{.Names}}')
+  starting=$(docker ps --filter "health=starting" --format '{{.Names}}')
+  if [ -z "$unhealthy" ] && [ -z "$starting" ]; then
+    break
+  fi
+  sleep $interval
+  elapsed=$((elapsed + interval))
+  if [ $elapsed -ge $timeout ]; then
+    echo "⚠️  Timeout waiting for containers to become healthy."
+    break
+  fi
 done
 
 echo "✅ Stack started successfully!"
