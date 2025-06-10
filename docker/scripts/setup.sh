@@ -25,11 +25,20 @@ DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
 if [ ! -f .env ]; then
     echo "ℹ️ .env file not found. New credentials will be generated."
     
+    # Detect non-interactive mode (no TTY)
+    if ! [ -t 0 ]; then
+        AUTO_DENY="yes"
+    fi
     # Only ask about removing volumes if they exist
     if docker volume ls | grep -q 'influxdb_data\|grafana_data\|prometheus_data\|monitoring_influxdb_data\|monitoring_grafana_data\|monitoring_prometheus_data'; then
         echo "To ensure new credentials (especially for InfluxDB, Grafana, and Prometheus) take effect,"
         echo "it's recommended to remove existing data volumes."
-        read -r -p "Do you want to remove influxdb_data, grafana_data, prometheus_data (with or without 'monitoring_' prefix) volumes? (yes/NO): " confirmation
+        if [ -n "$AUTO_DENY" ]; then
+            confirmation="no"
+            echo "⚠️  Non-interactive mode: Skipping volume removal to prevent data loss."
+        else
+            read -r -p "Do you want to remove influxdb_data, grafana_data, prometheus_data (with or without 'monitoring_' prefix) volumes? (yes/NO): " confirmation
+        fi
         if [[ "$confirmation" =~ ^[Yy][Ee][Ss]$ ]]; then
             for v in influxdb_data grafana_data prometheus_data monitoring_influxdb_data monitoring_grafana_data monitoring_prometheus_data; do
                 echo "Attempting to remove $v..."
@@ -41,6 +50,7 @@ if [ ! -f .env ]; then
             echo "If you experience issues with old credentials, manually remove the volumes and re-run setup."
         fi
     fi
+    echo "⚠️  NOTE: .env is stored in the monitoring/ folder. If you re-pull or overwrite this folder, you will lose your configuration and credentials."
     
     echo "Creating .env file with default values..."
     cat > .env <<EOL
