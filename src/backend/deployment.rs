@@ -199,12 +199,12 @@ impl IoTDeployer {
         )?;
         
         // Start the monitoring stack
-        println!("🚀 Starting monitoring stack...");
-        self.run_command(
-            session,
-            "cd ~/monitoring && ./scripts/start.sh",
-            "Starting monitoring stack"
-        )?;
+        // println!("🚀 Starting monitoring stack...");
+        // self.run_command(
+        //     session,
+        //     "cd ~/monitoring && ./scripts/start.sh",
+        //     "Starting monitoring stack"
+        // )?;
         
         // Get service status
         println!("📊 Checking service status...");
@@ -350,22 +350,57 @@ impl IoTDeployer {
         let mut channel = session.channel_session()?;
         channel.exec(&command)?;
         
-        let mut output = String::new();
-        channel.read_to_string(&mut output)?;
+        use std::io::{Read, BufReader};
+        use std::time::{Duration, Instant};
+        use ssh2::Channel;
+        use std::thread;
+
+        let mut stdout = channel.stream(0);
+        let mut stderr = channel.stderr();
+        let mut stdout_reader = BufReader::new(&mut stdout);
+        let mut stderr_reader = BufReader::new(&mut stderr);
+        let start_time = Instant::now();
+        let timeout = Duration::from_secs(300); // 5 minutes
+
+        let mut stdout_buf = [0u8; 1024];
+        let mut stderr_buf = [0u8; 1024];
+        loop {
+            // Timeout check
+            if start_time.elapsed() > timeout {
+                println!("⏰ Command timed out after 5 minutes");
+                channel.close().ok();
+                return Err(TelegrafError::SshOperationError(format!("Command timed out: {}", command)));
+            }
+            // Read stdout
+            match stdout_reader.read(&mut stdout_buf) {
+                Ok(n) if n > 0 => {
+                    let s = String::from_utf8_lossy(&stdout_buf[..n]);
+                    print!("{}", s);
+                },
+                _ => {}
+            }
+            // Read stderr
+            match stderr_reader.read(&mut stderr_buf) {
+                Ok(n) if n > 0 => {
+                    let s = String::from_utf8_lossy(&stderr_buf[..n]);
+                    eprint!("{}", s);
+                },
+                _ => {}
+            }
+            // Check if command is done
+            if channel.eof() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
         channel.wait_close()?;
-        
         let exit_status = channel.exit_status()?;
         if exit_status != 0 {
             return Err(TelegrafError::SshOperationError(format!(
-                "Command failed (exit code {}): {}\nOutput: {}",
-                exit_status, command, output
+                "Command failed (exit code {}): {}",
+                exit_status, command
             )));
         }
-        
-        if !output.trim().is_empty() {
-            println!("Output: {}", output.trim());
-        }
-        
         Ok(())
     }
 
