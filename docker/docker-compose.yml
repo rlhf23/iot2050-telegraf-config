@@ -26,11 +26,11 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8086/health"]
-      interval: 30s
-      timeout: 20s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   telegraf:
     image: telegraf:1.30 # Using a specific version for stability
