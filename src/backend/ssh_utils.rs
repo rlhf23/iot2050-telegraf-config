@@ -17,11 +17,21 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 
+/// Checks if a service is running in a Docker container
+fn is_service_containerized(session: &Session, service_name: &str) -> Result<bool, TelegrafError> {
+    let check_cmd = format!("if command -v docker >/dev/null 2>&1 && docker ps --format '{{{{.Names}}}}' | grep -q '^{}$'; then echo 'containerized'; fi", service_name);
+    let output = execute_ssh_command(session, &check_cmd)?;
+    Ok(output.contains("containerized"))
+}
+
 /// Checks if Telegraf is running in a Docker container
 fn is_telegraf_containerized(session: &Session) -> Result<bool, TelegrafError> {
-    let check_cmd = "if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q '^telegraf$'; then echo 'containerized'; fi";
-    let output = execute_ssh_command(session, check_cmd)?;
-    Ok(output.contains("containerized"))
+    is_service_containerized(session, "telegraf")
+}
+
+/// Checks if InfluxDB is running in a Docker container
+fn is_influxdb_containerized(session: &Session) -> Result<bool, TelegrafError> {
+    is_service_containerized(session, "influxdb")
 }
 use std::path::Path;
 use std::sync::mpsc::Sender;
@@ -949,8 +959,7 @@ pub enum ServiceType {
 /// * `timeout_seconds` - Timeout for the SSH connection and command execution
 ///
 /// # Returns
-/// * `Ok(true)` - Service is responding normally
-/// * `Ok(false)` - Service is not responding or returned an error
+/// * `Ok((bool, String))` - A tuple with health status and status message
 /// * `Err(TelegrafError)` - SSH connection or command execution failed
 pub fn check_service_status(
     remote_host: &str,
@@ -959,7 +968,7 @@ pub fn check_service_status(
     _service_url: &str, // Kept for API compatibility but not used
     service_type: ServiceType,
     timeout_seconds: u64,
-) -> Result<bool, TelegrafError> {
+) -> Result<(bool, String), TelegrafError> {
     match service_type {
         ServiceType::InfluxDB => {
             // Delegate to specialized InfluxDB status check
@@ -967,13 +976,8 @@ pub fn check_service_status(
         }
         ServiceType::Prometheus => {
             // TODO: Implement proper Prometheus health check when needed
-            // For now, return an error indicating this is not implemented
-            Err(TelegrafError::SshError(crate::error::SshError::Other(
-                ssh2::Error::new(
-                    ssh2::ErrorCode::Session(-1),
-                    "Prometheus health check not yet implemented",
-                ),
-            )))
+            // For now, return a failure status with a message
+            Ok((false, "Prometheus health check not yet implemented".to_string()))
         }
     }
 }
@@ -987,36 +991,78 @@ pub fn check_service_status(
 /// * `timeout_seconds` - Timeout for the SSH connection and command execution
 ///
 /// # Returns
-/// * `Ok(true)` - InfluxDB is responding normally (returns "OK" to ping)
-/// * `Ok(false)` - InfluxDB is not responding or returned an error
+/// * `Ok((bool, String))` - A tuple with health status and status message
 /// * `Err(TelegrafError)` - SSH connection or command execution failed
 pub fn check_influxdb_status(
     remote_host: &str,
     username: &str,
     password: &str,
     timeout_seconds: u64,
-) -> Result<bool, TelegrafError> {
+) -> Result<(bool, String), TelegrafError> {
     println!("Checking InfluxDB status at {}", remote_host);
 
     // Connect to the remote host
     let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
 
+    // Check if InfluxDB is running in a container
+    let is_containerized = is_influxdb_containerized(&session).unwrap_or(false);
+
+    if is_containerized {
+        println!("Detected containerized InfluxDB");
+        return check_containerized_influxdb_status(&session);
+    }
+
+    println!("Checking non-containerized InfluxDB");
     let command = "influx ping";
 
     // Execute the command
-    let output = execute_ssh_command(&session, command)?;
-
-    // Check if InfluxDB responds with "OK"
-    let is_healthy = output.trim() == "OK";
-
-    if is_healthy {
-        println!("InfluxDB is responding normally");
-    } else {
-        println!(
-            "InfluxDB is not responding or returned an error code: {}",
-            output.trim()
-        );
+    match execute_ssh_command(&session, command) {
+        Ok(output) if output.trim() == "OK" => {
+            Ok((true, "InfluxDB is responding normally".to_string()))
+        }
+        Ok(output) => {
+            Ok((false, format!("InfluxDB returned unexpected output: {}", output.trim())))
+        }
+        Err(e) => {
+            Ok((false, format!("Failed to check InfluxDB status: {}", e)))
+        }
     }
+}
 
-    Ok(is_healthy)
+/// Checks if a containerized InfluxDB instance is responding
+///
+/// # Arguments
+/// * `session` - Active SSH session
+///
+/// # Returns
+/// * `Ok((bool, String))` - A tuple with health status and status message
+/// * `Err(TelegrafError)` - If there's an error executing the check
+fn check_containerized_influxdb_status(session: &Session) -> Result<(bool, String), TelegrafError> {
+    // First check if the container is running
+    let container_status_cmd = "docker inspect --format='{{.State.Running}}' influxdb 2>/dev/null || echo 'false'";
+    let container_running = execute_ssh_command(session, container_status_cmd)?;
+    
+    if container_running.trim() != "true" {
+        return Ok((false, "InfluxDB container is not running".to_string()));
+    }
+    
+    // If container is running, try to ping InfluxDB
+    let ping_cmd = "docker exec influxdb influx ping";
+    let output = execute_ssh_command(session, ping_cmd);
+    
+    match output {
+        Ok(output) if output.trim() == "OK" => {
+            Ok((true, "InfluxDB container is running and responding".to_string()))
+        }
+        Ok(output) => {
+            Ok((false, format!("InfluxDB container is running but not responding correctly: {}", output)))
+        }
+        Err(e) => {
+            // If ping failed, try to get container logs
+            let logs_cmd = "docker logs --tail 20 influxdb 2>&1 | tail -n 20";
+            let logs = execute_ssh_command(session, logs_cmd).unwrap_or_else(|_| "Failed to retrieve logs".to_string());
+            
+            Ok((false, format!("Failed to ping InfluxDB container: {}\nLast logs:\n{}", e, logs)))
+        }
+    }
 }

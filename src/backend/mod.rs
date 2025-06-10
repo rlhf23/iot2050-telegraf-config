@@ -424,12 +424,15 @@ impl ConfigGenerator {
     }
 
     /// Generic method to check if a service is responding
+    /// 
+    /// # Returns
+    /// A tuple containing a boolean indicating if the service is healthy and a status message string
     pub fn check_service_status(
         &self,
         service_url: &str,
         service_type: ssh_utils::ServiceType,
         timeout_seconds: u64,
-    ) -> Result<bool, TelegrafError> {
+    ) -> Result<(bool, String), TelegrafError> {
         ssh_utils::check_service_status(
             &self.config.iot_host,
             &self.config.iot_username,
@@ -440,7 +443,11 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn check_influxdb_status(&self) -> Result<bool, TelegrafError> {
+    /// Check if InfluxDB is responding
+    /// 
+    /// # Returns
+    /// A tuple containing a boolean indicating if InfluxDB is healthy and a status message string
+    pub fn check_influxdb_status(&self) -> Result<(bool, String), TelegrafError> {
         ssh_utils::check_influxdb_status(
             &self.config.iot_host,
             &self.config.iot_username,

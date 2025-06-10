@@ -39,8 +39,8 @@ mod tests {
 
         assert!(result.contains("# Namespace for file test1.xml: 1"));
         assert!(result.contains("# Namespace for file test2.xml: 2"));
-        assert!(result.contains("token = \"test_token\""));
-        assert!(result.contains("bucket = \"test_bucket\""));
+        assert!(result.contains("token = \"${INFLUXDB_TOKEN}\""));
+        assert!(result.contains("bucket = \"${INFLUXDB_BUCKET}\""));
         assert!(result.contains("config1"));
         assert!(result.contains("config2"));
         assert!(result.contains("[[outputs.influxdb_v2]]"));

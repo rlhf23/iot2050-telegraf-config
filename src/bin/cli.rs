@@ -526,12 +526,12 @@ fn main() {
                 ServiceType::InfluxDB,
                 timeout_seconds,
             ) {
-                Ok(true) => {
-                    println!("✅ InfluxDB is responding normally");
+                Ok((true, message)) => {
+                    println!("✅ {}", message);
                     wrap_up(0);
                 }
-                Ok(false) => {
-                    println!("❌ InfluxDB is not responding");
+                Ok((false, message)) => {
+                    println!("❌ {}", message);
                     wrap_up(1);
                 }
                 Err(e) => {
@@ -567,12 +567,12 @@ fn main() {
                 ServiceType::Prometheus,
                 timeout_seconds,
             ) {
-                Ok(true) => {
-                    println!("✅ Prometheus is responding normally");
+                Ok((true, message)) => {
+                    println!("✅ {}", message);
                     wrap_up(0);
                 }
-                Ok(false) => {
-                    println!("❌ Prometheus is not responding");
+                Ok((false, message)) => {
+                    println!("❌ {}", message);
                     wrap_up(1);
                 }
                 Err(e) => {
