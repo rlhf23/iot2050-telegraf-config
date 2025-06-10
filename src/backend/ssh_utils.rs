@@ -823,19 +823,25 @@ fn get_telegraf_logs_docker(
     session: &Session,
     lines: usize,
 ) -> Result<String, TelegrafError> {
-    println!(
-        "Attempting to fetch last {} lines of Telegraf Docker container logs...",
-        lines
-    );
-    let command = format!("docker logs telegraf --tail {}", lines);
+    println!("Fetching last {} lines from Telegraf container...", lines);
+    
+    // Try with timestamps first, fall back to basic logs if that fails
+    let command = format!("docker logs --tail={} --timestamps telegraf 2>&1 || docker logs --tail={} telegraf 2>&1 || true", lines, lines);
+    
     match execute_ssh_command(session, &command) {
-        Ok(output) => {
-            println!("Telegraf Docker logs fetched successfully.");
+        Ok(output) if !output.trim().is_empty() => {
+            println!("Successfully retrieved {} bytes of logs", output.len());
             Ok(output)
-        }
+        },
+        Ok(_) => {
+            let msg = "Received empty log output from container";
+            eprintln!("{}", msg);
+            Err(TelegrafError::SshError(crate::error::SshError::Other(
+                ssh2::Error::new(ssh2::ErrorCode::Session(-1), msg)
+            )))
+        },
         Err(e) => {
-            eprintln!("Failed to fetch Telegraf Docker logs: {:?}", e);
-            // Propagate the error from execute_ssh_command, which is already a TelegrafError
+            eprintln!("Failed to fetch Docker logs: {:?}", e);
             Err(e)
         }
     }

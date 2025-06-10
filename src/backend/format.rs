@@ -85,7 +85,7 @@ pub fn format_config_header(
 #=================================================================================
 
 [[inputs.cpu]]
-  percpu = false
+  percpu = true
   totalcpu = true
 
 [[inputs.swap]]
