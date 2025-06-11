@@ -12,8 +12,6 @@ mod tests {
 
     #[test]
     fn test_format_config_header_influxdb() {
-        let influx_token = "test_token";
-        let bucket_name = "test_bucket";
         let config_strings = vec!["config1".to_string(), "config2".to_string()];
         let namespace_infos = vec![
             NamespaceInfo {
@@ -29,8 +27,6 @@ mod tests {
         let include_test_inputs = false;
 
         let result = format_config_header(
-            influx_token,
-            bucket_name,
             &config_strings,
             &namespace_infos,
             output_format,
@@ -49,8 +45,6 @@ mod tests {
 
     #[test]
     fn test_format_config_header_prometheus() {
-        let influx_token = ""; // Not needed for Prometheus
-        let bucket_name = ""; // Not needed for Prometheus
         let config_strings = vec!["config1".to_string()];
         let namespace_infos = vec![NamespaceInfo {
             number: "1".to_string(),
@@ -60,8 +54,6 @@ mod tests {
         let include_test_inputs = false;
 
         let result = format_config_header(
-            influx_token,
-            bucket_name,
             &config_strings,
             &namespace_infos,
             output_format,
@@ -85,8 +77,6 @@ mod tests {
         let include_test_inputs = true;
 
         let result = format_config_header(
-            "token",
-            "bucket",
             &config_strings,
             &namespace_infos,
             output_format,
