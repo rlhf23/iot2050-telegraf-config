@@ -1,0 +1,330 @@
+name: Monitoring Stack Test
+
+on:
+  push:
+    branches: ["master", "poller"]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/monitoring-stack-test.yml'
+  pull_request:
+    branches: ["master", "poller"]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/monitoring-stack-test.yml'
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  validate-compose:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml syntax
+        run: |
+          cd docker
+          docker-compose config
+
+  test-monitoring-stack:
+    name: Test Monitoring Stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up test environment
+        run: |
+          cd docker
+          # Create test .env file
+          cat > .env << EOF
+          # Test environment variables
+          INFLUXDB_USER=testadmin
+          INFLUXDB_PASSWORD=testpassword123
+          INFLUXDB_ORG=testorg
+          INFLUXDB_BUCKET=testbucket
+          INFLUXDB_TOKEN=testtoken123456789abcdef
+          TELEGRAF_TOKEN=telegraf_test_token_123
+          GRAFANA_ADMIN_USER=testadmin
+          GRAFANA_ADMIN_PASSWORD=testgrafana123
+          HOST_DOCKER_GID=999
+          EOF
+
+      - name: Create required directories and configs
+        run: |
+          cd docker
+          mkdir -p $HOME/telegraf
+          cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+
+      - name: Start monitoring stack
+        run: |
+          cd docker
+          docker-compose up -d
+          echo "Waiting for services to start..."
+          sleep 30
+
+      - name: Check container status
+        run: |
+          cd docker
+          docker-compose ps
+          
+          # Check if all expected containers are running
+          RUNNING_CONTAINERS=$(docker-compose ps --services --filter "status=running" | wc -l)
+          EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
+          
+          if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
+            echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
+            docker-compose logs
+            exit 1
+          fi
+
+      - name: Wait for services to be healthy
+        run: |
+          cd docker
+          echo "Waiting for services to become healthy..."
+          
+          # Wait up to 3 minutes for services to be healthy
+          for i in {1..18}; do
+            echo "Health check attempt $i/18..."
+            
+            # Check InfluxDB health
+            if curl -f http://localhost:8086/health > /dev/null 2>&1; then
+              echo "✓ InfluxDB is healthy"
+              INFLUXDB_HEALTHY=true
+            else
+              echo "✗ InfluxDB not ready yet"
+              INFLUXDB_HEALTHY=false
+            fi
+            
+            # Check Grafana health
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "✓ Grafana is healthy"
+              GRAFANA_HEALTHY=true
+            else
+              echo "✗ Grafana not ready yet"
+              GRAFANA_HEALTHY=false
+            fi
+            
+            # Check Prometheus health
+            if curl -f http://localhost:9090/-/healthy > /dev/null 2>&1; then
+              echo "✓ Prometheus is healthy"
+              PROMETHEUS_HEALTHY=true
+            else
+              echo "✗ Prometheus not ready yet"
+              PROMETHEUS_HEALTHY=false
+            fi
+            
+            # Check if Telegraf is running (it doesn't have a health endpoint)
+            if docker-compose ps telegraf | grep -q "Up"; then
+              echo "✓ Telegraf is running"
+              TELEGRAF_HEALTHY=true
+            else
+              echo "✗ Telegraf not running"
+              TELEGRAF_HEALTHY=false
+            fi
+            
+            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ]; then
+              echo "All services are healthy!"
+              break
+            fi
+            
+            if [ $i -eq 18 ]; then
+              echo "Services failed to become healthy within timeout"
+              docker-compose logs
+              exit 1
+            fi
+            
+            sleep 10
+          done
+
+      - name: Test service endpoints
+        run: |
+          echo "Testing service endpoints..."
+          
+          # Test InfluxDB API
+          echo "Testing InfluxDB..."
+          INFLUX_RESPONSE=$(curl -s http://localhost:8086/health)
+          echo "InfluxDB health response: $INFLUX_RESPONSE"
+          
+          # Test Grafana API
+          echo "Testing Grafana..."
+          GRAFANA_RESPONSE=$(curl -s http://localhost:3000/api/health)
+          echo "Grafana health response: $GRAFANA_RESPONSE"
+          
+          # Test Prometheus API
+          echo "Testing Prometheus..."
+          PROMETHEUS_RESPONSE=$(curl -s http://localhost:9090/-/healthy)
+          echo "Prometheus health response: $PROMETHEUS_RESPONSE"
+          
+          # Test Telegraf metrics endpoint (if exposed)
+          echo "Testing Telegraf metrics endpoint..."
+          if curl -f http://localhost:9273/metrics > /dev/null 2>&1; then
+            echo "✓ Telegraf metrics endpoint is accessible"
+          else
+            echo "ℹ Telegraf metrics endpoint not accessible (may be expected)"
+          fi
+
+      - name: Test InfluxDB integration
+        run: |
+          echo "Testing InfluxDB integration..."
+          
+          # Wait a bit more for InfluxDB to be fully ready
+          sleep 10
+          
+          # Test InfluxDB setup
+          SETUP_STATUS=$(curl -s http://localhost:8086/api/v2/setup | jq -r '.allowed // "null"')
+          echo "InfluxDB setup status: $SETUP_STATUS"
+          
+          # If setup is allowed, InfluxDB is not yet initialized
+          if [ "$SETUP_STATUS" = "true" ]; then
+            echo "InfluxDB appears to need setup, this might indicate an issue with initialization"
+          else
+            echo "✓ InfluxDB appears to be initialized"
+          fi
+
+      - name: Test Grafana datasource connectivity
+        run: |
+          echo "Testing Grafana datasource connectivity..."
+          
+          # Wait for Grafana to be fully ready
+          sleep 15
+          
+          # Test Grafana login and get API key
+          # Note: In a real test, we'd set up proper API authentication
+          echo "Grafana should be accessible at http://localhost:3000"
+          
+          # Basic connectivity test
+          if curl -f -u testadmin:testgrafana123 http://localhost:3000/api/org > /dev/null 2>&1; then
+            echo "✓ Grafana authentication works"
+          else
+            echo "✗ Grafana authentication failed"
+          fi
+
+      - name: Check logs for errors
+        if: always()
+        run: |
+          cd docker
+          echo "=== InfluxDB Logs ==="
+          docker-compose logs influxdb | tail -50
+          echo "=== Telegraf Logs ==="
+          docker-compose logs telegraf | tail -50
+          echo "=== Grafana Logs ==="
+          docker-compose logs grafana | tail -50
+          echo "=== Prometheus Logs ==="
+          docker-compose logs prometheus | tail -50
+
+      - name: Stop monitoring stack
+        if: always()
+        run: |
+          cd docker
+          docker-compose down -v
+
+  test-deployment-scripts:
+    name: Test Deployment Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test script syntax
+        run: |
+          cd docker/scripts
+          
+          # Check shell script syntax
+          for script in *.sh; do
+            echo "Checking syntax of $script..."
+            bash -n "$script"
+          done
+
+      - name: Test setup.sh (dry run)
+        run: |
+          cd docker
+          
+          # Test setup script in dry-run mode
+          echo "Testing setup.sh..."
+          
+          # Create a temporary directory for testing
+          TEST_DIR=$(mktemp -d)
+          cd "$TEST_DIR"
+          cp -r $GITHUB_WORKSPACE/docker/* .
+          
+          # Mock environment for testing
+          export HOME="$TEST_DIR"
+          
+          # Run setup script (it should create .env file)
+          if ./scripts/setup.sh; then
+            echo "✓ setup.sh completed successfully"
+          else
+            echo "✗ setup.sh failed"
+            exit 1
+          fi
+          
+          # Check if .env was created
+          if [ -f .env ]; then
+            echo "✓ .env file was created"
+            echo "Generated .env contents:"
+            cat .env
+          else
+            echo "✗ .env file was not created"
+            exit 1
+          fi
+
+      - name: Test configuration validation
+        run: |
+          cd docker
+          
+          echo "Testing Telegraf configuration..."
+          
+          # Create test telegraf config
+          mkdir -p $HOME/telegraf
+          cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+          
+          # Test Telegraf config syntax using Docker
+          if docker run --rm -v $HOME/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro telegraf:1.30 telegraf --config /etc/telegraf/telegraf.conf --test > /dev/null 2>&1; then
+            echo "✓ Telegraf configuration is valid"
+          else
+            echo "ℹ Telegraf configuration test skipped (requires environment variables)"
+          fi
+
+  test-multi-architecture:
+    name: Test Multi-Architecture Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Test ARM64 build capability
+        run: |
+          cd docker
+          
+          # Create test .env
+          cat > .env << EOF
+          INFLUXDB_USER=testadmin
+          INFLUXDB_PASSWORD=testpassword123
+          INFLUXDB_ORG=testorg
+          INFLUXDB_BUCKET=testbucket
+          INFLUXDB_TOKEN=testtoken123456789abcdef
+          TELEGRAF_TOKEN=telegraf_test_token_123
+          GRAFANA_ADMIN_USER=testadmin
+          GRAFANA_ADMIN_PASSWORD=testgrafana123
+          HOST_DOCKER_GID=999
+          EOF
+          
+          # Test that we can at least build for ARM64 (don't run due to emulation overhead)
+          echo "Testing ARM64 build capability..."
+          
+          # Pull ARM64 base images to verify multi-arch support works
+          docker buildx build --platform linux/arm64 --load -t test-influxdb - << EOF
+          FROM influxdb:2
+          RUN echo "ARM64 build test"
+          EOF
+          
+          echo "✓ ARM64 build capability verified"

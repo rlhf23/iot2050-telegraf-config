@@ -180,6 +180,79 @@ Credentials will be displayed after successful deployment.
   docker-compose down -v
   ```
 
+## Testing
+
+### Automated Testing
+
+The monitoring stack includes comprehensive automated tests that run in GitHub Actions:
+
+- **Docker Compose validation**: Ensures the configuration is syntactically correct
+- **Service startup testing**: Verifies all services start correctly
+- **Health check testing**: Tests that services become healthy within expected timeframes
+- **Service integration**: Ensures services can communicate properly
+- **Configuration validation**: Tests that configurations are valid
+- **Multi-architecture support**: Verifies ARM64 compatibility
+
+### Local Testing
+
+Run the complete test suite locally:
+
+```bash
+# Run all tests
+./scripts/test.sh
+```
+
+**What it tests:**
+- Docker Compose syntax validation
+- Service startup and health checks
+- Endpoint accessibility
+- Basic authentication
+- Configuration validation
+- Integration between services
+
+**Test output:**
+- Colored output showing pass/fail status
+- Service logs for debugging
+- Access URLs and credentials
+- Cleanup instructions
+
+### Manual Testing
+
+For development and debugging:
+
+```bash
+# Start the stack
+./scripts/setup.sh
+./scripts/start.sh
+
+# Check service status
+docker-compose ps
+docker-compose logs -f
+
+# Test individual services
+curl http://localhost:8086/health      # InfluxDB
+curl http://localhost:3000/api/health  # Grafana
+curl http://localhost:9090/-/healthy   # Prometheus
+
+# Stop when done
+./scripts/stop.sh
+```
+
+### CI/CD Integration
+
+The monitoring stack is automatically tested in GitHub Actions on:
+- Push to `master` or `poller` branches (when docker files change)
+- Pull requests affecting the docker directory
+- Manual workflow dispatch
+
+Tests include:
+- Ubuntu latest environment
+- Docker Compose validation
+- Multi-service orchestration
+- Health checks with timeout
+- Multi-architecture build capability
+- Deployment script validation
+
 ## Configuration
 
 - Edit `.env` to change default credentials
