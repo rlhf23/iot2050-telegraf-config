@@ -1,6 +1,6 @@
-# Telegraf Configuration Generator - Project Overview
+# IoT2050 Monitoring Stack - Project Overview
 
-This document provides a technical overview of the Telegraf Configuration Generator project architecture and organization, intended for developers and LLMs to quickly understand the codebase.
+This document provides a technical overview of the IoT2050 Monitoring Stack project architecture and organization, intended for developers and LLMs to quickly understand the codebase.
 
 ## Project Structure
 
@@ -11,19 +11,33 @@ iot2050-telegraf-config/
 │   │   ├── mod.rs            # Main backend module definition
 │   │   ├── format.rs         # Configuration format handling
 │   │   ├── opcua_poller.rs   # OPC UA server connection/polling
+│   │   ├── deployment.rs     # Docker deployment management
 │   │   ├── ssh_utils.rs      # SSH communication with IoT devices
 │   │   └── *_test.rs         # Unit tests for backend modules
 │   ├── bin/                  # Executable entry points and test tools
-│   │   ├── cli.rs            # Main CLI interface (sie_generate_config)
-│   │   ├── gui.rs            # Graphical user interface (sie_generate_config_gui)
-│   │   ├── opcua_client_test.rs  # OPC UA client test tool (opcua_client_test)
-│   │   └── opcua_test_server.rs  # OPC UA test server (opcua_test_server)
+│   │   ├── cli.rs            # Main CLI interface with deployment commands
+│   │   ├── gui.rs            # GUI with OPC UA browser and config generation
+│   │   ├── opcua_client_test.rs  # OPC UA client test tool
+│   │   └── opcua_test_server.rs  # OPC UA test server
 │   ├── lib.rs                # Core library functionality and TelegrafConfig
 │   ├── error.rs              # Error types and handling
 │   ├── worker.rs             # Background task processing
 │   └── *_test.rs             # Library unit tests
-├── pki/                      # PKI certificates for testing
-├── pki-server/               # Server certificates for testing
+├── docker/                   # Docker monitoring stack
+│   ├── docker-compose.yml    # Multi-service monitoring stack definition
+│   ├── config/               # Service configurations
+│   │   ├── telegraf/         # Telegraf configuration templates
+│   │   ├── grafana/          # Grafana dashboards and datasources
+│   │   └── prometheus/       # Prometheus configuration
+│   ├── scripts/              # Deployment and management scripts
+│   │   ├── init.sh           # Device provisioning script
+│   │   ├── deploy.sh         # Stack deployment script
+│   │   ├── setup.sh          # Environment setup script
+│   │   ├── start.sh          # Start monitoring stack
+│   │   └── stop.sh           # Stop monitoring stack
+│   └── README.md             # Docker stack documentation
+├── docs/                     # Documentation
+│   └── CONTAINER_SETUP.md    # Container deployment guide
 ├── .github/                  # GitHub Actions workflows and templates
 ├── tests/                    # Integration tests and test data
 │   └── *.xml                 # Test XML files
@@ -35,8 +49,7 @@ iot2050-telegraf-config/
 ├── .env.example              # Example environment variables
 ├── .codecov.yml              # Code coverage configuration
 ├── .tarpaulin.toml           # Test coverage settings
-├── run_coverage.sh           # Test coverage script (bash)
-├── run_coverage.fish         # Test coverage script (fish)
+├── run_coverage.sh           # Test coverage script
 └── README.md                 # User documentation
 ```
 
@@ -52,7 +65,7 @@ iot2050-telegraf-config/
 2. **ConfigGenerator (backend/mod.rs)**
    - Orchestrates the configuration generation process
    - Manages file configurations and output format settings
-   - Handles SSH interactions with remote IoT devices
+   - Integrates with Docker deployment workflow
 
 3. **Format Module (backend/format.rs)**
    - Parses XML configuration files
@@ -61,21 +74,28 @@ iot2050-telegraf-config/
 
 4. **OpcUaPoller (backend/opcua_poller.rs)**
    - Connects to OPC UA servers
-   - Polls servers for available nodes and data
-   - Validates connectivity and configuration
+   - Provides node browsing and selection capabilities
+   - Hierarchical node tree navigation with lazy loading
+   - Tag selection and validation
 
-5. **SSH Utils (backend/ssh_utils.rs)**
+5. **Deployment Module (backend/deployment.rs)**
+   - Manages Docker-based monitoring stack deployment
+   - Device provisioning with Docker and Docker Compose
+   - SSH-based deployment automation
+   - Service lifecycle management
+
+6. **SSH Utils (backend/ssh_utils.rs)**
    - Manages secure connections to IoT devices
-   - Transfers configuration files
-   - Handles remote command execution and service management
+   - Executes remote commands for deployment
+   - Handles file transfers and service management
 
-6. **Worker Module (worker.rs)**
+7. **Worker Module (worker.rs)**
    - Background task execution framework
    - Asynchronous command processing
    - Thread-safe communication channels
    - Task queuing and state management
 
-7. **Error Handling (error.rs)**
+8. **Error Handling (error.rs)**
    - Comprehensive error type hierarchy
    - User-friendly error message formatting
    - Error categorization and context-aware messaging
@@ -83,39 +103,76 @@ iot2050-telegraf-config/
 ### User Interfaces
 
 1. **Command Line Interface (bin/cli.rs)**
-   - Executable: `sie_generate_config`
-   - Argument parsing and validation
-   - Command execution flow
-   - Service checks and configuration deployment
+   - Configuration generation commands
+   - Docker deployment management
+   - Device provisioning and setup commands
+   - Stack lifecycle operations (start/stop/status)
 
 2. **Graphical User Interface (bin/gui.rs)**
-   - Executable: `sie_generate_config_gui`
-   - Event-driven UI with eframe
-   - Form validation and status feedback
+   - Interactive OPC UA browser with node selection
+   - Real-time node tree exploration
    - Visual configuration management
+   - Integration with Docker deployment workflow
+
+### Docker Monitoring Stack
+
+1. **Multi-Service Architecture**
+   - **InfluxDB**: Time-series database for metrics storage
+   - **Telegraf**: Metrics collection agent with OPC UA support
+   - **Grafana**: Visualization and dashboarding
+   - **Prometheus**: Alternative metrics collection and storage
+
+2. **Deployment Scripts**
+   - **init.sh**: Provisions IoT devices with Docker requirements
+   - **deploy.sh**: Builds and deploys the complete stack
+   - **setup.sh**: Configures environment and credentials
+   - **start.sh/stop.sh**: Service lifecycle management
+
+3. **Configuration Management**
+   - Environment-based configuration with .env files
+   - Provisioned dashboards and datasources
+   - Persistent storage with Docker volumes
+   - Multi-architecture support (x86_64/ARM64)
 
 ## Key Data Flows
 
-### Configuration Generation Flow
+### Configuration Generation Flow (Legacy)
 
-1. User provides XML files with OPC UA node definitions
+1. User provides XML files with OPC UA node definitions or uses OPC UA browser
 2. Application validates XML content and configuration parameters
 3. XML files are parsed to extract node information
 4. Telegraf configuration is generated according to selected output format
 5. Configuration file is written to disk locally
-6. Optionally, configuration is deployed to IoT device via SSH
 
-### Remote Interaction Flow
+### Docker Stack Deployment Flow (Primary)
 
-1. SSH connection established with IoT device using provided credentials
-2. Commands executed to validate connection and services
-3. Configuration files transferred to appropriate locations
-4. Telegraf service restarted to apply new configuration
-5. Status feedback returned to user
+1. **Device Provisioning**:
+   - `init.sh` provisions target device with Docker and dependencies
+   - System requirements validation and installation
+   - User permissions and service setup
+
+2. **Stack Deployment**:
+   - `deploy.sh` builds Docker images locally (multi-architecture)
+   - Images and configuration transferred to target device
+   - Stack deployed using Docker Compose
+   - Services started and health-checked
+
+3. **Configuration Integration**:
+   - Generated Telegraf configurations integrated into Docker stack
+   - Environment variables and secrets managed securely
+   - Persistent storage configured for data retention
+
+### OPC UA Browser Flow
+
+1. User connects to OPC UA server using GUI
+2. Node tree is loaded hierarchically with lazy loading
+3. User browses and selects relevant nodes/tags
+4. Selected nodes are validated and configured
+5. Configuration is integrated into monitoring stack
 
 ## Environment Variables
 
-The following environment variables are used during build and runtime:
+### Build-time Variables (build.rs)
 
 - `DEFAULT_IP`: Default OPC UA server IP (192.168.1.1)
 - `DEFAULT_USERNAME`: Default OPC UA server username (user)
@@ -124,7 +181,19 @@ The following environment variables are used during build and runtime:
 - `DEFAULT_IOT_PASSWORD`: Default IoT device password (iotpass)
 - `DEFAULT_IOT_IP`: Default IoT device address and port (192.168.1.2:22)
 
-These can be customized using a `.env` file and are integrated via the `build.rs` script.
+### Docker Stack Runtime Variables (.env)
+
+- `INFLUXDB_USER`: InfluxDB admin username
+- `INFLUXDB_PASSWORD`: InfluxDB admin password
+- `INFLUXDB_ORG`: InfluxDB organization name
+- `INFLUXDB_BUCKET`: InfluxDB default bucket
+- `INFLUXDB_TOKEN`: InfluxDB admin token
+- `TELEGRAF_TOKEN`: Telegraf write token
+- `GRAFANA_ADMIN_USER`: Grafana admin username
+- `GRAFANA_ADMIN_PASSWORD`: Grafana admin password
+- `HOST_DOCKER_GID`: Host Docker group ID for container permissions
+
+Build-time variables can be customized using a `.env` file and are integrated via the `build.rs` script. Docker stack variables are managed by the deployment scripts and stored in `docker/.env`.
 
 ## Common Modification Patterns
 
@@ -135,25 +204,46 @@ These can be customized using a `.env` file and are integrated via the `build.rs
 3. Update CLI argument handling in `cli.rs`
 4. Add UI elements in `gui.rs` if applicable
 5. Modify `ConfigGenerator` to utilize the new option
+6. Update Docker configuration templates if needed
+
+### Adding a New Docker Service
+
+1. Add service definition to `docker/docker-compose.yml`
+2. Create configuration directory under `docker/config/`
+3. Update deployment scripts to handle new service
+4. Add service-specific environment variables to `.env` template
+5. Update health checks and startup dependencies
 
 ### Supporting a New Output Format
 
 1. Add a new variant to `OutputFormat` enum in `backend/format.rs`
 2. Implement formatting logic in `format_config_header` function
 3. Update CLI and GUI to support the new format option
-4. Add validation and specific output handling as needed
+4. Add Docker service configuration if required
+5. Update deployment templates and scripts
+
+### Adding New Deployment Features
+
+1. Extend `DeploymentConfig` struct in `backend/deployment.rs`
+2. Add corresponding CLI commands in `bin/cli.rs`
+3. Update deployment scripts in `docker/scripts/`
+4. Add error handling and validation
+5. Update documentation and examples
+
+### Extending OPC UA Browser
+
+1. Modify `OpcUaPoller` in `backend/opcua_poller.rs`
+2. Update GUI components in `bin/gui.rs`
+3. Add new node types or selection criteria
+4. Update worker commands for background operations
+5. Add appropriate error handling
 
 ### Adding New Error Types
 
 1. Add a new variant to `TelegrafError` enum in `error.rs`
 2. Implement user-friendly error message in `user_friendly_message` method
 3. Add appropriate `From` implementations for error conversion
-
-### XML Template Modifications
-
-1. XML files should follow the established structure with namespace definitions
-2. Each node requires a unique identifier within its namespace
-3. File validation ensures no duplicate namespaces across files for the same IP
+4. Update deployment error handling if applicable
 
 ## Testing Approach
 
@@ -180,11 +270,23 @@ These can be customized using a `.env` file and are integrated via the `build.rs
 
 The project supports multiple build and deployment methods:
 
-### Cargo Build System
+### Development Build System
 - Development: `cargo build`
 - Release: `cargo build --release` (with optimizations)
 - Test: `cargo test`
 - Windows builds include OpenSSL vendoring
+
+### Docker Stack Deployment
+- **Device Provisioning**: `./docker/scripts/init.sh <device_ip>`
+- **Stack Deployment**: `./docker/scripts/deploy.sh <device_ip>`
+- **Local Testing**: `./docker/scripts/setup.sh && ./docker/scripts/start.sh`
+- **Multi-architecture**: Supports x86_64 (development) and ARM64 (production)
+
+### CLI Deployment Commands
+- **Provision Device**: `./sie_generate_config deploy provision <host>`
+- **Deploy Stack**: `./sie_generate_config deploy setup <host>`
+- **Check Status**: `./sie_generate_config deploy status <host>`
+- **Start/Stop**: `./sie_generate_config deploy start|stop <host>`
 
 ### Nix Support
 - Development shell: `nix develop`
@@ -195,6 +297,7 @@ The project supports multiple build and deployment methods:
 - GitHub Actions workflows in `.github/workflows/`
 - Automated testing on push/pull requests
 - Code coverage reporting to Codecov
+- Multi-architecture Docker builds
 
 ## Dependencies
 
