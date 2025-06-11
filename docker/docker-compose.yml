@@ -44,6 +44,8 @@ services:
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
       - HOST_DOCKER_GID=${HOST_DOCKER_GID}
+    ports:
+      - "9273:9273"  # Prometheus metrics endpoint
     volumes:
       - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
       - /var/run/docker.sock:/var/run/docker.sock:rw
