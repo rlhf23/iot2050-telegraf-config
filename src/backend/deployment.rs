@@ -133,8 +133,33 @@ impl IoTDeployer {
         self.run_command(&session, "sudo systemctl start docker", "Starting Docker")?;
         self.run_command(&session, "sudo systemctl enable docker", "Enabling Docker")?;
         
+        // Setup monitoring directory structure
+        println!("📂 Setting up monitoring directory...");
+        
+        // Remove existing monitoring directory if it exists
+        self.run_command(
+            &session,
+            "rm -rf ~/monitoring",
+            "Cleaning up existing monitoring directory"
+        )?;
+        
         // Create monitoring directory
         self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
+        
+        // Download and extract docker folder from the repository
+        println!("📥 Downloading docker configuration...");
+        self.run_command(
+            &session,
+            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/docker-everything.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-docker-everything/docker",
+            "Downloading docker configuration"
+        )?;
+        
+        // Make scripts executable
+        self.run_command(
+            &session,
+            "cd ~/monitoring && chmod +x scripts/*.sh",
+            "Making scripts executable"
+        )?;
         
         println!("✅ Device provisioning completed successfully!");
         Ok(())
@@ -160,35 +185,15 @@ impl IoTDeployer {
         Ok(())
     }
 
-    /// Deploy using remote build approach
+    /// Deploy using remote build approach (assumes provisioning is already done)
     fn deploy_remote_build(&self, session: &Session) -> Result<(), TelegrafError> {
-        // Download docker folder using git archive
-        println!("📥 Downloading docker configuration...");
-        
-        // Remove existing monitoring directory if it exists
-        self.run_command(
-            session,
-            "rm -rf ~/monitoring",
-            "Cleaning up existing monitoring directory"
-        )?;
-        
-        // Create monitoring directory
-        self.run_command(session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
-        
-        // Download and extract docker folder from the repository
-        // Using docker-everything branch since that's where the docker folder is
-        self.run_command(
-            session,
-            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/docker-everything.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-docker-everything/docker",
-            "Downloading docker configuration"
-        )?;
-        
-        // Change to monitoring directory and make scripts executable
-        self.run_command(
-            session,
-            "cd ~/monitoring && chmod +x scripts/*.sh",
-            "Making scripts executable"
-        )?;
+        // Verify monitoring directory exists
+        let dir_exists = self.check_command(session, "test -d ~/monitoring")?;
+        if !dir_exists {
+            return Err(TelegrafError::ConfigError(
+                "Monitoring directory not found. Please run 'provision' first.".to_string()
+            ));
+        }
         
         // Run setup script
         println!("⚙️  Running setup script...");

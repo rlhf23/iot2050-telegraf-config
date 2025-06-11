@@ -263,7 +263,7 @@ impl TelegrafApp {
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
+                include_test_inputs: true,
                 selected_opcua_nodes: Vec::new(),
             },
             xml_files: Vec::new(),
@@ -461,7 +461,7 @@ impl eframe::App for TelegrafApp {
 
                 // Test Inputs Toggle
                 ui.horizontal(|ui| {
-                    ui.label("Include Test Inputs");
+                    ui.label("Include System Inputs");
                     if ui
                         .checkbox(
                             &mut self.config.include_test_inputs,
