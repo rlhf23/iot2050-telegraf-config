@@ -1,144 +1,274 @@
-# Telegraf Configuration Generator
+# IoT2050 Monitoring Stack
 
 ## Introduction
-Telegraf Configuration Generator is a simple automation tool designed to streamline the process of exporting OPCUA server interface lists from TIA Portal and quickly converting them into configuration files for Telegraf when using small simple repeatable configs. The primary goal is to facilitate data transfer into InfluxDB for later visualization in Grafana or similar platforms. This tool serves as an efficient alternative to Node-RED and similar approaches, focusing on fewer mouse clicks and greater automation when working with the SIEMENS SIMATIC IOT2050 and other IoT devices.
 
-![Telegraf Config Generator GUI](./telegraf-config-gui.png)
+The IoT2050 Monitoring Stack is a comprehensive Docker-based monitoring solution designed for industrial IoT devices, particularly the SIEMENS SIMATIC IOT2050. It provides automated deployment of a complete monitoring infrastructure including time-series data collection, storage, and visualization.
+
+The stack streamlines the process of setting up industrial monitoring by automating the deployment of InfluxDB, Telegraf, Grafana, and Prometheus in a containerized environment. It features an integrated OPC-UA browser for easy tag selection and configuration generation.
+
+![Monitoring Stack Architecture](./monitoring-stack-architecture.png)
 
 ## Key Features
 
-### Graphical User Interface
-- **User-friendly interface** for all configuration operations
-- **Real-time validation** of configuration parameters
-- **Detailed status feedback** with formatted error messages
+### 🐳 **Docker-Based Monitoring Stack**
+- **Complete monitoring solution** with InfluxDB, Telegraf, Grafana, and Prometheus
+- **Multi-architecture support** (x86_64 for development, ARM64 for production)
+- **Automated deployment** with device provisioning and stack setup
+- **Persistent data storage** with Docker volumes
 
-### Configuration Management
-- **XML-based templates** for easy definition of data points
-- **Namespace configuration** to organize data from multiple sources
-- **Custom sampling intervals** for each XML file
-- **Support for listener/subscriber configurations** for event-based monitoring
-- **Include test inputs** option to monitor CPU, disk, and memory of the IoT device
+### 🖥️ **Interactive OPC-UA Browser**
+- **Real-time node exploration** with hierarchical tree navigation
+- **Lazy loading** for efficient browsing of large node trees
+- **Visual tag selection** with checkbox interface
+- **Configuration integration** directly into monitoring stack
 
-### Output Options
-- **Dual output formats**:
-  - **InfluxDB** for time-series data storage with token authentication
-  - **Prometheus** for exposing metrics via HTTP endpoint
+### 🚀 **Automated Deployment**
+- **One-command device provisioning** with Docker installation
+- **Cross-platform image building** and deployment
+- **SSH-based automation** for remote device management
+- **Environment configuration** with secure credential generation
 
-### Remote Device Operations
-- **One-click deployment** of configurations to IoT devices
-- **SSH-based communication** with secure credential management
-- **Telegraf service management** (restart and status monitoring)
-- **Remote log viewing** for troubleshooting
+### 📊 **Monitoring & Visualization**
+- **Pre-configured Grafana dashboards** for system and custom metrics
+- **InfluxDB integration** for time-series data storage
+- **Prometheus metrics** for additional monitoring capabilities
+- **Multi-source data collection** from OPC-UA, system metrics, and Docker
 
-### Backup Capabilities
-- **InfluxDB backup** for preserving time-series data
-- **Grafana backup** for dashboard configurations
-- Convenient storage of backups on your local machine
+### 🔧 **Legacy Configuration Generation**
+- **XML-based templates** for traditional Telegraf configuration
+- **Multiple output formats** (InfluxDB v2, Prometheus)
+- **Namespace management** for multi-source deployments
 
-## Getting Started
+## Quick Start
 
-### Installation
-1. Download the latest release from the Releases page
-2. Extract the archive to your preferred location
-3. Run the executable file (`telegraf-config-generator.exe` on Windows)
+### 1. Provision Your IoT Device
 
-### Basic Configuration
-1. **Launch the application** to access the GUI
-2. **Configure connection details**:
-   - OPC IP address and credentials
-   - IoT host address and credentials
-3. **Select XML folder** containing your configuration templates
-4. **Configure each XML file**:
-   - Assign unique namespaces
-   - Set appropriate sampling intervals
-   - Select listener/subscriber status as needed
-5. **Choose output format** (InfluxDB or Prometheus)
-6. **Generate configuration** with a single click
-7. **Deploy to IoT device** directly from the interface
-
-### Monitoring & Maintenance
-Use the "Other Commands" section to:
-- **Check Telegraf status** on the IoT device
-- **View Telegraf logs** for troubleshooting
-- **Backup InfluxDB** or Grafana as needed
-
-## Command Line Interface
-
-While the GUI provides the most user-friendly experience, a command-line interface is also available for automation and scripting:
-
-### Main Commands
+First, provision your target device with Docker and required dependencies:
 
 ```bash
-# Generate configuration
-./sie_generate_config -f <path_to_folder>
+cd docker
+./scripts/init.sh 192.168.1.100
+```
 
-# Send configuration to IoT device
-./sie_generate_config -s -f <path_to_folder> -a <iot_host> -w <iot_password>
+**What this does:**
+- Installs Docker and Docker Compose on the device
+- Sets up user permissions and system requirements
+- Prepares the device for monitoring stack deployment
 
-# Backup InfluxDB
-./sie_generate_config -b -a <iot_host> -w <iot_password>
+### 2. Deploy the Monitoring Stack
 
+Build and deploy the complete stack to your provisioned device:
 
-# Start the GUI
+```bash
+./scripts/deploy.sh 192.168.1.100
+```
+
+**What this does:**
+- Builds Docker images locally with ARM64 support
+- Transfers images and configuration to the device
+- Deploys and starts the monitoring stack
+- Reports service URLs and credentials
+
+### 3. Access Your Services
+
+After deployment, access your monitoring services:
+
+- **Grafana**: http://192.168.1.100:3000
+- **InfluxDB**: http://192.168.1.100:8086
+- **Prometheus**: http://192.168.1.100:9090
+
+Default credentials are automatically generated and displayed after deployment.
+
+### 4. Configure OPC-UA Data Collection (Optional)
+
+Use the GUI to browse and configure OPC-UA data sources:
+
+```bash
+./sie_generate_config_gui
+```
+
+## Advanced Usage
+
+### Local Development and Testing
+
+Test the monitoring stack locally before deployment:
+
+```bash
+cd docker
+./scripts/setup.sh      # Generate environment configuration
+./scripts/start.sh      # Start the stack locally
+```
+
+Services will be available at localhost with the same ports.
+
+### CLI Deployment Management
+
+Use the CLI for advanced deployment operations:
+
+```bash
+# Provision a device
+./sie_generate_config deploy provision 192.168.1.100 -u admin -p password
+
+# Deploy monitoring stack
+./sie_generate_config deploy setup 192.168.1.100 --build-local
+
+# Check deployment status
+./sie_generate_config deploy status 192.168.1.100
+
+# Start/stop services
+./sie_generate_config deploy start 192.168.1.100
+./sie_generate_config deploy stop 192.168.1.100
+```
+
+### Custom Configuration
+
+Customize the monitoring stack by editing configuration files in `docker/config/`:
+
+- **Telegraf**: `docker/config/telegraf/telegraf.conf.example`
+- **Grafana**: `docker/config/grafana/provisioning/`
+- **Prometheus**: `docker/config/prometheus/prometheus.yml`
+
+### Environment Variables
+
+Configure deployment settings using environment variables:
+
+```bash
+# Example .env configuration
+INFLUXDB_USER=admin
+INFLUXDB_PASSWORD=secure_password
+INFLUXDB_ORG=your_org
+INFLUXDB_BUCKET=telegraf
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=secure_password
+```
+
+## Legacy Features
+
+### Configuration Generation (Traditional Mode)
+
+For traditional Telegraf configuration generation without Docker:
+
+```bash
+# Generate configuration from XML files
+./sie_generate_config config -f /path/to/xml/folder
+
+# Use GUI for interactive configuration
 ./sie_generate_config_gui
 ```
 
 ### Test Tools
 
 ```bash
-# Start OPC UA test server
+# Start OPC-UA test server
 ./opcua_test_server
 
-# Test OPC UA client connection
+# Test OPC-UA client connection
 ./opcua_client_test
 ```
 
-For more CLI options, run:
-```bash
-./sie_generate_config --help
-```
+## Architecture
+
+### Monitoring Services
+
+- **InfluxDB 2.x**: Time-series database with built-in web UI
+- **Telegraf**: Metrics collection agent with OPC-UA, system, and Docker inputs
+- **Grafana**: Visualization platform with pre-configured dashboards
+- **Prometheus**: Metrics collection and alerting (optional)
+
+### Deployment Automation
+
+- **init.sh**: Device provisioning and Docker installation
+- **deploy.sh**: Complete stack deployment with image building
+- **setup.sh**: Environment configuration and credential generation
+- **start.sh/stop.sh**: Service lifecycle management
+
+### Data Flow
+
+1. **OPC-UA servers** → Telegraf (OPC-UA input plugin)
+2. **System metrics** → Telegraf (system input plugins)
+3. **Docker metrics** → Telegraf (Docker input plugin)
+4. **Telegraf** → InfluxDB (time-series storage)
+5. **InfluxDB** → Grafana (visualization)
+6. **Prometheus** → Grafana (alternative metrics path)
 
 ## Building from Source
-1. Install Rust: https://www.rust-lang.org/tools/install
-2. Clone this repository
-3. Run `cargo build --release`
-4. The executable will be available in `target/release/`
 
-## Test Coverage
-This project includes comprehensive test coverage capabilities using `cargo-tarpaulin`.
+### Development Requirements
 
-### Running Test Coverage Locally
-1. Install `cargo-tarpaulin`:
-   ```bash
-   cargo install cargo-tarpaulin
-   ```
+- Rust 1.70+
+- Docker and Docker Compose
+- Cross-compilation support for ARM64 (optional)
 
-2. Run the coverage script:
-   ```bash
-   ./run_coverage.sh
-   ```
+### Build Steps
 
-3. View the HTML report in your browser:
-   ```bash
-   open coverage/tarpaulin-report.html
-   ```
+```bash
+# Clone the repository
+git clone <repository-url>
+cd iot2050-telegraf-config
 
-### Coverage Configuration
-- `.tarpaulin.toml` - Configuration file for tarpaulin with custom settings
-- `.codecov.yml` - Configuration for Codecov integration
-- GitHub Actions automatically run coverage on each push and PR
-- Reports are uploaded to Codecov and available as GitHub Actions artifacts
+# Build the application
+cargo build --release
 
-### Current Coverage
-- Minimum required coverage: 60%
-- Reports include line, branch, and function coverage
-- Detailed per-file metrics are available in the HTML and JSON reports
+# Test the Docker stack locally
+cd docker
+./scripts/setup.sh
+./scripts/start.sh
+```
+
+### Cross-Platform Building
+
+Enable ARM64 emulation for testing:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Deployment fails on device provisioning:**
+- Verify SSH connectivity and credentials
+- Ensure device has sufficient disk space (minimum 4GB)
+- Check internet connectivity for Docker installation
+
+**Docker services fail to start:**
+- Check logs: `docker-compose logs -f`
+- Verify port availability (3000, 8086, 9090)
+- Ensure sufficient system resources
+
+**OPC-UA connection issues:**
+- Verify OPC-UA server accessibility
+- Check certificates and authentication
+- Test with `./opcua_client_test`
+
+### Getting Help
+
+- Check service logs: `./scripts/stop.sh && ./scripts/start.sh`
+- View deployment status: `docker-compose ps`
+- Reset everything: `docker-compose down -v && ./scripts/setup.sh`
+
+## Migration from Legacy Deployments
+
+If you're upgrading from manual Telegraf deployments:
+
+1. **Backup existing data** before migration
+2. **Use the Docker stack** for all new deployments
+3. **Migrate configurations** to the new format
+4. **Update monitoring endpoints** to use new service URLs
+
+Manual device deployments are **no longer supported**. Please migrate to the Docker-based stack for better reliability and maintenance.
 
 ## Support
-If you encounter issues or have questions, please submit an issue on our GitHub page.
+
+- **Issues**: Submit issues on our GitHub repository
+- **Documentation**: See `docs/` directory for detailed guides
+- **Docker Stack**: See `docker/README.md` for container-specific documentation
 
 ## License
+
 This project is licensed under the terms of the included LICENSE file.
 
-Thank you for using Telegraf Configuration Generator!
+---
 
+**Note**: This project focuses exclusively on Docker-based deployments. Manual device deployments are deprecated and not recommended for new installations.
