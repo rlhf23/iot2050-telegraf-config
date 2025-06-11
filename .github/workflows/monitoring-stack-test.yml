@@ -23,6 +23,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create test .env file for validation
+        run: |
+          cd docker
+          # Create minimal .env file for validation
+          cat > .env << EOF
+          INFLUXDB_USER=test
+          INFLUXDB_PASSWORD=test
+          INFLUXDB_ORG=test
+          INFLUXDB_BUCKET=test
+          INFLUXDB_TOKEN=test
+          TELEGRAF_TOKEN=test
+          GRAFANA_ADMIN_USER=test
+          GRAFANA_ADMIN_PASSWORD=test
+          HOST_DOCKER_GID=999
+          EOF
+
       - name: Validate docker-compose.yml syntax
         run: |
           cd docker
