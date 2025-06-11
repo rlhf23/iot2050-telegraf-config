@@ -55,12 +55,12 @@ services:
       - /var/run/utmp:/var/run/utmp:ro
     networks:
       - monitoring
-    healthcheck:
-      test: ["CMD", "telegraf", "--test", "--config", "/etc/telegraf/telegraf.conf", "|| sleep 10; exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    # healthcheck:
+    #   test: ["CMD", "telegraf", "--test", "--config", "/etc/telegraf/telegraf.conf", "|| sleep 10; exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 60s
 
   grafana:
     image: grafana/grafana:latest
