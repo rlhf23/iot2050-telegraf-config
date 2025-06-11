@@ -1,5 +1,5 @@
-#!/bin/bash
-# Script to run test coverage and generate reports
+#!/usr/bin/env bash
+# Script to run test coverage and generate reports using fish shell
 
 # Set environment variables if not already set
 export DEFAULT_IP=${DEFAULT_IP:-192.168.1.1}
@@ -13,7 +13,7 @@ echo "Running cargo test to ensure all tests pass..."
 cargo test
 
 echo "Running cargo tarpaulin to generate coverage reports..."
-cargo tarpaulin --config .tarpaulin.toml
+cargo tarpaulin --config .tarpaulin.toml --skip-clean -- --test-threads=1 
 
 echo "Coverage reports have been generated in the 'coverage' directory."
 echo "Open coverage/tarpaulin-report.html in your browser to view the HTML report."

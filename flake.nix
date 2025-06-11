@@ -40,6 +40,7 @@
             rust-analyzer
             cargo-machete
             cargo-insta
+            cargo-tarpaulin
             pkg-config
             zlib
             openssl
