@@ -6,7 +6,7 @@ The IoT2050 Monitoring Stack is a comprehensive Docker-based monitoring solution
 
 The stack streamlines the process of setting up industrial monitoring by automating the deployment of InfluxDB, Telegraf, Grafana, and Prometheus in a containerized environment. It features an integrated OPC-UA browser for easy tag selection and configuration generation.
 
-![Monitoring Stack Architecture](./monitoring-stack-architecture.png)
+![Monitoring Stack Architecture](./telegraf-config-gui.png)
 
 ## Key Features
 
