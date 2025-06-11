@@ -41,9 +41,6 @@ mod tests {
             iot_host: "192.168.1.2:22".to_string(),
             iot_username: "iot_user".to_string(),
             iot_password: "iot_pass".to_string(),
-            token_folder: folder,
-            bucket_name: "test_bucket".to_string(),
-            influx_token: Some("test_token".to_string()),
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
@@ -177,8 +174,8 @@ mod tests {
         let config_content = result.unwrap();
 
         // Check that the config contains expected elements
-        assert!(config_content.contains("bucket = \"test_bucket\""));
-        assert!(config_content.contains("token = \"test_token\""));
+        assert!(config_content.contains("bucket = \"${INFLUXDB_BUCKET}\""));
+        assert!(config_content.contains("token = \"${INFLUXDB_TOKEN}\""));
         assert!(config_content.contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
         assert!(config_content.contains("username = \"user\""));
         assert!(config_content.contains("password = \"pass\""));

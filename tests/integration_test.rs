@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use sie_generate_config::backend::OutputFormat;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -72,11 +73,8 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         iot_host: "192.168.1.2:22".to_string(),
         iot_username: "test".to_string(),
         iot_password: "test".to_string(),
-        token_folder: std::env::temp_dir(),
-        bucket_name: "test_bucket".to_string(),
-        influx_token: Some("dummy_token".to_string()),
         listener_files: vec![],
-        output_format: None,
+        output_format: Some("influxdb".to_string()),
         include_test_inputs: true,
         selected_opcua_nodes: vec![],
         folder: tests_dir.clone(),
@@ -224,11 +222,8 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         iot_host: "".to_string(),          // Not needed for this test
         iot_username: "".to_string(),
         iot_password: "".to_string(),
-        token_folder: std::env::temp_dir(),
-        bucket_name: "test_bucket".to_string(),
-        influx_token: None,
         listener_files: vec![],
-        output_format: None,
+        output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
@@ -377,11 +372,8 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         iot_host: format!("127.0.0.1:{}", port), // Use the OPC UA server port for testing
         iot_username: "test".to_string(),
         iot_password: "test".to_string(),
-        token_folder: std::env::temp_dir(),
-        bucket_name: "test_bucket".to_string(),
-        influx_token: Some("dummy_token".to_string()), // Add a dummy token for testing
         listener_files: vec![],
-        output_format: None,
+        output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),

@@ -35,8 +35,6 @@ impl OpcuaConfig<'_> {
 }
 
 pub fn format_config_header(
-    influx_token: &str,
-    bucket_name: &str,
     config_strings: &[String],
     namespace_infos: &[NamespaceInfo],
     output_format: OutputFormat,
@@ -51,12 +49,13 @@ pub fn format_config_header(
     let output_config = match output_format {
         OutputFormat::InfluxDB => format!(
             r#"# Configuration for sending metrics to InfluxDB 2.0
+# Output to InfluxDB
 [[outputs.influxdb_v2]]
-  urls = ["http://127.0.0.1:8086"]
-  token = "{}"
-  organization = "org"
-  bucket = "{}""#,
-            influx_token, bucket_name
+  urls = ["http://influxdb:8086"]
+  token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
+  organization = "${{INFLUXDB_ORG}}"
+  bucket = "${{INFLUXDB_BUCKET}}"
+"#,
         ),
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
 [[outputs.prometheus_client]]
@@ -84,7 +83,7 @@ pub fn format_config_header(
 #=================================================================================
 
 [[inputs.cpu]]
-  percpu = false
+  percpu = true
   totalcpu = true
 
 [[inputs.swap]]
@@ -136,10 +135,6 @@ pub fn format_config_header(
   ## Log only error level messages.
   # quiet = false
 
-  logfile = "/var/log/telegraf/telegraf.log"
-  logfile_rotation_max_size = "25MB"
-  logfile_rotation_max_archives = 4
-
   hostname = ""
   omit_hostname = false
 
@@ -177,7 +172,6 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   endpoint = "opc.tcp://{}"
   connect_timeout = "300s"
   request_timeout = "10s"
-  session_timeout = "5m"
   security_policy = "Basic256Sha256"
   security_mode = "SignAndEncrypt"
   certificate = ""
@@ -218,7 +212,6 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   connect_fail_behavior = "ignore"
   connect_timeout = "300s"
   request_timeout = "10s"
-  session_timeout = "20m"
   security_policy = "Basic256Sha256"
   security_mode = "SignAndEncrypt"
   certificate = ""
@@ -258,7 +251,6 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   endpoint = "opc.tcp://{}"
   connect_timeout = "300s"
   request_timeout = "10s"
-  session_timeout = "5m"
   security_policy = "Basic256Sha256"
   security_mode = "SignAndEncrypt"
   certificate = ""

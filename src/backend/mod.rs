@@ -5,6 +5,7 @@ use std::io::Write;
 
 #[cfg(test)]
 mod config_generator_test;
+pub mod deployment;
 mod format;
 #[cfg(test)]
 mod format_test;
@@ -14,6 +15,8 @@ mod opcua_poller_test;
 pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
+#[cfg(test)]
+mod deployment_test;
 
 pub use format::OutputFormat;
 pub use ssh_utils::{check_service_status, ServiceType};
@@ -333,21 +336,8 @@ impl ConfigGenerator {
             }
         }
 
-        // Get the influx token if not already set (only needed for InfluxDB output)
-        let influx_token = if self.output_format == OutputFormat::InfluxDB {
-            self.config
-                .influx_token
-                .as_ref()
-                .ok_or_else(|| TelegrafError::ConfigError("InfluxDB token not set".to_string()))?
-        } else {
-            // For Prometheus, we don't need an influx token, so use empty string
-            ""
-        };
-
         // Generate the final config content
         let config_content = format::format_config_header(
-            influx_token,
-            &self.config.bucket_name,
             &config_strings,
             &namespace_numbers,
             self.output_format,
@@ -375,7 +365,7 @@ impl ConfigGenerator {
 
         ssh_utils::send_and_restart_telegraf(
             &config_path,
-            "/etc/telegraf/telegraf.conf",
+            "telegraf/telegraf.conf",
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,
@@ -383,10 +373,6 @@ impl ConfigGenerator {
     }
 
     pub fn backup_influx(&self) -> Result<String, TelegrafError> {
-        // Ensure we have an InfluxDB token
-        // Get token from config if available, otherwise it will be read from /etc/default/telegraf
-        let _influx_token = self.config.influx_token.as_deref();
-
         ssh_utils::backup_influxdb(
             &self.config.iot_host,
             &self.config.iot_username,
@@ -421,12 +407,15 @@ impl ConfigGenerator {
     }
 
     /// Generic method to check if a service is responding
+    /// 
+    /// # Returns
+    /// A tuple containing a boolean indicating if the service is healthy and a status message string
     pub fn check_service_status(
         &self,
         service_url: &str,
         service_type: ssh_utils::ServiceType,
         timeout_seconds: u64,
-    ) -> Result<bool, TelegrafError> {
+    ) -> Result<(bool, String), TelegrafError> {
         ssh_utils::check_service_status(
             &self.config.iot_host,
             &self.config.iot_username,
@@ -437,7 +426,11 @@ impl ConfigGenerator {
         )
     }
 
-    pub fn check_influxdb_status(&self) -> Result<bool, TelegrafError> {
+    /// Check if InfluxDB is responding
+    /// 
+    /// # Returns
+    /// A tuple containing a boolean indicating if InfluxDB is healthy and a status message string
+    pub fn check_influxdb_status(&self) -> Result<(bool, String), TelegrafError> {
         ssh_utils::check_influxdb_status(
             &self.config.iot_host,
             &self.config.iot_username,

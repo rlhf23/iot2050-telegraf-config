@@ -30,16 +30,13 @@ mod tests {
     // Helper to create a test config
     fn create_test_config() -> TelegrafConfig {
         TelegrafConfig {
-            folder: PathBuf::new(),
-            ip: "127.0.0.1".to_string(),
-            username: "testuser".to_string(),
-            password: "testpass".to_string(),
-            iot_host: "localhost:22".to_string(),
+            folder: std::env::current_dir().unwrap(),
+            ip: "127.0.0.1:49320".to_string(),
+            username: "test".to_string(),
+            password: "test".to_string(),
+            iot_host: "192.168.1.2:22".to_string(),
             iot_username: "iotuser".to_string(),
             iot_password: "iotpass".to_string(),
-            token_folder: PathBuf::new(),
-            bucket_name: "test-bucket".to_string(),
-            influx_token: Some("test-token".to_string()),
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,

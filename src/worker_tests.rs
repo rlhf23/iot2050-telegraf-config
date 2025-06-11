@@ -2,8 +2,10 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
+
 use crate::worker::{WorkerCommand, WorkerHandle, WorkerResponse};
 use crate::TelegrafConfig;
+use crate::backend::OutputFormat;
 use std::path::Path;
 
 // Helper function to wait for a response with a timeout
@@ -26,16 +28,13 @@ where
 // Helper function to create a test config
 fn create_test_config() -> TelegrafConfig {
     TelegrafConfig {
-        folder: Path::new("/tmp").to_path_buf(),
-        ip: "127.0.0.1".to_string(),
+        folder: std::env::current_dir().unwrap(),
+        ip: "127.0.0.1:49320".to_string(),
         username: "test".to_string(),
         password: "test".to_string(),
-        iot_host: "127.0.0.1".to_string(),
+        iot_host: "192.168.1.2:22".to_string(),
         iot_username: "iot".to_string(),
         iot_password: "iotpass".to_string(),
-        token_folder: Path::new("/tmp").to_path_buf(),
-        bucket_name: "test_bucket".to_string(),
-        influx_token: Some("test_token".to_string()),
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: false,

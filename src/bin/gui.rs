@@ -40,7 +40,6 @@ struct TelegrafApp {
     selected_listener_files: Vec<bool>, // Checkboxes for listener selection
     file_configs: std::collections::HashMap<String, XmlFileConfig>,
     status_messages: Vec<String>, // Changed from status_message to store multiple messages
-    token_file_path: std::path::PathBuf, // Store the complete token file path
     form_state: FormState,               // Validation state for the form
     opcua_nodes: Vec<OpcUaNode>,         // Store the complete OPC UA node hierarchy
     show_opcua_browser: bool,            // Toggle for showing the OPC UA browser
@@ -63,12 +62,6 @@ impl TelegrafApp {
             }
         } else {
             self.status_messages.push("Worker not initialized".to_string());
-        }
-    }
-
-    fn load_token(&mut self) {
-        if let Ok(token_content) = std::fs::read_to_string(&self.token_file_path) {
-            self.config.influx_token = Some(token_content.trim().to_string());
         }
     }
 
@@ -256,7 +249,6 @@ impl TelegrafApp {
     fn default() -> Self {
         let mut path = std::env::current_exe().unwrap();
         path.pop(); // Remove the executable name
-        let token_file_path = path.join("token.txt");
 
         let worker = Some(WorkerHandle::new());
 
@@ -269,19 +261,15 @@ impl TelegrafApp {
                 iot_host: env!("DEFAULT_IOT_IP").to_string(),
                 iot_username: env!("DEFAULT_IOT_USERNAME").to_string(),
                 iot_password: env!("DEFAULT_IOT_PASSWORD").to_string(),
-                token_folder: path,
-                bucket_name: String::new(),
-                influx_token: Some("${INFLUX_TOKEN}".to_string()), // moved to telegraf env var
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
+                include_test_inputs: true,
                 selected_opcua_nodes: Vec::new(),
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
             file_configs: std::collections::HashMap::new(),
             status_messages: Vec::new(), // Initialize with empty vector for status messages
-            token_file_path, // Default to token.txt in the current directory
             form_state: FormState::default(),
             opcua_nodes: Vec::new(),
             show_opcua_browser: false,
@@ -294,7 +282,6 @@ impl TelegrafApp {
 
         // Load initial data
         app.load_xml_files();
-        app.load_token();
         app
     }
 }
@@ -426,10 +413,7 @@ impl eframe::App for TelegrafApp {
                     if ui.button("Browse").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.config.folder = path.clone();
-                            self.config.token_folder = path.clone(); // Update token folder as well
-                            self.token_file_path = path.join("token.txt"); // Update
-                            self.load_token(); // Read token from new folder
-                                               // Update XML files list
+                            // Update XML files list
                             self.xml_files = std::fs::read_dir(&self.config.folder)
                                 .unwrap()
                                 .filter_map(|entry| {
@@ -477,7 +461,7 @@ impl eframe::App for TelegrafApp {
 
                 // Test Inputs Toggle
                 ui.horizontal(|ui| {
-                    ui.label("Include Test Inputs:");
+                    ui.label("Include System Inputs");
                     if ui
                         .checkbox(
                             &mut self.config.include_test_inputs,
@@ -548,43 +532,7 @@ impl eframe::App for TelegrafApp {
                         });
                     });
 
-                    // Only show InfluxDB token options when using InfluxDB
-                    if !is_prometheus {
-                        // InfluxDB Token
-                        ui.separator();
-                        let mut token = self.config.influx_token.clone().unwrap_or_default();
-
-                        egui::Grid::new("influxdb_options_grid")
-                            .num_columns(2)
-                            .spacing([40.0, 4.0])
-                            .show(ui, |ui| {
-                                // Token input
-                                ui.label("InfluxDB Token:");
-                                if ui.text_edit_singleline(&mut token).changed() {
-                                    self.config.influx_token = Some(token);
-                                }
-                                ui.end_row();
-
-                                // Token file path
-                                ui.label("Token File:");
-                                ui.horizontal(|ui| {
-                                    if ui.button("Browse").clicked() {
-                                        if let Some(path) = rfd::FileDialog::new()
-                                            .add_filter("Text files", &["txt"])
-                                            .set_file_name("token.txt") // Default filename suggestion
-                                            .pick_file()
-                                        {
-                                            self.token_file_path = path.clone();
-                                            self.config.token_folder =
-                                                path.parent().unwrap_or(&path).to_path_buf();
-                                            self.load_token();
-                                        }
-                                    }
-                                    ui.label(self.token_file_path.to_string_lossy().to_string());
-                                });
-                                ui.end_row();
-                            });
-                    }
+                    // InfluxDB token is now handled via environment variable
                 });
             });
 
@@ -698,20 +646,12 @@ impl eframe::App for TelegrafApp {
             // Bucket Configuration - Only show when using InfluxDB
             // Reuse the already calculated is_prometheus value
             // Since it might have changed with the toggle, get the current value
-            let is_prometheus = self
+            let _is_prometheus = self
                 .config
                 .output_format
                 .clone()
                 .unwrap_or_else(|| "influxdb".to_string())
                 == "prometheus";
-            if !is_prometheus {
-                ui.horizontal(|ui| {
-                    ui.label("Bucket Name:");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.config.bucket_name).hint_text("line"),
-                    );
-                });
-            }
 
             // Main Action Buttons
             ui.horizontal(|ui| {
@@ -793,11 +733,6 @@ impl eframe::App for TelegrafApp {
                         }
                     }
 
-                    self.config.bucket_name = if self.config.bucket_name.is_empty() {
-                        "line".to_string()
-                    } else {
-                        self.config.bucket_name.clone()
-                    };
                     self.config.listener_files = self
                         .xml_files
                         .iter()

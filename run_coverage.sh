@@ -1,5 +1,5 @@
-#!/bin/bash
-# Script to run test coverage and generate reports
+#!/usr/bin/env bash
+# Script to run test coverage and generate reports using fish shell
 
 # Set environment variables if not already set
 export DEFAULT_IP=${DEFAULT_IP:-192.168.1.1}

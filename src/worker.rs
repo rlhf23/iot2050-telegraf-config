@@ -114,7 +114,7 @@ impl WorkerHandle {
                             let ssh_handle = std::thread::spawn(move || {
                                 ssh_utils::send_and_restart_telegraf_with_progress(
                                     &config_clone.folder.join("telegraf.conf"),
-                                    "/etc/telegraf/telegraf.conf",
+                                    "telegraf/telegraf.conf",
                                     &config_clone.iot_host,
                                     &config_clone.iot_username,
                                     &config_clone.iot_password,
@@ -250,12 +250,9 @@ impl WorkerHandle {
                                         timeout_secs,
                                     )
                                 })
-                                .map(|status| {
-                                    WorkerResponse::SshCommandOutput(if status {
-                                        "✅ Service is responding".to_string()
-                                    } else {
-                                        "❌ Service is not responding".to_string()
-                                    })
+                                .map(|(status, message)| {
+                                    let status_icon = if status { "✅" } else { "❌" };
+                                    WorkerResponse::SshCommandOutput(format!("{} {}", status_icon, message))
                                 })
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
@@ -272,12 +269,9 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = ConfigGenerator::new(config)
                                 .and_then(|generator| generator.check_influxdb_status())
-                                .map(|status| {
-                                    WorkerResponse::SshCommandOutput(if status {
-                                        "✅ InfluxDB is responding".to_string()
-                                    } else {
-                                        "❌ InfluxDB is not responding".to_string()
-                                    })
+                                .map(|(status, message)| {
+                                    let status_icon = if status { "✅" } else { "❌" };
+                                    WorkerResponse::SshCommandOutput(format!("{} {}", status_icon, message))
                                 })
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(

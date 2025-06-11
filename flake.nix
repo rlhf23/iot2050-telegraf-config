@@ -23,7 +23,7 @@
           #   config = "x86_64-w64-mingw32";
           # };
         };
-        rustVersion = pkgs.pkgsBuildHost.rust-bin.nightly.latest.default.override {
+        rustVersion = pkgs.pkgsBuildHost.rust-bin.stable.latest.default.override {
           targets = ["x86_64-pc-windows-gnu"];
         };
         libPath = with pkgs;
@@ -39,6 +39,8 @@
             rustup
             rust-analyzer
             cargo-machete
+            cargo-insta
+            cargo-tarpaulin
             pkg-config
             zlib
             openssl
