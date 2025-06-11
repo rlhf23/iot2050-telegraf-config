@@ -26,7 +26,7 @@ jobs:
       - name: Validate docker-compose.yml syntax
         run: |
           cd docker
-          docker-compose config
+          docker compose config
 
   test-monitoring-stack:
     name: Test Monitoring Stack
@@ -61,22 +61,22 @@ jobs:
       - name: Start monitoring stack
         run: |
           cd docker
-          docker-compose up -d
+          docker compose up -d
           echo "Waiting for services to start..."
           sleep 30
 
       - name: Check container status
         run: |
           cd docker
-          docker-compose ps
+          docker compose ps
           
           # Check if all expected containers are running
-          RUNNING_CONTAINERS=$(docker-compose ps --services --filter "status=running" | wc -l)
+          RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
           EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
-            docker-compose logs
+            docker compose logs
             exit 1
           fi
 
@@ -117,7 +117,7 @@ jobs:
             fi
             
             # Check if Telegraf is running (it doesn't have a health endpoint)
-            if docker-compose ps telegraf | grep -q "Up"; then
+            if docker compose ps telegraf | grep -q "Up"; then
               echo "✓ Telegraf is running"
               TELEGRAF_HEALTHY=true
             else
@@ -132,7 +132,7 @@ jobs:
             
             if [ $i -eq 18 ]; then
               echo "Services failed to become healthy within timeout"
-              docker-compose logs
+              docker compose logs
               exit 1
             fi
             
@@ -207,19 +207,19 @@ jobs:
         run: |
           cd docker
           echo "=== InfluxDB Logs ==="
-          docker-compose logs influxdb | tail -50
+          docker compose logs influxdb | tail -50
           echo "=== Telegraf Logs ==="
-          docker-compose logs telegraf | tail -50
+          docker compose logs telegraf | tail -50
           echo "=== Grafana Logs ==="
-          docker-compose logs grafana | tail -50
+          docker compose logs grafana | tail -50
           echo "=== Prometheus Logs ==="
-          docker-compose logs prometheus | tail -50
+          docker compose logs prometheus | tail -50
 
       - name: Stop monitoring stack
         if: always()
         run: |
           cd docker
-          docker-compose down -v
+          docker compose down -v
 
   test-deployment-scripts:
     name: Test Deployment Scripts

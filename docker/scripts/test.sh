@@ -35,7 +35,7 @@ print_error() {
 
 cleanup() {
     print_step "Cleaning up"
-    docker-compose down -v 2>/dev/null || true
+    docker compose down -v 2>/dev/null || true
     docker system prune -f 2>/dev/null || true
 }
 
@@ -46,7 +46,7 @@ print_step "Testing Monitoring Stack Locally"
 
 # Test 1: Validate docker-compose.yml
 print_step "Validating docker-compose.yml syntax"
-if docker-compose config > /dev/null 2>&1; then
+if docker compose config > /dev/null 2>&1; then
     print_success "docker-compose.yml syntax is valid"
 else
     print_error "docker-compose.yml syntax is invalid"
@@ -76,21 +76,21 @@ print_success "Test environment created"
 
 # Test 3: Start the stack
 print_step "Starting monitoring stack"
-docker-compose up -d
+docker compose up -d
 
 print_success "Stack started, waiting for services..."
 sleep 30
 
 # Test 4: Check container status
 print_step "Checking container status"
-docker-compose ps
+docker compose ps
 
-RUNNING_CONTAINERS=$(docker-compose ps --services --filter "status=running" | wc -l)
+RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
 EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
 
 if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
     print_error "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
-    docker-compose logs
+    docker compose logs
     exit 1
 fi
 
@@ -133,7 +133,7 @@ wait $GRAFANA_PID || exit 1
 wait $PROMETHEUS_PID || exit 1
 
 # Check Telegraf (no health endpoint)
-if docker-compose ps telegraf | grep -q "Up"; then
+if docker compose ps telegraf | grep -q "Up"; then
     print_success "Telegraf is running"
 else
     print_error "Telegraf is not running"
@@ -189,16 +189,16 @@ print_step "Service logs summary"
 echo "Recent logs from each service:"
 
 echo -e "\n${YELLOW}InfluxDB logs:${NC}"
-docker-compose logs --tail=5 influxdb
+docker compose logs --tail=5 influxdb
 
 echo -e "\n${YELLOW}Telegraf logs:${NC}"
-docker-compose logs --tail=5 telegraf
+docker compose logs --tail=5 telegraf
 
 echo -e "\n${YELLOW}Grafana logs:${NC}"
-docker-compose logs --tail=5 grafana
+docker compose logs --tail=5 grafana
 
 echo -e "\n${YELLOW}Prometheus logs:${NC}"
-docker-compose logs --tail=5 prometheus
+docker compose logs --tail=5 prometheus
 
 print_step "Test Summary"
 print_success "All monitoring stack tests passed!"
@@ -208,5 +208,5 @@ echo "- Grafana: http://localhost:3000 (testadmin/testgrafana123)"
 echo "- InfluxDB: http://localhost:8086"
 echo "- Prometheus: http://localhost:9090"
 echo
-echo "Run 'docker-compose logs -f' to view live logs"
-echo "Run 'docker-compose down -v' to stop and clean up"
+echo "Run 'docker compose logs -f' to view live logs"
+echo "Run 'docker compose down -v' to stop and clean up"
