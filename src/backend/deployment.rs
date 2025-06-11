@@ -353,7 +353,7 @@ impl IoTDeployer {
         
         use std::io::{Read, BufReader};
         use std::time::{Duration, Instant};
-        use ssh2::Channel;
+        // ssh2::Channel is not used directly
         use std::thread;
 
         let mut stdout = channel.stream(0);

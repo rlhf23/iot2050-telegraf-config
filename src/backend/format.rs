@@ -35,8 +35,6 @@ impl OpcuaConfig<'_> {
 }
 
 pub fn format_config_header(
-    influx_token: &str,
-    bucket_name: &str,
     config_strings: &[String],
     namespace_infos: &[NamespaceInfo],
     output_format: OutputFormat,

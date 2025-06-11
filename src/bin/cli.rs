@@ -433,7 +433,7 @@ fn main() {
     // print the current config (for legacy config mode)
     print_config(&matches);
 
-    let mut config = TelegrafConfig {
+    let config = TelegrafConfig {
         folder: matches.get_one::<String>("folder").unwrap().into(),
         ip: matches.get_one::<String>("ip").unwrap().to_string(),
         username: matches.get_one::<String>("username").unwrap().to_string(),
@@ -447,9 +447,7 @@ fn main() {
             .get_one::<String>("iot_password")
             .unwrap()
             .to_string(),
-        token_folder: matches.get_one::<String>("token").unwrap().into(),
-        bucket_name: String::from("line"),
-        influx_token: Some("${INFLUX_TOKEN}".to_string()), // moved to telegraf env var
+
         listener_files: Vec::new(),
         output_format: Some(
             matches
@@ -634,21 +632,7 @@ fn main() {
         .collect();
 
     // Check if we're using InfluxDB or Prometheus
-    let using_influxdb = config.output_format.as_deref() != Some("prometheus");
-
-    if using_influxdb {
-        // Only need influx token and bucket name for InfluxDB output
-
-        println!("Enter the bucket name (press Enter for default 'line'):");
-        let mut bucket_name = String::new();
-        std::io::stdin().read_line(&mut bucket_name).unwrap();
-        config.bucket_name = if bucket_name.trim().is_empty() {
-            "line".to_string()
-        } else {
-            bucket_name.trim().to_string()
-        };
-    }
-
+    let _using_influxdb = config.output_format.as_deref() != Some("prometheus");
     // Create generator with complete config
     let mut generator = match ConfigGenerator::new(config.clone()) {
         Ok(gen) => gen,
