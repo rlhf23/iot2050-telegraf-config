@@ -58,7 +58,7 @@ jobs:
           echo "Validating Prometheus configuration..."
           if [ -f "docker/config/prometheus/prometheus.yml" ]; then
             # Use promtool via Docker to validate config
-            docker run --rm -v $(pwd)/docker/config/prometheus:/etc/prometheus:ro prom/prometheus:latest promtool check config /etc/prometheus/prometheus.yml || {
+            docker run --rm -v $(pwd)/docker/config/prometheus:/etc/prometheus:ro --entrypoint=/bin/promtool prom/prometheus:latest check config /etc/prometheus/prometheus.yml || {
               echo "❌ Prometheus config validation failed"
               exit 1
             }
