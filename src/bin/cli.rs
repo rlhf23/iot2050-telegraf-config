@@ -404,6 +404,13 @@ fn main() {
             .help("Include test inputs (CPU, disk, memory) in the configuration"),
         )
         .arg(
+            Arg::new("diagnostics")
+            .short('d')
+            .long("diagnostics")
+            .action(ArgAction::SetTrue)
+            .help("Include OPC UA diagnostics and Telegraf internal monitoring"),
+        )
+        .arg(
             Arg::new("check_influxdb")
             .long("check-influxdb")
             .action(ArgAction::SetTrue)
@@ -458,6 +465,8 @@ fn main() {
         include_test_inputs: matches.get_flag("test_inputs"),
         selected_opcua_nodes: Vec::new(),
     };
+
+    let include_diagnostics = matches.get_flag("diagnostics");
 
     // For operations that don't need full config setup
     if matches.get_flag("send")
@@ -635,7 +644,10 @@ fn main() {
     let _using_influxdb = config.output_format.as_deref() != Some("prometheus");
     // Create generator with complete config
     let mut generator = match ConfigGenerator::new(config.clone()) {
-        Ok(gen) => gen,
+        Ok(mut gen) => {
+            gen.set_include_diagnostics(include_diagnostics);
+            gen
+        },
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),
     };
 

@@ -31,6 +31,8 @@ mod tests {
             &namespace_infos,
             output_format,
             include_test_inputs,
+            false, // include_diagnostics
+            None,  // opcua_config
         );
 
         assert!(result.contains("# Namespace for file test1.xml: 1"));
@@ -58,6 +60,8 @@ mod tests {
             &namespace_infos,
             output_format,
             include_test_inputs,
+            false, // include_diagnostics
+            None,  // opcua_config
         );
 
         assert!(result.contains("# Namespace for file test1.xml: 1"));
@@ -81,6 +85,8 @@ mod tests {
             &namespace_infos,
             output_format,
             include_test_inputs,
+            false, // include_diagnostics
+            None,  // opcua_config
         );
 
         assert!(result.contains("[[inputs.cpu]]"));

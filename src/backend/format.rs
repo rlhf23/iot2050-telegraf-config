@@ -39,6 +39,8 @@ pub fn format_config_header(
     namespace_infos: &[NamespaceInfo],
     output_format: OutputFormat,
     include_test_inputs: bool,
+    include_diagnostics: bool,
+    opcua_config: Option<&OpcuaConfig>,
 ) -> String {
     let namespace_comments = namespace_infos
         .iter()
@@ -47,16 +49,34 @@ pub fn format_config_header(
         .join("\n");
 
     let output_config = match output_format {
-        OutputFormat::InfluxDB => format!(
-            r#"# Configuration for sending metrics to InfluxDB 2.0
-# Output to InfluxDB
+        OutputFormat::InfluxDB => {
+            let mut config = format!(
+                r#"# Configuration for sending metrics to InfluxDB 2.0
+# Output to InfluxDB - Main process data
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
+  namepass = ["opcua*"]  # Only send OPC UA process data to main bucket
 "#,
-        ),
+            );
+            
+            if include_diagnostics {
+                config.push_str(&format!(
+                    r#"
+# Output to InfluxDB - Diagnostics data
+[[outputs.influxdb_v2]]
+  urls = ["http://influxdb:8086"]
+  token = "${{INFLUXDB_TOKEN}}"
+  organization = "${{INFLUXDB_ORG}}"
+  bucket = "${{INFLUXDB_DIAGNOSTICS_BUCKET}}"
+  namedrop = ["opcua*"]  # Send everything except OPC UA process data to diagnostics bucket
+"#,
+                ));
+            }
+            config
+        },
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
 [[outputs.prometheus_client]]
   ## Address to listen on
@@ -99,11 +119,83 @@ pub fn format_config_header(
 [[inputs.mem]]
   # no configuration
 
+[[inputs.net]]
+  # no configuration
+
+[[inputs.system]]
+  # no configuration
+
 #=================================================================================
 #                          TEST INPUTS END (੭｡╹▿╹｡)੭
 #=================================================================================
 "#
         .to_string()
+    } else {
+        String::new()
+    };
+
+    // Define diagnostics inputs if requested
+    let diagnostics_inputs = if include_diagnostics {
+        let mut diag_config = r#"#=================================================================================
+#      🔧 DIAGNOSTICS INPUTS START - TELEGRAF & OPC UA MONITORING 
+#=================================================================================
+
+# Monitor Telegraf's internal performance
+[[inputs.internal]]
+  collect_memstats = true
+
+"#.to_string();
+
+        // Add OPC UA diagnostics if we have OPC UA config
+        if let Some(config) = opcua_config {
+            diag_config.push_str(&format!(
+                r#"# Monitor OPC UA server diagnostics
+[[inputs.opcua]]
+  name = "opcua_diagnostics"
+  endpoint = "opc.tcp://{}"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "gather"
+  client_trace = false
+  interval = "10s"
+
+  [[inputs.opcua.group]]
+    name = "server_diagnostics"
+    namespace = "0"  # Standard OPC UA namespace
+    identifier_type = "i"
+    nodes = [
+      {{name="server_state", identifier="2259"}},           # ServerState
+      {{name="current_sessions", identifier="2277"}},       # CurrentSessionCount  
+      {{name="current_subscriptions", identifier="2285"}},  # CurrentSubscriptionCount  
+      {{name="cumulated_sessions", identifier="2278"}},     # CumulatedSessionCount
+      {{name="cumulated_subscriptions", identifier="2286"}}, # CumulatedSubscriptionCount
+      {{name="publishing_interval_count", identifier="2284"}}, # PublishingIntervalCount
+      {{name="rejected_requests", identifier="2288"}},      # RejectedRequestsCount
+      {{name="rejected_sessions", identifier="3705"}},      # RejectedSessionCount
+      {{name="session_abort_count", identifier="2282"}},    # SessionAbortCount
+      {{name="session_timeout_count", identifier="2281"}}   # SessionTimeoutCount
+    ]
+
+"#,
+                config.ip, config.username, config.password
+            ));
+        }
+
+        diag_config.push_str(
+            r#"#=================================================================================
+#                          DIAGNOSTICS INPUTS END 🔧
+#=================================================================================
+"#,
+        );
+
+        diag_config
     } else {
         String::new()
     };
@@ -142,11 +234,17 @@ pub fn format_config_header(
 
 {}
 {}
+{}
 "#,
         namespace_comments,
         output_config,
         if !test_inputs.is_empty() {
             test_inputs + "\n"
+        } else {
+            String::new()
+        },
+        if !diagnostics_inputs.is_empty() {
+            diagnostics_inputs + "\n"
         } else {
             String::new()
         },

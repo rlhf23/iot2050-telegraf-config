@@ -59,6 +59,7 @@ INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 INFLUXDB_ORG=iot2050
 INFLUXDB_BUCKET=telegraf
+INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
 INFLUXDB_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 
 # Grafana
