@@ -252,19 +252,41 @@ Build-time variables can be customized using a `.env` file and are integrated vi
    - Library tests are in `lib_test.rs`
    - Error handling tests are in `error_test.rs`
 
-2. **Test Tools**:
+2. **Integration Tests**: Full application testing in `tests/` directory
+   - Command-line interface testing
+   - Configuration generation end-to-end tests
+   - Snapshot testing for generated configurations
+
+3. **Monitoring Stack Tests**: Comprehensive Docker stack validation
+   - **Automated CI Testing**: GitHub Actions workflow (`.github/workflows/monitoring-stack-test.yml`)
+     - Docker Compose syntax validation
+     - Multi-service orchestration testing
+     - Health check validation with timeouts
+     - Service integration testing (InfluxDB ↔ Telegraf ↔ Grafana)
+     - Multi-architecture build testing (x86_64/ARM64)
+     - Deployment script validation
+   - **Local Testing**: Interactive test script (`docker/scripts/test.sh`)
+     - Complete test suite with colored output
+     - Service health monitoring
+     - Configuration validation
+     - Integration testing
+     - Debugging information and logs
+
+4. **Test Tools**:
    - `opcua_test_server.rs`: Standalone OPC UA test server
    - `opcua_client_test.rs`: Tool for testing OPC UA client functionality
+   - `docker/scripts/test.sh`: Monitoring stack test runner
 
-3. **Test Coverage**:
+5. **Test Coverage**:
    - Uses `cargo-tarpaulin` for code coverage
    - Coverage configuration in `.tarpaulin.toml`
-   - Run coverage with `run_coverage.sh` or `run_coverage.fish`
+   - Run coverage with `run_coverage.sh`
    - Integrated with Codecov (`.codecov.yml`)
 
-4. **Test Data**:
+6. **Test Data**:
    - XML sample files in `tests/` directory
    - PKI certificates in `pki/` and `pki-server/` for secure testing
+   - Docker test configurations with mock credentials
 
 ## Build and Deployment
 
