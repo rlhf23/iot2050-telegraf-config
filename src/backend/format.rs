@@ -58,7 +58,7 @@ pub fn format_config_header(
   token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
-  namepass = ["opcua*"]  # Only send OPC UA process data to main bucket
+  namepass = ["opcua"]  # Only send OPC UA process data to main bucket
 "#,
             );
             
@@ -71,7 +71,7 @@ pub fn format_config_header(
   token = "${{INFLUXDB_TOKEN}}"
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_DIAGNOSTICS_BUCKET}}"
-  namedrop = ["opcua*"]  # Send everything except OPC UA process data to diagnostics bucket
+  namepass = ["opcua_diagnostics", "internal_*", "cpu", "mem", "disk", "net", "system"]  # Send diagnostics data to diagnostics bucket
 "#,
                 ));
             }

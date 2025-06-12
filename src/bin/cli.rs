@@ -463,10 +463,9 @@ fn main() {
                 .to_string(),
         ),
         include_test_inputs: matches.get_flag("test_inputs"),
+        include_diagnostics: matches.get_flag("diagnostics"),
         selected_opcua_nodes: Vec::new(),
     };
-
-    let include_diagnostics = matches.get_flag("diagnostics");
 
     // For operations that don't need full config setup
     if matches.get_flag("send")
@@ -645,7 +644,7 @@ fn main() {
     // Create generator with complete config
     let mut generator = match ConfigGenerator::new(config.clone()) {
         Ok(mut gen) => {
-            gen.set_include_diagnostics(include_diagnostics);
+            gen.set_include_diagnostics(config.include_diagnostics);
             gen
         },
         Err(e) => exit_with_error(format!("Configuration error: {}", e)),

@@ -76,6 +76,7 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: true,
+        include_diagnostics: false,
         selected_opcua_nodes: vec![],
         folder: tests_dir.clone(),
     };
@@ -225,6 +226,7 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
+        include_diagnostics: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
     };
@@ -375,6 +377,7 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
+        include_diagnostics: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
     };
