@@ -38,7 +38,7 @@ expression: "&config"
   token = "${INFLUXDB_TOKEN}"  # Using influxdb admin token
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
-  namepass = ["opcua*"]  # Only send OPC UA process data to main bucket
+  namepass = ["opcua"]  # Only send OPC UA process data to main bucket
 
 
 
