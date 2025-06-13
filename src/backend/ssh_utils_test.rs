@@ -1,4 +1,5 @@
 use crate::backend::ssh_utils::{self, ServiceType, SshConfig};
+use crate::error::TelegrafError;
 use std::path::PathBuf;
 use tempfile::tempdir;
 
@@ -7,6 +8,7 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+    use std::path::Path;
 
     // Helper function to create a test file with content
     fn create_test_file(dir: &PathBuf, filename: &str, content: &str) -> PathBuf {
@@ -77,6 +79,62 @@ mod tests {
         assert!(matches!(influx3, ServiceType::InfluxDB));
     }
 
+    // Test host validation logic
+    #[test]
+    fn test_validate_host_format() {
+        // Test valid host format
+        let validate_host_format = ssh_utils::validate_host_format_exposed_for_testing;
+        
+        // Valid host:port format
+        assert!(validate_host_format("192.168.1.1:22").is_ok());
+        assert!(validate_host_format("localhost:22").is_ok());
+        assert!(validate_host_format("example.com:8022").is_ok());
+        
+        // Missing port
+        let result = validate_host_format("192.168.1.1");
+        assert!(result.is_err());
+        match result {
+            Err(TelegrafError::HostFormatError(msg)) => {
+                assert!(msg.contains("Missing port specification"));
+            }
+            _ => panic!("Expected HostFormatError for missing port"),
+        }
+        
+        // Invalid port (not a number)
+        let result = validate_host_format("192.168.1.1:abc");
+        assert!(result.is_err());
+        match result {
+            Err(TelegrafError::HostFormatError(msg)) => {
+                assert!(msg.contains("Invalid port"));
+            }
+            _ => panic!("Expected HostFormatError for invalid port"),
+        }
+        
+        // Too many colons
+        let result = validate_host_format("192.168.1.1:22:33");
+        assert!(result.is_err());
+        match result {
+            Err(TelegrafError::HostFormatError(msg)) => {
+                assert!(msg.contains("Invalid host format"));
+            }
+            _ => panic!("Expected HostFormatError for too many colons"),
+        }
+        
+        // Empty host
+        let result = validate_host_format("");
+        assert!(result.is_err());
+        
+        // Port zero (invalid)
+        let result = validate_host_format("192.168.1.1:0");
+        assert!(result.is_err());
+        match result {
+            Err(TelegrafError::HostFormatError(msg)) => {
+                assert!(msg.contains("Port must be a number between 1-65535"));
+            }
+            _ => panic!("Expected HostFormatError for port zero"),
+        }
+    }
+
     // Test host validation logic (without actual network connections)
     mod host_validation_tests {
         use super::*;
@@ -95,7 +153,9 @@ mod tests {
 
             // Should return Ok with false status and a message
             match result {
-                Ok((false, _)) => (), // Expected result - service check failed with message
+                Ok((false, msg)) => {
+                    assert!(msg.contains("not yet implemented"), "Expected 'not yet implemented' message");
+                },
                 Ok((true, _)) => panic!("Expected service check to fail"),
                 Err(_) => panic!("Expected Ok with false status, got error"),
             }
@@ -175,6 +235,44 @@ mod tests {
         }
     }
 
+    // Test progress reporting functionality
+    mod progress_reporting_tests {
+        use super::*;
+        use std::sync::mpsc;
+
+        #[test]
+        fn test_send_and_restart_telegraf_with_progress() {
+            let dir = tempdir().unwrap();
+            let file_path = create_test_file(&dir.path().to_path_buf(), "telegraf.conf", "test content");
+            
+            // Create a channel to receive progress updates
+            let (sender, receiver) = mpsc::channel();
+            
+            // Call the function with progress reporting
+            let result = ssh_utils::send_and_restart_telegraf_with_progress(
+                &file_path,
+                "/etc/telegraf/telegraf.conf",
+                "127.0.0.1:1", // Invalid host that will fail
+                "user",
+                "pass",
+                sender
+            );
+            
+            // The function should fail due to invalid host
+            assert!(result.is_err());
+            
+            // But we should have received at least one progress message
+            let messages: Vec<String> = receiver.try_iter().collect();
+            assert!(!messages.is_empty(), "Expected at least one progress message");
+            
+            // First message should be about sending the file
+            if !messages.is_empty() {
+                assert!(messages[0].contains("Sending configuration file"), 
+                       "Expected first message to be about sending the file");
+            }
+        }
+    }
+
     // We can't easily test actual SSH connections in unit tests
     // So we'll test the error handling for missing files and invalid paths
 
@@ -240,6 +338,33 @@ mod tests {
             "user",
             "pass",
             10,
+        );
+
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_execute_command_over_ssh_invalid_host() {
+        // Test with invalid host
+        let result = ssh_utils::execute_command_over_ssh(
+            "127.0.0.1:1", // Invalid port
+            "user",
+            "pass",
+            "echo test"
+        );
+
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_copy_directory_over_ssh_invalid_host() {
+        // Test with invalid host
+        let result = ssh_utils::copy_directory_over_ssh(
+            "127.0.0.1:1", // Invalid port
+            "user",
+            "pass",
+            "/remote/dir",
+            "/local/dir"
         );
 
         assert!(result.is_err());

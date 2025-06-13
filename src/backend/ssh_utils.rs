@@ -104,6 +104,12 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
     }
 }
 
+/// Exposed version of validate_host_format for testing
+#[cfg(test)]
+pub fn validate_host_format_exposed_for_testing(host: &str) -> Result<(), TelegrafError> {
+    validate_host_format(host)
+}
+
 /// Establishes an SSH connection with configurable timeouts
 ///
 /// # Arguments
