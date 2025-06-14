@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use sie_generate_config::backend::OutputFormat;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -86,7 +86,9 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get XML files from tests directory
     println!("Discovering XML files...");
-    let xml_files = ConfigGenerator::discover_xml_files(&tests_dir);
+    let mut xml_files = ConfigGenerator::discover_xml_files(&tests_dir);
+    // Sort files for deterministic ordering in snapshot tests
+    xml_files.sort();
     println!("Found {} XML files: {:?}", xml_files.len(), xml_files);
     assert!(
         !xml_files.is_empty(),
