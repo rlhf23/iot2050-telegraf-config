@@ -117,9 +117,9 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         ip: ip.clone(),
         username: username.clone(),
         password: password.clone(),
-        iot_host: matches.get_one::<String>("iot_host").unwrap_or(&"localhost:22".to_string()).clone(),
-        iot_username: matches.get_one::<String>("iot_username").unwrap_or(&"admin".to_string()).clone(),
-        iot_password: matches.get_one::<String>("iot_password").unwrap_or(&"admin".to_string()).clone(),
+        iot_host: matches.get_one::<String>("iot_host").unwrap().clone(),
+        iot_username: matches.get_one::<String>("iot_username").unwrap().clone(),
+        iot_password: matches.get_one::<String>("iot_password").unwrap().clone(),
         listener_files: Vec::new(),
         output_format: Some(output_format.clone()),
         include_test_inputs: test_inputs,
@@ -332,17 +332,17 @@ fn main() {
             Command::new("config")
                 .about("Generate Telegraf configuration with sane defaults")
                 .arg(clap::Arg::new("folder").short('f').long("folder").default_value(".").help("Folder containing XML files"))
-                .arg(clap::Arg::new("ip").short('i').long("ip").required(true).help("OPC UA server IP address"))
-                .arg(clap::Arg::new("username").short('u').long("username").required(true).help("OPC UA username"))
-                .arg(clap::Arg::new("password").short('p').long("password").required(true).help("OPC UA password"))
+                .arg(clap::Arg::new("ip").short('i').long("ip").default_value(env!("DEFAULT_IP")).help("OPC UA server IP address"))
+                .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_USERNAME")).help("OPC UA username"))
+                .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_PASSWORD")).help("OPC UA password"))
                 .arg(clap::Arg::new("output_format").short('o').long("output-format").default_value("influxdb").help("Output format (influxdb or prometheus)"))
                 .arg(clap::Arg::new("test_inputs").long("test-inputs").action(clap::ArgAction::SetTrue).help("Include test inputs (CPU, disk, memory)"))
                 .arg(clap::Arg::new("default_interval").long("default-interval").default_value("500").help("Default interval in milliseconds for active polling"))
                 .arg(clap::Arg::new("listener_interval").long("listener-interval").default_value("1000").help("Default interval in milliseconds for listeners/subscribers"))
                 .arg(clap::Arg::new("send").long("send").action(clap::ArgAction::SetTrue).help("Automatically send config to IoT device"))
-                .arg(clap::Arg::new("iot_host").long("iot-host").help("IoT device host for sending config"))
-                .arg(clap::Arg::new("iot_username").long("iot-username").help("IoT device username"))
-                .arg(clap::Arg::new("iot_password").long("iot-password").help("IoT device password"))
+                .arg(clap::Arg::new("iot_host").long("iot-host").default_value(env!("DEFAULT_IOT_IP")).help("IoT device host for sending config"))
+                .arg(clap::Arg::new("iot_username").long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("IoT device username"))
+                .arg(clap::Arg::new("iot_password").long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("IoT device password"))
         )
         .subcommand(
             Command::new("deploy")
@@ -353,7 +353,7 @@ fn main() {
                     Command::new("provision")
                         .about("Provision a new IoT device with Docker and requirements")
                         .arg(clap::Arg::new("host").help("Device IP address").required(true))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value("admin").help("SSH username"))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
@@ -361,7 +361,7 @@ fn main() {
                     Command::new("setup")
                         .about("Deploy monitoring stack to provisioned device")
                         .arg(clap::Arg::new("host").help("Device IP address").required(true))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value("admin").help("SSH username"))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("build_local").long("build-local").action(ArgAction::SetTrue).help("Build images locally instead of on device"))
@@ -370,7 +370,7 @@ fn main() {
                     Command::new("status")
                         .about("Check deployment status")
                         .arg(clap::Arg::new("host").help("Device IP address").required(true))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value("admin").help("SSH username"))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
@@ -378,7 +378,7 @@ fn main() {
                     Command::new("start")
                         .about("Start monitoring stack")
                         .arg(clap::Arg::new("host").help("Device IP address").required(true))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value("admin").help("SSH username"))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
@@ -386,7 +386,7 @@ fn main() {
                     Command::new("stop")
                         .about("Stop monitoring stack")
                         .arg(clap::Arg::new("host").help("Device IP address").required(true))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value("admin").help("SSH username"))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
