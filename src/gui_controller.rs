@@ -509,3 +509,7 @@ impl Default for GuiController {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "gui_controller_test.rs"]
+mod gui_controller_test;
