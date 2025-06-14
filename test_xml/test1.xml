@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <node id="ns=2;s=TestNode1" name="TestNode1" type="Variable"/>
+    <node id="ns=2;s=TestNode2" name="TestNode2" type="Variable"/>
+</root>
