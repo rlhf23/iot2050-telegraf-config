@@ -32,12 +32,14 @@ expression: "&config"
   omit_hostname = false
 
 # Configuration for sending metrics to InfluxDB 2.0
-# Output to InfluxDB
+# Output to InfluxDB - Main process data
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${INFLUXDB_TOKEN}"  # Using influxdb admin token
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
+  namepass = ["opcua"]  # Only send OPC UA process data to main bucket
+
 
 
 

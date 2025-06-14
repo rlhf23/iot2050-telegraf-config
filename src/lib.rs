@@ -24,6 +24,7 @@ pub struct TelegrafConfig {
     pub listener_files: Vec<String>,
     pub output_format: Option<String>, // "influxdb" or "prometheus"
     pub include_test_inputs: bool,     // Include CPU, disk, mem inputs for testing
+    pub include_diagnostics: bool,     // Include OPC UA diagnostics and Telegraf internal monitoring
     pub selected_opcua_nodes: Vec<SelectedOpcUaNode>, // Selected OPC UA nodes from browser
 }
 

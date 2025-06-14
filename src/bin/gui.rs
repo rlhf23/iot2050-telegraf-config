@@ -264,6 +264,7 @@ impl TelegrafApp {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: true,
+                include_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
             },
             xml_files: Vec::new(),
@@ -466,6 +467,20 @@ impl eframe::App for TelegrafApp {
                         .checkbox(
                             &mut self.config.include_test_inputs,
                             "CPU, Disk, Memory, of the IOT device",
+                        )
+                        .changed()
+                    {
+                        // Checkbox state is automatically saved to config
+                    }
+                });
+
+                // Diagnostics Toggle
+                ui.horizontal(|ui| {
+                    ui.label("Include Diagnostics");
+                    if ui
+                        .checkbox(
+                            &mut self.config.include_diagnostics,
+                            "OPC UA server health & Telegraf internal monitoring",
                         )
                         .changed()
                     {
@@ -743,6 +758,9 @@ impl eframe::App for TelegrafApp {
 
                     match ConfigGenerator::new(self.config.clone()) {
                         Ok(mut generator) => {
+                            // Enable diagnostics if selected
+                            generator.set_include_diagnostics(self.config.include_diagnostics);
+                            
                             // Set configurations for each file
                             for file in &self.xml_files {
                                 if let Some(file_config) = self.file_configs.get(file) {
