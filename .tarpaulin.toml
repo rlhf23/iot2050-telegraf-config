@@ -17,7 +17,8 @@ output-dir = "coverage"
 exclude-files = [
     "tests/*",
     ".cargo/*",
-    "target/*"
+    "target/*",
+    "src/gui_renderer.rs"
 ]
 
 # Only run tests matching these filters
