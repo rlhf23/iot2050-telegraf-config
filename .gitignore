@@ -15,5 +15,4 @@ telegraf.conf
 *.info
 cobertura.xml
 tarpaulin-report.html
-.aider*
 .env

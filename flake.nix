@@ -41,7 +41,6 @@
             cargo-machete
             cargo-insta
             cargo-tarpaulin
-            aider-chat
             pkg-config
             zlib
             openssl

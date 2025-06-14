@@ -75,32 +75,64 @@ impl Default for SshConfig {
 /// # // assert!(validate_host_format("invalid").is_err());
 /// ```
 fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
-    // Check if the host string contains a colon (required for host:port format)
-    if !host.contains(':') {
-        return Err(TelegrafError::HostFormatError(format!(
+    // IPv6 with brackets: [::1]:22
+    if host.starts_with('[') {
+        // Find closing bracket
+        if let Some(end_bracket) = host.find(']') {
+            // Must be followed by colon and port
+            if host.len() > end_bracket + 1 && &host[end_bracket + 1..end_bracket + 2] == ":" {
+                let port_part = &host[end_bracket + 2..];
+                match port_part.parse::<u16>() {
+                    Ok(port) if port > 0 => return Ok(()),
+                    _ => {
+                        return Err(TelegrafError::HostFormatError(format!(
+                            "Invalid port in host: '{}'. Port must be a number between 1-65535",
+                            host
+                        )))
+                    }
+                }
+            } else {
+                return Err(TelegrafError::HostFormatError(format!(
+                    "Invalid IPv6 host format: '{}'. Expected format: [IPv6]:port (e.g., [::1]:22)",
+                    host
+                )));
+            }
+        } else {
+            return Err(TelegrafError::HostFormatError(format!(
+                "Invalid IPv6 host format: '{}'. Missing closing bracket.",
+                host
+            )));
+        }
+    } else if host.contains(':') {
+        // If more than one colon and not in brackets, treat as invalid (unbracketed IPv6)
+        let colon_count = host.chars().filter(|&c| c == ':').count();
+        if colon_count > 1 {
+            return Err(TelegrafError::HostFormatError(format!(
+                "Invalid host format: '{}'. IPv6 addresses must be enclosed in brackets.",
+                host
+            )));
+        }
+        // Split by colon and validate format
+        let host_parts: Vec<&str> = host.split(':').collect();
+        if host_parts.len() != 2 {
+            return Err(TelegrafError::HostFormatError(format!(
+                "Invalid host format: '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
+                host
+            )));
+        }
+        // Validate that the port is a valid number
+        match host_parts[1].parse::<u16>() {
+            Ok(port) if port > 0 => Ok(()),
+            _ => Err(TelegrafError::HostFormatError(format!(
+                "Invalid port in host: '{}'. Port must be a number between 1-65535",
+                host
+            ))),
+        }
+    } else {
+        Err(TelegrafError::HostFormatError(format!(
             "Missing port specification in host '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
             host
-        )));
-    }
-
-    // Split by colon and validate format
-    let host_parts: Vec<&str> = host.split(':').collect();
-
-    // Check that we have exactly two parts (host and port)
-    if host_parts.len() != 2 {
-        return Err(TelegrafError::HostFormatError(format!(
-            "Invalid host format: '{}'. Expected format: hostname:port (e.g., 192.168.0.1:22)",
-            host
-        )));
-    }
-
-    // Validate that the port is a valid number
-    match host_parts[1].parse::<u16>() {
-        Ok(port) if port > 0 => Ok(()),
-        _ => Err(TelegrafError::HostFormatError(format!(
-            "Invalid port in host: '{}'. Port must be a number between 1-65535",
-            host
-        ))),
+        )))
     }
 }
 
@@ -263,40 +295,26 @@ pub fn send_and_restart_telegraf_with_progress(
     iot_password: &str,
     progress_sender: Sender<String>,
 ) -> Result<(), TelegrafError> {
-    // Send the telegraf.conf file to the IOT box
-    progress_sender
-        .send("Sending configuration file...".to_string())
-        .map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
-        })?;
-
-    send_file_over_ssh(
+    // Try to send the progress update, but if it fails, continue to try the SSH operation first
+    let _ = progress_sender.send("Sending configuration file...".to_string());
+    // Try SSH operation, return SSH error if it fails
+    if let Err(e) = send_file_over_ssh(
         config_path,
         remote_path,
         iot_host,
         iot_username,
         iot_password,
-    )?;
-
-    progress_sender
-        .send("Configuration file sent successfully.".to_string())
-        .map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
-        })?;
-
-    // Restart the telegraf service on the IOT box
-    progress_sender
-        .send("Restarting Telegraf service...".to_string())
-        .map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
-        })?;
-
-    let restart_output = restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
-
-    progress_sender.send(restart_output).map_err(|e| {
-        TelegrafError::ConfigError(format!("Failed to send progress update: {}", e))
-    })?;
-
+    ) {
+        return Err(e);
+    }
+    let _ = progress_sender.send("Configuration file sent successfully.".to_string());
+    let _ = progress_sender.send("Restarting Telegraf service...".to_string());
+    // Try SSH restart, return SSH error if it fails
+    let restart_output = match restart_telegraf_over_ssh(iot_host, iot_username, iot_password) {
+        Ok(out) => out,
+        Err(e) => return Err(e),
+    };
+    let _ = progress_sender.send(restart_output);
     Ok(())
 }
 
