@@ -12,6 +12,7 @@ pub struct DeploymentConfig {
     pub password: Option<String>,
     pub key_file: Option<String>,
     pub port: u16,
+    pub git_branch: Option<String>,
 }
 
 impl DeploymentConfig {
@@ -22,6 +23,7 @@ impl DeploymentConfig {
             password: None,
             key_file: None,
             port: 22,
+            git_branch: None,
         }
     }
 
@@ -37,6 +39,12 @@ impl DeploymentConfig {
 
     pub fn with_port(mut self, port: u16) -> Self {
         self.port = port;
+        self
+    }
+
+    /// Set the git branch to use for deployment
+    pub fn with_git_branch(mut self, branch: String) -> Self {
+        self.git_branch = Some(branch);
         self
     }
 }
@@ -147,10 +155,17 @@ impl IoTDeployer {
         self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
         
         // Download and extract docker folder from the repository
-        println!("📥 Downloading docker configuration...");
+        let branch = self.config.git_branch.as_deref().unwrap_or("master");
+        println!("📥 Downloading docker configuration from branch '{}'...", branch);
+        
+        let download_cmd = format!(
+            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/refs/heads/{}.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+            branch, branch
+        );
+        
         self.run_command(
             &session,
-            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/docker-everything.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-docker-everything/docker",
+            &download_cmd,
             "Downloading docker configuration"
         )?;
         

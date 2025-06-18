@@ -319,6 +319,11 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
         config = config.with_key_file(key_file.clone());
     }
     
+    // Add git branch if specified (for provision command)
+    if let Some(git_branch) = matches.get_one::<String>("git_branch") {
+        config = config.with_git_branch(git_branch.clone());
+    }
+    
     config
 }
 
@@ -352,42 +357,43 @@ fn main() {
                 .subcommand(
                     Command::new("provision")
                         .about("Provision a new IoT device with Docker and requirements")
-                        .arg(clap::Arg::new("host").help("Device IP address").required(true))
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                 )
                 .subcommand(
                     Command::new("setup")
                         .about("Deploy monitoring stack to provisioned device")
-                        .arg(clap::Arg::new("host").help("Device IP address").required(true))
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("build_local").long("build-local").action(ArgAction::SetTrue).help("Build images locally instead of on device"))
                 )
                 .subcommand(
                     Command::new("status")
                         .about("Check deployment status")
-                        .arg(clap::Arg::new("host").help("Device IP address").required(true))
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
                 .subcommand(
                     Command::new("start")
                         .about("Start monitoring stack")
-                        .arg(clap::Arg::new("host").help("Device IP address").required(true))
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
                 .subcommand(
                     Command::new("stop")
                         .about("Stop monitoring stack")
-                        .arg(clap::Arg::new("host").help("Device IP address").required(true))
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").help("SSH password"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
         )
