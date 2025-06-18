@@ -51,6 +51,8 @@ impl DeploymentConfig {
 
 pub struct IoTDeployer {
     config: DeploymentConfig,
+    repo_url: String,
+    branch: String,
 }
 
 impl IoTDeployer {
@@ -63,7 +65,14 @@ impl IoTDeployer {
         &self.config.user
     }
     pub fn new(config: DeploymentConfig) -> Self {
-        Self { config }
+        let branch = config.git_branch.clone().unwrap_or_else(|| "master".to_string());
+        let repo_url = format!("https://github.com/rlhf23/iot2050-telegraf-config/archive/refs/heads/{}.tar.gz", branch);
+        
+        Self { 
+            config,
+            repo_url,
+            branch,
+        }
     }
 
     /// Test SSH connectivity to the device
@@ -91,6 +100,22 @@ impl IoTDeployer {
         println!("🚀 Starting device provisioning...");
         
         let session = self.create_ssh_session()?;
+        
+        // Check internet connectivity
+        println!("🌐 Checking internet connectivity...");
+        self.run_command(
+            &session,
+            "ping -c 1 www.google.com > /dev/null 2>&1 || { echo 'Error: No internet connectivity'; exit 1; }",
+            "Verifying internet connectivity"
+        )?;
+        
+        // Check repository accessibility
+        println!("🔍 Verifying repository accessibility...");
+        self.run_command(
+            &session,
+            &format!("curl -s -o /dev/null -I -w '%{{http_code}}' {} | grep -q '200\\|302' || {{ echo 'Error: Cannot access repository branch: {}'; exit 1; }}", self.repo_url, self.branch),
+            &format!("Checking if repository branch '{}' is accessible", self.branch)
+        )?;
         
         // Update package lists
         self.run_command(&session, "sudo apt-get update", "Updating package lists")?;
@@ -155,12 +180,11 @@ impl IoTDeployer {
         self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
         
         // Download and extract docker folder from the repository
-        let branch = self.config.git_branch.as_deref().unwrap_or("master");
-        println!("📥 Downloading docker configuration from branch '{}'...", branch);
+        println!("📥 Downloading docker configuration from branch '{}'...", self.branch);
         
         let download_cmd = format!(
-            "cd ~/monitoring && curl -L https://github.com/rlhf23/iot2050-telegraf-config/archive/refs/heads/{}.tar.gz | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-            branch, branch
+            "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+            self.repo_url, self.branch
         );
         
         self.run_command(
