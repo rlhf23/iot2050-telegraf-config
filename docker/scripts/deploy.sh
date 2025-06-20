@@ -45,7 +45,7 @@ EXAMPLES:
 
 REQUIREMENTS:
     - Docker and Docker Compose installed
-    - Local environment initialized with init_local.sh
+    - Local environment initialized with init.sh
 EOF
 }
 
