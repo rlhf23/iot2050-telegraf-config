@@ -22,57 +22,38 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}❌ $1${NC}"
+    exit 1
 }
 
 # Function to show usage
 show_usage() {
     cat << EOF
-Usage: $0 [OPTIONS] <device_ip>
+Usage: $0 [OPTIONS]
 
-Provision a new IoT device with Docker and monitoring stack requirements.
+Set up local environment for the monitoring stack.
 
 OPTIONS:
-    -u, --user USERNAME     SSH username (default: admin)
-    -p, --port PORT         SSH port (default: 22)
-    -k, --key PATH          SSH private key path (optional)
     --no-docker-compose     Skip Docker Compose installation
     --no-user-setup         Skip user group setup
     -h, --help              Show this help message
 
 EXAMPLES:
-    $0 192.168.1.100
-    $0 -u iot2050 -p 2222 192.168.1.100
-    $0 --key ~/.ssh/iot_key 192.168.1.100
+    $0
+    $0 --no-docker-compose
 
 REQUIREMENTS:
-    - Target device running Debian or Armbian
-    - SSH access to the device
-    - sudo privileges on the device
+    - Running Debian-based system
+    - Sudo privileges
 EOF
 }
 
 # Default values
-SSH_USER="admin"
-SSH_PORT="22"
-SSH_KEY=""
 INSTALL_DOCKER_COMPOSE=true
 SETUP_USER_GROUPS=true
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -u|--user)
-            SSH_USER="$2"
-            shift 2
-            ;;
-        -p|--port)
-            SSH_PORT="$2"
-            shift 2
-            ;;
-        -k|--key)
-            SSH_KEY="$2"
-            shift 2
-            ;;
         --no-docker-compose)
             INSTALL_DOCKER_COMPOSE=false
             shift
@@ -91,186 +72,130 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         *)
-            if [ -z "$DEVICE_IP" ]; then
-                DEVICE_IP="$1"
-            else
-                print_error "Multiple device IPs specified. Only one is allowed."
-                exit 1
-            fi
-            shift
+            print_error "Unexpected argument: $1"
+            show_usage
+            exit 1
             ;;
     esac
 done
 
-# Validate required arguments
-if [ -z "$DEVICE_IP" ]; then
-    print_error "Device IP address is required"
-    show_usage
-    exit 1
-fi
+print_status "Starting local environment setup"
 
-# Build SSH command
-SSH_CMD="ssh"
-if [ -n "$SSH_KEY" ]; then
-    SSH_CMD="$SSH_CMD -i $SSH_KEY"
+# Check if running as root
+if [ "$(id -u)" -eq 0 ]; then
+    print_warning "Running as root is not recommended. Please run as a regular user with sudo access."
+    read -r -p "Continue anyway? [y/N] " response
+    if [[ ! "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        exit 1
+    fi
 fi
-SSH_CMD="$SSH_CMD -p $SSH_PORT $SSH_USER@$DEVICE_IP"
-
-print_status "Starting provisioning of IoT device at $DEVICE_IP"
-print_status "SSH: $SSH_USER@$DEVICE_IP:$SSH_PORT"
-
-# Test SSH connectivity
-print_status "Testing SSH connectivity..."
-if ! $SSH_CMD "echo 'SSH connection successful'" > /dev/null 2>&1; then
-    print_error "Failed to connect via SSH. Please check:"
-    echo "  - Device IP: $DEVICE_IP"
-    echo "  - SSH user: $SSH_USER"
-    echo "  - SSH port: $SSH_PORT"
-    echo "  - SSH key: ${SSH_KEY:-"(using default)"}"
-    echo "  - Device is powered on and accessible"
-    exit 1
-fi
-print_success "SSH connectivity verified"
 
 # Check if device is Debian/Armbian based
 print_status "Checking operating system..."
-OS_INFO=$($SSH_CMD "cat /etc/os-release 2>/dev/null || echo 'UNKNOWN'")
-if echo "$OS_INFO" | grep -qi "debian\|ubuntu\|armbian"; then
-    print_success "Detected compatible OS (Debian-based)"
+if [ -f /etc/os-release ]; then
+    OS_INFO=$(cat /etc/os-release)
+    if echo "$OS_INFO" | grep -qi "debian\|ubuntu\|armbian"; then
+        print_success "Detected compatible OS (Debian-based)"
+    else
+        print_warning "OS detection unclear. Proceeding with Debian/Armbian assumptions."
+        echo "Detected OS info:"
+        echo "$OS_INFO"
+    fi
 else
-    print_warning "OS detection unclear. Proceeding with Debian/Armbian assumptions."
-    echo "Detected OS info:"
-    echo "$OS_INFO"
+    print_warning "Could not detect OS. Proceeding with Debian/Armbian assumptions."
 fi
 
 # Update package lists
 print_status "Updating package lists..."
-$SSH_CMD "sudo apt-get update" || {
+sudo apt-get update || {
     print_error "Failed to update package lists"
-    exit 1
 }
 print_success "Package lists updated"
 
 # Install required packages
 print_status "Installing required packages..."
-$SSH_CMD "sudo apt-get install -y \
+sudo apt-get install -y \
     apt-transport-https \
     ca-certificates \
     curl \
     gnupg \
     lsb-release \
     git \
-    openssl" || {
+    openssl || {
     print_error "Failed to install required packages"
-    exit 1
 }
 print_success "Required packages installed"
 
 # Install Docker
 print_status "Checking Docker installation..."
-if $SSH_CMD "docker --version" > /dev/null 2>&1; then
+if command -v docker &> /dev/null; then
     print_success "Docker is already installed"
-    $SSH_CMD "docker --version"
+    docker --version
 else
     print_status "Installing Docker..."
     
     # Add Docker's official GPG key
-    $SSH_CMD "curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
     
     # Set up the stable repository
-    $SSH_CMD "echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \$(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null"
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     
     # Update package lists and install Docker
-    $SSH_CMD "sudo apt-get update"
-    $SSH_CMD "sudo apt-get install -y docker-ce docker-ce-cli containerd.io" || {
+    sudo apt-get update
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin || {
         print_error "Failed to install Docker"
-        exit 1
     }
     
     print_success "Docker installed successfully"
+    docker --version
 fi
 
 # Install Docker Compose
 if [ "$INSTALL_DOCKER_COMPOSE" = true ]; then
     print_status "Checking Docker Compose installation..."
-    if $SSH_CMD "docker-compose --version" > /dev/null 2>&1; then
+    if command -v docker-compose &> /dev/null; then
         print_success "Docker Compose is already installed"
-        $SSH_CMD "docker-compose --version"
+        docker-compose --version
     else
         print_status "Installing Docker Compose..."
         
-        # Get the latest version (or use a stable version)
-        COMPOSE_VERSION="v2.24.1"
-        ARCH=$($SSH_CMD "uname -m")
+        # Install Docker Compose from GitHub releases
+        COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d '"' -f 4)
+        sudo curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
         
-        $SSH_CMD "sudo curl -L \"https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-\$(uname -s)-${ARCH}\" -o /usr/local/bin/docker-compose" || {
-            print_error "Failed to download Docker Compose"
-            exit 1
-        }
-        
-        $SSH_CMD "sudo chmod +x /usr/local/bin/docker-compose" || {
-            print_error "Failed to make Docker Compose executable"
-            exit 1
-        }
+        # Verify installation
+        if ! command -v docker-compose &> /dev/null; then
+            print_error "Failed to install Docker Compose"
+        fi
         
         print_success "Docker Compose installed successfully"
+        docker-compose --version
     fi
 fi
 
-# Set up user permissions
+# Add user to docker group if needed
 if [ "$SETUP_USER_GROUPS" = true ]; then
-    print_status "Setting up user permissions..."
-    
-    # Add user to docker group
-    $SSH_CMD "sudo usermod -aG docker $SSH_USER" || {
-        print_warning "Failed to add user to docker group (user might already be in group)"
-    }
-    
-    print_success "User permissions configured"
+    print_status "Setting up user groups..."
+    if ! groups | grep -q "\bdocker\b"; then
+        print_status "Adding current user to docker group..."
+        sudo usermod -aG docker "$USER" || {
+            print_warning "Failed to add user to docker group"
+        }
+        print_success "User added to docker group. You may need to log out and back in for this to take effect."
+    else
+        print_success "User is already in the docker group"
+    fi
 fi
 
-# Start and enable Docker service
-print_status "Starting Docker service..."
-$SSH_CMD "sudo systemctl start docker"
-$SSH_CMD "sudo systemctl enable docker"
-print_success "Docker service started and enabled"
-
-# Create monitoring directory
-print_status "Creating monitoring directory..."
-$SSH_CMD "mkdir -p ~/monitoring"
-print_success "Monitoring directory created"
-
-# Verify installation
-print_status "Verifying installation..."
-DOCKER_VERSION=$($SSH_CMD "docker --version")
-print_success "Docker: $DOCKER_VERSION"
-
-if [ "$INSTALL_DOCKER_COMPOSE" = true ]; then
-    COMPOSE_VERSION=$($SSH_CMD "docker-compose --version")
-    print_success "Docker Compose: $COMPOSE_VERSION"
-fi
-
-# Test Docker functionality (requires new shell session for group membership)
-print_status "Testing Docker functionality..."
-if $SSH_CMD "newgrp docker << EOF
-docker run --rm hello-world > /dev/null 2>&1
-EOF"; then
-    print_success "Docker is working correctly"
-else
-    print_warning "Docker test failed. You may need to:"
-    echo "  1. Restart the SSH session"
-    echo "  2. Reboot the device"
-    echo "  3. Manually test with: docker run --rm hello-world"
-fi
-
-print_success "🎉 Device provisioning completed successfully!"
-echo
-echo -e "${BLUE}📋 Next Steps:${NC}"
-echo "  1. Use deploy.sh to build and deploy the monitoring stack"
-echo "  2. Or manually deploy with:"
-echo "     scp -r docker/ $SSH_USER@$DEVICE_IP:~/monitoring/"
-echo "     ssh $SSH_USER@$DEVICE_IP 'cd ~/monitoring && ./scripts/setup.sh && ./scripts/start.sh'"
-echo
-echo -e "${BLUE}🔗 Access URLs (after deployment):${NC}"
-echo "  - Grafana: http://$DEVICE_IP:3000"
-echo "  - InfluxDB: http://$DEVICE_IP:8086"
+print_success "Local environment setup complete!"
+echo ""
+echo "Next steps:"
+echo "1. Log out and back in if you were added to the docker group"
+echo "2. Run './deploy_local.sh' to deploy the monitoring stack"
+echo ""
