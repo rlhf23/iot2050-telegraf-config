@@ -317,9 +317,8 @@ jobs:
             echo "\n=== ShellCheck Summary ==="
             cat "$SC_OUTPUT"
             echo "\n=== End of ShellCheck Summary ==="
-            echo "\nNote: These are warnings, not failures. Please fix them when possible."
-            # Uncomment the next line to fail the build on ShellCheck errors
-            # exit 1
+            echo "\n❌ ShellCheck found issues - failing the build"
+            exit 1
           else
             echo "\n✓ No ShellCheck issues found!"
           fi
