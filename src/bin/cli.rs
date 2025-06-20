@@ -7,10 +7,6 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-
-
-
-
 fn wrap_up(exit_code: i32) -> ! {
     if cfg!(target_os = "windows") {
         println!("Press enter to exit");
@@ -100,6 +96,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let password = matches.get_one::<String>("password").unwrap();
     let output_format = matches.get_one::<String>("output_format").unwrap();
     let test_inputs = matches.get_flag("test_inputs");
+    let diagnostics = matches.get_flag("diagnostics");
     let default_interval = matches.get_one::<String>("default_interval").unwrap().parse::<u32>().unwrap_or(500);
     let listener_interval = matches.get_one::<String>("listener_interval").unwrap().parse::<u32>().unwrap_or(1000);
     let send = matches.get_flag("send");
@@ -123,7 +120,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         listener_files: Vec::new(),
         output_format: Some(output_format.clone()),
         include_test_inputs: test_inputs,
-        include_diagnostics: false, // Default to false for CLI
+        include_diagnostics: diagnostics, // Default to false for CLI
         selected_opcua_nodes: Vec::new(),
     };
 
@@ -344,7 +341,8 @@ fn main() {
                 .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_USERNAME")).help("OPC UA username"))
                 .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_PASSWORD")).help("OPC UA password"))
                 .arg(clap::Arg::new("output_format").short('o').long("output-format").default_value("influxdb").help("Output format (influxdb or prometheus)"))
-                .arg(clap::Arg::new("test_inputs").long("test-inputs").action(clap::ArgAction::SetTrue).help("Include test inputs (CPU, disk, memory)"))
+                .arg(clap::Arg::new("test_inputs").short('t').long("test-inputs").action(clap::ArgAction::SetTrue).help("Include test inputs (CPU, disk, memory)"))
+                .arg(clap::Arg::new("diagnostics").short('d').long("diagnostics").action(clap::ArgAction::SetTrue).help("Include OPC UA diagnostics (server state, session counts, and error metrics)"))
                 .arg(clap::Arg::new("default_interval").long("default-interval").default_value("500").help("Default interval in milliseconds for active polling"))
                 .arg(clap::Arg::new("listener_interval").long("listener-interval").default_value("1000").help("Default interval in milliseconds for listeners/subscribers"))
                 .arg(clap::Arg::new("send").long("send").action(clap::ArgAction::SetTrue).help("Automatically send config to IoT device"))
