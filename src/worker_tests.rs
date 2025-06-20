@@ -38,6 +38,7 @@ fn create_test_config() -> TelegrafConfig {
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
+        include_diagnostics: false,
         selected_opcua_nodes: vec![],
     }
 }
