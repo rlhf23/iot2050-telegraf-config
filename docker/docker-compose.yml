@@ -36,6 +36,12 @@ services:
     container_name: telegraf
     # user: "telegraf:${HOST_DOCKER_GID}"  # Use host's docker group ID from environment
     restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
     environment:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
@@ -54,13 +60,24 @@ services:
       - /etc:/host/etc:ro
       - /var/run/utmp:/var/run/utmp:ro
     networks:
-      - monitoring
-    # healthcheck:
-    #   test: ["CMD", "telegraf", "--test", "--config", "/etc/telegraf/telegraf.conf", "|| sleep 10; exit 1"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 60s
+      monitoring:
+        aliases:
+          - telegraf
+    healthcheck:
+      test: ["CMD", "pgrep", "telegraf"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   grafana:
     image: grafana/grafana:latest
