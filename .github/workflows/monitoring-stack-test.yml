@@ -292,6 +292,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck
+        run: |
+          echo "Running ShellCheck on all shell scripts..."
+          echo "Note: This will report all issues at the end"
+          
+          # Create a temporary file to store errors
+          SC_OUTPUT=$(mktemp)
+          
+          # Run shellcheck on all scripts, collect all errors
+          find docker/scripts -type f -name '*.sh' | while read -r script; do
+            echo "Checking $script..."
+            # Run shellcheck and append to the output file
+            if ! shellcheck -x -P SCRIPTDIR -e SC1091 "$script" 2>> "$SC_OUTPUT"; then
+              echo "::warning file=$script::ShellCheck found issues in $script"
+            fi
+          done
+          
+          # Check if we found any errors
+          if [ -s "$SC_OUTPUT" ]; then
+            echo "\n=== ShellCheck Summary ==="
+            cat "$SC_OUTPUT"
+            echo "\n=== End of ShellCheck Summary ==="
+            echo "\n❌ ShellCheck found issues - failing the build"
+            exit 1
+          else
+            echo "\n✓ No ShellCheck issues found!"
+          fi
+          
+          # Clean up
+          rm -f "$SC_OUTPUT"
+
       - name: Test script syntax
         run: |
           cd docker/scripts

@@ -88,7 +88,7 @@ docker compose ps
 RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
 EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
 
-if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
+if [ "$RUNNING_CONTAINERS" -ne "$EXPECTED_CONTAINERS" ]; then
     print_error "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
     docker compose logs
     exit 1
@@ -105,7 +105,7 @@ check_service_health() {
     local url=$2
     local max_attempts=${3:-18}
     
-    for i in $(seq 1 $max_attempts); do
+    for _ in $(seq 1 "$max_attempts"); do
         if curl -f "$url" > /dev/null 2>&1; then
             print_success "$service_name is healthy"
             return 0
