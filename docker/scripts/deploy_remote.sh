@@ -198,7 +198,7 @@ if [ "$BUILD_IMAGES" = true ]; then
     fi
     
     echo "Images to save: $IMAGE_LIST"
-    docker save $IMAGE_LIST -o monitoring-stack.tar || {
+    docker save "$IMAGE_LIST" -o monitoring-stack.tar || {
         print_error "Failed to save Docker images"
         exit 1
     }

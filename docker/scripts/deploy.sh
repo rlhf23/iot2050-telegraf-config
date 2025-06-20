@@ -22,7 +22,6 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}❌ $1${NC}"
-    exit 1
 }
 
 # Function to show usage
