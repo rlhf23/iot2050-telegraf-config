@@ -99,6 +99,16 @@ pub fn format_config_header(
 [[inputs.mem]]
   # no configuration
 
+[[inputs.net]]
+  # no configuration
+
+[[inputs.system]]
+  # no configuration
+
+[[inputs.internal]]
+# Monitor Telegraf's internal performance
+  collect_memstats = true
+
 #=================================================================================
 #                          TEST INPUTS END (੭｡╹▿╹｡)੭
 #=================================================================================
