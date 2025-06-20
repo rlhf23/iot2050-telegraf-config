@@ -33,6 +33,7 @@ pub struct ConfigGenerator {
     file_configs: std::collections::HashMap<String, FileConfig>,
     output_format: OutputFormat,
     include_test_inputs: bool,
+    include_diagnostics: bool,
 }
 
 impl ConfigGenerator {
@@ -49,6 +50,7 @@ impl ConfigGenerator {
 
         Ok(Self {
             include_test_inputs: config.include_test_inputs,
+            include_diagnostics: config.include_diagnostics,
             config,
             file_configs: std::collections::HashMap::new(),
             output_format,
@@ -61,6 +63,10 @@ impl ConfigGenerator {
 
     pub fn set_include_test_inputs(&mut self, include_test_inputs: bool) {
         self.include_test_inputs = include_test_inputs;
+    }
+
+    pub fn set_include_diagnostics(&mut self, include_diagnostics: bool) {
+        self.include_diagnostics = include_diagnostics;
     }
 
     pub fn set_file_config(
@@ -334,6 +340,23 @@ impl ConfigGenerator {
                     config_strings.push(config_string);
                 }
             }
+        }
+
+        // Generate diagnostics configuration if enabled
+        if self.include_diagnostics {
+            let diagnostics_config = format::OpcuaConfig {
+                ip: &self.config.ip,
+                username: &self.config.username,
+                password: &self.config.password,
+                is_listener: false,
+                group_name: "server_diagnostics",
+                namespace_number: "0",
+                interval_ms: 10000, // 10 seconds
+                identifier_type: "i",
+            };
+            
+            let diagnostics_string = format::format_diagnostics_config(&diagnostics_config);
+            config_strings.insert(0, diagnostics_string);
         }
 
         // Generate the final config content

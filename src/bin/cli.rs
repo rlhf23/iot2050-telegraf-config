@@ -123,6 +123,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         listener_files: Vec::new(),
         output_format: Some(output_format.clone()),
         include_test_inputs: test_inputs,
+        include_diagnostics: false, // Default to false for CLI
         selected_opcua_nodes: Vec::new(),
     };
 
@@ -233,6 +234,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
+                include_diagnostics: false, // Not needed for service check
                 selected_opcua_nodes: Vec::new(),
             };
             
@@ -269,6 +271,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 listener_files: Vec::new(),
                 output_format: Some("prometheus".to_string()),
                 include_test_inputs: false,
+                include_diagnostics: false, // Not needed for service check
                 selected_opcua_nodes: Vec::new(),
             };
             

@@ -57,6 +57,15 @@ impl GuiRenderer {
                 );
             });
 
+            // OPC UA Diagnostics Toggle
+            ui.horizontal(|ui| {
+                ui.label("Include OPC UA Diagnostics");
+                ui.checkbox(
+                    &mut controller.config.include_diagnostics,
+                    "Server state, session counts, and error metrics",
+                );
+            });
+
             // Credentials
             Self::render_credentials(ui, controller);
         });
