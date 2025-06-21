@@ -12,7 +12,7 @@ if (-not (Test-Path .\.env)) {
 }
 
 # Load environment variables
-Get-Content .\.env | ForEach-Object {
+Get-Content .\.env | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
     $name, $value = $_.Split('=', 2)
     if ($name -and $value) {
         Set-Item -Path "env:$name" -Value $value

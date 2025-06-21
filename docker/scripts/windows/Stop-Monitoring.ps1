@@ -3,7 +3,7 @@ Write-Host "🛑 Stopping monitoring stack..." -ForegroundColor Cyan
 
 # Load environment variables if .env exists
 if (Test-Path .\.env) {
-    Get-Content .\.env | ForEach-Object {
+    Get-Content .\.env | Where-Object { $_ -and -not $_.StartsWith('#') } | ForEach-Object {
         $name, $value = $_.Split('=', 2)
         if ($name -and $value) {
             Set-Item -Path "env:$name" -Value $value

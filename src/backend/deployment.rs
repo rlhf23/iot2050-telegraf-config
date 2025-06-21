@@ -268,20 +268,20 @@ impl IoTDeployer {
                 cd ~/monitoring && \
                 echo '# InfluxDB' > .env && \
                 echo 'INFLUXDB_USER=admin' >> .env && \
-                echo 'INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)' >> .env && \
+                echo \"INFLUXDB_PASSWORD=\\$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)\" >> .env && \
                 echo 'INFLUXDB_ORG=iot2050' >> .env && \
                 echo 'INFLUXDB_BUCKET=telegraf' >> .env && \
-                echo 'INFLUXDB_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)' >> .env && \
+                echo \"INFLUXDB_TOKEN=\\$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)\" >> .env && \
                 echo '' >> .env && \
                 echo '# Grafana' >> .env && \
                 echo 'GRAFANA_ADMIN_USER=admin' >> .env && \
-                echo 'GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)' >> .env && \
+                echo \"GRAFANA_ADMIN_PASSWORD=\\$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)\" >> .env && \
                 echo '' >> .env && \
                 echo '# Telegraf' >> .env && \
-                echo 'TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)' >> .env && \
+                echo \"TELEGRAF_TOKEN=\\$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)\" >> .env && \
                 echo '' >> .env && \
                 echo '# Docker' >> .env && \
-                echo 'HOST_DOCKER_GID=$(getent group docker | cut -d: -f3)' >> .env; \
+                echo \"HOST_DOCKER_GID=\\$(getent group docker | cut -d: -f3)\" >> .env; \
             fi",
             "Creating .env file with generated credentials if it doesn't exist"
         )?;
