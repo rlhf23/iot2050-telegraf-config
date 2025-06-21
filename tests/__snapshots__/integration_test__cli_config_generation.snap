@@ -63,10 +63,64 @@ expression: "&config"
 [[inputs.mem]]
   # no configuration
 
+[[inputs.net]]
+  # no configuration
+
+[[inputs.system]]
+  # no configuration
+
+[[inputs.internal]]
+# Monitor Telegraf's internal performance
+  collect_memstats = true
+
 #=================================================================================
 #                          TEST INPUTS END (੭｡╹▿╹｡)੭
 #=================================================================================
 
+
+
+#=================================================================================
+#      🔧 DIAGNOSTICS INPUTS START - OPC UA MONITORING 
+#=================================================================================
+
+[[inputs.opcua]]
+  name = "opcua_diagnostics"
+  endpoint = "opc.tcp://127.0.0.1:4840"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = ""
+  password = ""
+  timestamp = "gather"
+  client_trace = false
+  interval = "10s"
+
+  [[inputs.opcua.group]]
+    name = "server_diagnostics"
+    namespace = "0"  # Standard OPC UA namespace
+    identifier_type = "i"
+    nodes = [
+      {name="server_state", identifier="2259"},           # ServerState
+      {name="current_sessions", identifier="2277"},       # CurrentSessionCount  
+      {name="current_subscriptions", identifier="2285"},  # CurrentSubscriptionCount  
+      {name="cumulated_sessions", identifier="2278"},     # CumulatedSessionCount
+      {name="cumulated_subscriptions", identifier="2286"}, # CumulatedSubscriptionCount
+      {name="publishing_interval_count", identifier="2284"}, # PublishingIntervalCount
+      {name="rejected_requests", identifier="2288"},      # RejectedRequestsCount
+      {name="rejected_sessions", identifier="3705"},      # RejectedSessionCount
+      {name="session_abort_count", identifier="2282"},    # SessionAbortCount
+      {name="session_timeout_count", identifier="2281"}   # SessionTimeoutCount
+    ]
+
+
+#=================================================================================
+#                          DIAGNOSTICS INPUTS END 🔧
+#=================================================================================
+    
 
 
 [[inputs.opcua]]

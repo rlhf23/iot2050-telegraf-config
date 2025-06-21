@@ -277,6 +277,57 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     )
 }
 
+pub fn format_diagnostics_config(config: &OpcuaConfig) -> String {
+    format!(
+        r#"
+#=================================================================================
+#      🔧 DIAGNOSTICS INPUTS START - OPC UA MONITORING 
+#=================================================================================
+
+[[inputs.opcua]]
+  name = "opcua_diagnostics"
+  endpoint = "opc.tcp://{}"
+  connect_timeout = "300s"
+  request_timeout = "10s"
+  security_policy = "Basic256Sha256"
+  security_mode = "SignAndEncrypt"
+  certificate = ""
+  private_key = ""
+  auth_method = "UserName"
+  username = "{}"
+  password = "{}"
+  timestamp = "gather"
+  client_trace = false
+  interval = "10s"
+
+  [[inputs.opcua.group]]
+    name = "server_diagnostics"
+    namespace = "0"  # Standard OPC UA namespace
+    identifier_type = "i"
+    nodes = [
+      {{name="server_state", identifier="2259"}},           # ServerState
+      {{name="current_sessions", identifier="2277"}},       # CurrentSessionCount  
+      {{name="current_subscriptions", identifier="2285"}},  # CurrentSubscriptionCount  
+      {{name="cumulated_sessions", identifier="2278"}},     # CumulatedSessionCount
+      {{name="cumulated_subscriptions", identifier="2286"}}, # CumulatedSubscriptionCount
+      {{name="publishing_interval_count", identifier="2284"}}, # PublishingIntervalCount
+      {{name="rejected_requests", identifier="2288"}},      # RejectedRequestsCount
+      {{name="rejected_sessions", identifier="3705"}},      # RejectedSessionCount
+      {{name="session_abort_count", identifier="2282"}},    # SessionAbortCount
+      {{name="session_timeout_count", identifier="2281"}}   # SessionTimeoutCount
+    ]
+
+
+#=================================================================================
+#                          DIAGNOSTICS INPUTS END 🔧
+#=================================================================================
+    "#,
+        config.ip,
+        config.username,
+        config.password
+    )
+}
+
 pub fn parse_xml(
     config: &OpcuaConfig,
     xml_file: &str,

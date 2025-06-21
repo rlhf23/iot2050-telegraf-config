@@ -182,8 +182,9 @@ impl IoTDeployer {
         // Download and extract docker folder from the repository
         println!("📥 Downloading docker configuration from branch '{}'...", self.branch);
         
+        // Download and extract the entire repository
         let download_cmd = format!(
-            "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+            "cd ~/monitoring && curl -L {} | tar -xz --strip-components=1 iot2050-telegraf-config-{}/docker",
             self.repo_url, self.branch
         );
         
@@ -191,6 +192,13 @@ impl IoTDeployer {
             &session,
             &download_cmd,
             "Downloading docker configuration"
+        )?;
+        
+        // Create necessary directories for the new structure
+        self.run_command(
+            &session,
+            "mkdir -p ~/monitoring/telegraf ~/monitoring/config/grafana/provisioning ~/monitoring/config/prometheus",
+            "Creating required directories"
         )?;
         
         // Make scripts executable
@@ -234,27 +242,62 @@ impl IoTDeployer {
             ));
         }
         
-        // Run setup script
-        println!("⚙️  Running setup script...");
+        // Run setup commands
+        println!("⚙️  Setting up monitoring stack...");
+        
+        // Ensure all required directories exist
         self.run_command(
             session,
-            "cd ~/monitoring && ./scripts/setup.sh",
-            "Running setup"
+            "mkdir -p ~/monitoring/telegraf ~/monitoring/config/grafana/provisioning ~/monitoring/config/prometheus",
+            "Creating required directories"
         )?;
         
-        //TODO:skipped auto-start
-        // Start the monitoring stack
-        // println!("🚀 Starting monitoring stack...");
-        // self.run_command(
-        //     session,
-        //     "cd ~/monitoring && ./scripts/start.sh",
-        //     "Starting monitoring stack"
-        // )?;
+        // Copy Telegraf config if example exists
+        self.run_command(
+            session,
+            "if [ -f ~/monitoring/config/telegraf/telegraf.conf.example ] && [ ! -f ~/monitoring/telegraf/telegraf.conf ]; then \
+                cp ~/monitoring/config/telegraf/telegraf.conf.example ~/monitoring/telegraf/telegraf.conf; \
+            fi",
+            "Copying Telegraf config if needed"
+        )?;
+        
+        // Create .env file if it doesn't exist
+        self.run_command(
+            session,
+            "if [ ! -f ~/monitoring/.env ]; then \
+                cd ~/monitoring && \
+                echo '# InfluxDB' > .env && \
+                echo 'INFLUXDB_USER=admin' >> .env && \
+                echo \"INFLUXDB_PASSWORD=\\$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)\" >> .env && \
+                echo 'INFLUXDB_ORG=iot2050' >> .env && \
+                echo 'INFLUXDB_BUCKET=telegraf' >> .env && \
+                echo \"INFLUXDB_TOKEN=\\$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)\" >> .env && \
+                echo '' >> .env && \
+                echo '# Grafana' >> .env && \
+                echo 'GRAFANA_ADMIN_USER=admin' >> .env && \
+                echo \"GRAFANA_ADMIN_PASSWORD=\\$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)\" >> .env && \
+                echo '' >> .env && \
+                echo '# Telegraf' >> .env && \
+                echo \"TELEGRAF_TOKEN=\\$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)\" >> .env && \
+                echo '' >> .env && \
+                echo '# Docker' >> .env && \
+                echo \"HOST_DOCKER_GID=\\$(getent group docker | cut -d: -f3)\" >> .env; \
+            fi",
+            "Creating .env file with generated credentials if it doesn't exist"
+        )?;
+        
+        // Start the monitoring stack with the new compose files
+        println!("🚀 Starting monitoring stack...");
+        self.run_command(
+            session,
+            "cd ~/monitoring && docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml up -d",
+            "Starting monitoring stack"
+        )?;
         
         // Get service status
-        // println!("📊 Checking service status...");
-        // let mut channel = session.channel_session()?;
-        // channel.exec("cd ~/monitoring && docker-compose ps")?;
+        println!("📊 Checking service status...");
+        let mut channel = session.channel_session()?;
+        channel.exec("cd ~/monitoring && docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml ps")?;
         
         // let mut output = String::new();
         // channel.read_to_string(&mut output)?;
@@ -281,9 +324,9 @@ impl IoTDeployer {
         // Check Docker status
         self.run_command(&session, "docker --version", "Docker version")?;
         
-        // Check container status
+        // Get container status
         let mut channel = session.channel_session()?;
-        channel.exec("cd ~/monitoring && docker-compose ps")?;
+        channel.exec("cd ~/monitoring && docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml ps")?;
         
         let mut output = String::new();
         channel.read_to_string(&mut output)?;
@@ -320,7 +363,7 @@ impl IoTDeployer {
         
         self.run_command(
             &session,
-            "cd ~/monitoring && ./scripts/stop.sh",
+            "cd ~/monitoring && docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml down",
             "Stopping monitoring stack"
         )?;
         
@@ -336,7 +379,7 @@ impl IoTDeployer {
         
         self.run_command(
             &session,
-            "cd ~/monitoring && ./scripts/start.sh",
+            "cd ~/monitoring && docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml up -d",
             "Starting monitoring stack"
         )?;
         

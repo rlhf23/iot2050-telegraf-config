@@ -5,6 +5,14 @@ cd "$(dirname "$0")/.."
 
 echo "🛑 Stopping monitoring stack..."
 
-docker-compose -f docker-compose.yml down
+# Load environment variables if .env exists
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+echo "Stopping containers..."
+docker-compose -f docker-compose.base.yml -f docker-compose.linux.yml down
 
 echo "✅ Stack stopped successfully!"

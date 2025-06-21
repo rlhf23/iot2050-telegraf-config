@@ -1,13 +1,14 @@
 # Monitoring Stack for IoT2050
 
-A portable Docker-based monitoring stack for local development and ARM64 devices like the Siemens IOT2050.
+A portable Docker-based monitoring stack for local development, Windows, and ARM64 devices like the Siemens IOT2050.
 
 ## Features
 
-- **Multi-architecture**: Works on x86_64 (development) and ARM64 (production)
+- **Multi-platform**: Works on Windows, Linux (x86_64), and ARM64 (production)
 - **Self-contained**: Versioned configurations and automated setup
 - **Production-ready**: Secure defaults and persistent storage
 - **Automated provisioning**: Scripts for device setup and deployment
+- **Cross-platform scripts**: PowerShell for Windows, Bash for Linux/macOS
 
 ## Components
 
@@ -24,6 +25,8 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
   ```
 
 ## Quick Start (Local Development)
+
+### Linux/macOS
 
 1. **Initialize the environment**:
    ```bash
@@ -44,6 +47,40 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
 4. **Stop the stack**:
    ```bash
    ./scripts/stop.sh
+   ```
+
+### Windows
+
+1. **Open PowerShell as Administrator** and navigate to the docker directory:
+   ```powershell
+   cd path\to\docker
+   ```
+
+2. **Initialize the environment**:
+   ```powershell
+   .\scripts\windows\setup.ps1
+   ```
+   This will create a `.env` file with random credentials.
+
+3. **Start the stack**:
+   ```powershell
+   .\scripts\windows\Start-Monitoring.ps1
+   ```
+   
+   To run in the foreground (useful for debugging):
+   ```powershell
+   .\scripts\windows\Start-Monitoring.ps1 -Detached $false
+   ```
+
+4. **Access the services**:
+   - Grafana: http://localhost:3000
+   - InfluxDB: http://localhost:8086
+   - Prometheus: http://localhost:9090
+   - Default credentials are in `.env`
+
+5. **Stop the stack**:
+   ```powershell
+   .\scripts\windows\Stop-Monitoring.ps1
    ```
 
 ## IoT Device Deployment (Recommended)
