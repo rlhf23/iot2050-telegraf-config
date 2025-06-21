@@ -1,0 +1,48 @@
+# Linux-specific overrides
+version: '3.8'
+
+services:
+  telegraf:
+    image: telegraf:1.30
+    container_name: telegraf
+    user: "telegraf:${HOST_DOCKER_GID:-1000}"
+    restart: unless-stopped
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    environment:
+      - HOST_PROC=/host/proc
+      - HOST_SYS=/host/sys
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
+    ports:
+      - "9273:9273"
+    volumes:
+      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /sys:/host/sys:ro
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      - /var/run/utmp:/var/run/utmp:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "pgrep", "telegraf"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

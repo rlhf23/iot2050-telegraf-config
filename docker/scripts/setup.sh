@@ -6,6 +6,10 @@ cd "$(dirname "$0")/.."
 
 echo "🚀 Setting up monitoring stack..."
 
+# Create necessary directories
+echo "Creating required directories..."
+mkdir -p config/telegraf config/grafana/provisioning config/prometheus
+
 # Install Telegraf configuration from example
 if [ -f config/telegraf/telegraf.conf.example ]; then
     echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf/telegraf.conf..."
@@ -23,8 +27,7 @@ DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
 
 # Check if .env file exists
 if [ ! -f .env ]; then
-    echo "ℹ️ .env file not found. New credentials will be generated."
-    
+    echo "ℹ️ .env file not found. New credentials will be generated."    
     # Detect non-interactive mode (no TTY)
     if ! [ -t 0 ]; then
         AUTO_DENY="yes"
@@ -50,7 +53,6 @@ if [ ! -f .env ]; then
             echo "If you experience issues with old credentials, manually remove the volumes and re-run setup."
         fi
     fi
-    echo "⚠️  NOTE: .env is stored in the monitoring/ folder. If you re-pull or overwrite this folder, you will lose your configuration and credentials."
     
     echo "Creating .env file with default values..."
     cat > .env <<EOL
@@ -71,7 +73,25 @@ TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 # Docker
 HOST_DOCKER_GID=${DOCKER_GID}
 EOL
-    echo "✅ Created .env file"
+    echo "✅ Created .env file with generated credentials"
+    
+    # Show the credentials to the user
+    echo ""
+    echo "📝 Generated credentials (saved to .env):"
+    echo "  Grafana:"
+    echo "    URL: http://localhost:3000"
+    echo "    Username: admin"
+    echo "    Password: $(grep '^GRAFANA_ADMIN_PASSWORD=' .env | cut -d '=' -f2)"
+    echo "  InfluxDB:"
+    echo "    URL: http://localhost:8086"
+    echo "    Username: admin"
+    echo "    Password: $(grep '^INFLUXDB_PASSWORD=' .env | cut -d '=' -f2)"
+    echo "    Token: $(grep '^INFLUXDB_TOKEN=' .env | cut -d '=' -f2)"
+    echo "  Telegraf:"
+    echo "    Token: $(grep '^TELEGRAF_TOKEN=' .env | cut -d '=' -f2)"
+    echo ""
+    echo "⚠️  IMPORTANT: Save these credentials in a secure place!"
+    echo ""
 else
     echo "ℹ️  .env file already exists"
 fi
@@ -84,4 +104,12 @@ if [ "$(uname -m)" != "aarch64" ]; then
     fi
 fi
 
+echo ""
 echo "✅ Setup complete!"
+echo ""
+echo "To start the stack, run:"
+echo "  ./scripts/start.sh"
+echo ""
+echo "Or for Windows (PowerShell):"
+echo "  .\scripts\windows\Start-Monitoring.ps1"
+
