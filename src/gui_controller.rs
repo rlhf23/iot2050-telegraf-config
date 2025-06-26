@@ -514,7 +514,6 @@ impl GuiController {
             "Restarting Telegraf service..."
         );
     }
-    }
 }
 
 impl Default for GuiController {

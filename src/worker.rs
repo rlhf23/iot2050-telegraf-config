@@ -290,24 +290,21 @@ impl WorkerHandle {
                     }
                     WorkerCommand::ExecuteSshCommand {
                         host,
-                        local_path,
-                        remote_path,
+                        username,
+                        password,
+                        command,
                     } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let result = ssh_utils::send_file_over_ssh(
-                                &local_path,
-                                &remote_path,
+                            let result = ssh_utils::execute_command_over_ssh(
                                 &host,
                                 &username,
                                 &password,
+                                &command,
                             )
-                            .map(|_| WorkerResponse::FileTransferComplete)
+                            .map(|output| WorkerResponse::SshCommandOutput(output))
                             .unwrap_or_else(|e| {
-                                WorkerResponse::FileTransferError(format!(
-                                    "File transfer failed: {}",
-                                    e
-                                ))
+                                WorkerResponse::SshError(format!("SSH command failed: {}", e))
                             });
                             let _ = response_sender.send(result);
                         });
@@ -336,6 +333,24 @@ impl WorkerHandle {
                                         e
                                     ))
                                 });
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::SendFileOverSsh { host, username, password, local_path, remote_path } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let result = ssh_utils::send_file_over_ssh(
+                                &local_path,
+                                &remote_path,
+                                &host,
+                                &username,
+                                &password,
+                            )
+                            .map(|_| WorkerResponse::FileTransferComplete)
+                            .unwrap_or_else(|e| {
+                                WorkerResponse::FileTransferError(format!("File transfer failed: {}", e))
+                            });
                             let _ = response_sender.send(result);
                         });
                         continue;

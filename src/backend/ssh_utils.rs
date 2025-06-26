@@ -465,7 +465,7 @@ pub fn restart_telegraf_docker_over_ssh(
     }
 }
 
-fn restart_telegraf_over_ssh(
+pub fn restart_telegraf_over_ssh(
     remote_host: &str,
     username: &str,
     password: &str,
