@@ -279,7 +279,7 @@ impl GuiRenderer {
                     controller.get_telegraf_status();
                 }
 
-                if ui.button("📋Get Telegraf Logs").clicked() {
+                if ui.button("📋 Get Telegraf Logs").clicked() {
                     controller.get_telegraf_logs();
                 }
                 
