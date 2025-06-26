@@ -282,6 +282,10 @@ impl GuiRenderer {
                 if ui.button("Get Telegraf Logs").clicked() {
                     controller.get_telegraf_logs();
                 }
+                
+                if ui.button("🔄 Restart Telegraf").clicked() {
+                    controller.restart_telegraf();
+                }
             });
 
             // Service status check
