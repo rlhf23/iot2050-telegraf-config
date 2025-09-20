@@ -223,23 +223,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Checking InfluxDB connectivity at {}...", host);
             
-            // Create a minimal config for the check
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: "".to_string(),
-                iot_password: "".to_string(),
-                listener_files: Vec::new(),
-                output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-            };
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            // Use default credentials from environment variables
+            let username = env!("DEFAULT_IOT_USERNAME");
+            let password = env!("DEFAULT_IOT_PASSWORD");
             
-            let generator = ConfigGenerator::new(config)?;
-            match generator.check_service_status(host, ServiceType::InfluxDB, timeout) {
+            match sie_generate_config::backend::ssh_utils::check_influxdb_status(host, username, password, timeout) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
@@ -259,23 +248,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Checking Prometheus connectivity at {}...", host);
             
-            // Create a minimal config for the check
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: "".to_string(),
-                iot_password: "".to_string(),
-                listener_files: Vec::new(),
-                output_format: Some("prometheus".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-            };
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            // Use default credentials from environment variables
+            let username = env!("DEFAULT_IOT_USERNAME");
+            let password = env!("DEFAULT_IOT_PASSWORD");
             
-            let generator = ConfigGenerator::new(config)?;
-            match generator.check_service_status(host, ServiceType::Prometheus, timeout) {
+            match sie_generate_config::backend::ssh_utils::check_service_status(host, username, password, host, ServiceType::Prometheus, timeout) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
