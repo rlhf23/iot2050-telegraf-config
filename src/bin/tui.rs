@@ -66,6 +66,7 @@ enum OpcUaConfigField {
     Ip,
     Username,
     Password,
+    OutputFormat,
     Anonymous,
     TestInputs,
 }
@@ -79,7 +80,7 @@ enum IoTConfigField {
 
 impl OpcUaConfigField {
     fn count() -> usize {
-        5 // Ip, Username, Password, Anonymous, TestInputs
+        6 // Ip, Username, Password, OutputFormat, Anonymous, TestInputs
     }
     
     fn from_index(index: usize) -> Self {
@@ -87,8 +88,9 @@ impl OpcUaConfigField {
             0 => Self::Ip,
             1 => Self::Username,
             2 => Self::Password,
-            3 => Self::Anonymous,
-            4 => Self::TestInputs,
+            3 => Self::OutputFormat,
+            4 => Self::Anonymous,
+            5 => Self::TestInputs,
             _ => Self::Ip, // Default fallback
         }
     }
@@ -750,6 +752,15 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
                 OpcUaConfigField::Ip => app.start_editing(EditField::OpcUaIp),
                 OpcUaConfigField::Username => app.start_editing(EditField::OpcUaUsername),
                 OpcUaConfigField::Password => app.start_editing(EditField::OpcUaPassword),
+                OpcUaConfigField::OutputFormat => {
+                    // Toggle between influxdb and prometheus
+                    let current = app.config.output_format.as_deref().unwrap_or("influxdb");
+                    app.config.output_format = Some(if current == "influxdb" {
+                        "prometheus".to_string()
+                    } else {
+                        "influxdb".to_string()
+                    });
+                },
                 OpcUaConfigField::Anonymous => app.toggle_anonymous_mode(),
                 OpcUaConfigField::TestInputs => app.config.include_test_inputs = !app.config.include_test_inputs,
             }
@@ -758,7 +769,15 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
         KeyCode::Char('i') => app.start_editing(EditField::OpcUaIp),
         KeyCode::Char('u') => app.start_editing(EditField::OpcUaUsername),
         KeyCode::Char('p') => app.start_editing(EditField::OpcUaPassword),
-        KeyCode::Char('o') => app.start_editing(EditField::OutputFormat),
+        KeyCode::Char('o') => {
+            // Toggle between influxdb and prometheus
+            let current = app.config.output_format.as_deref().unwrap_or("influxdb");
+            app.config.output_format = Some(if current == "influxdb" {
+                "prometheus".to_string()
+            } else {
+                "influxdb".to_string()
+            });
+        },
         KeyCode::Char('a') => app.toggle_anonymous_mode(),
         KeyCode::Char('t') => app.config.include_test_inputs = !app.config.include_test_inputs,
         _ => {}
@@ -1089,6 +1108,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
+            Constraint::Length(3),
         ])
         .split(chunks[0]);
 
@@ -1120,12 +1140,16 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
                        &app.input_buffer, config_chunks[2],
                        matches!(selected_field, OpcUaConfigField::Password));
 
+    let output_format_display = app.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()).clone();
+    render_config_field_with_selection(f, "Output Format", &output_format_display, false, "", config_chunks[3],
+                       matches!(selected_field, OpcUaConfigField::OutputFormat));
+
     let anonymous_status = if app.anonymous_mode { "Enabled" } else { "Disabled" };
-    render_config_field_with_selection(f, "Anonymous Mode", anonymous_status, false, "", config_chunks[3],
+    render_config_field_with_selection(f, "Anonymous Mode", anonymous_status, false, "", config_chunks[4],
                        matches!(selected_field, OpcUaConfigField::Anonymous));
 
     let test_inputs_status = if app.config.include_test_inputs { "Enabled" } else { "Disabled" };
-    render_config_field_with_selection(f, "Test Inputs", test_inputs_status, false, "", config_chunks[4],
+    render_config_field_with_selection(f, "Test Inputs", test_inputs_status, false, "", config_chunks[5],
                        matches!(selected_field, OpcUaConfigField::TestInputs));
 
     // Instructions
@@ -1140,6 +1164,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from("i - Edit IP address"),
         Line::from("u - Edit username"),
         Line::from("p - Edit password"),
+        Line::from("o - Toggle output format"),
         Line::from("a - Toggle anonymous mode"),
         Line::from("t - Toggle test inputs"),
     ];
