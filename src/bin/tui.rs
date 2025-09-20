@@ -12,7 +12,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use sie_generate_config::{
-    backend::{ConfigGenerator, opcua_poller::OpcUaPoller},
+    backend::{ConfigGenerator, opcua_poller::OpcUaPoller, ServiceType},
     TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 use dirs;
@@ -71,11 +71,23 @@ enum OpcUaConfigField {
     TestInputs,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum IoTConfigField {
     Host,
     Username,
     Password,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ActionsField {
+    GenerateConfig,
+    SendConfig,
+    ClearMessages,
+    TelegrafStatus,
+    TelegrafLogs,
+    RestartTelegraf,
+    ServiceStatus,
+    BackupGrafana,
 }
 
 impl OpcUaConfigField {
@@ -107,6 +119,26 @@ impl IoTConfigField {
             1 => Self::Username,
             2 => Self::Password,
             _ => Self::Host, // Default fallback
+        }
+    }
+}
+
+impl ActionsField {
+    fn count() -> usize {
+        8 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana
+    }
+    
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::GenerateConfig,
+            1 => Self::SendConfig,
+            2 => Self::ClearMessages,
+            3 => Self::TelegrafStatus,
+            4 => Self::TelegrafLogs,
+            5 => Self::RestartTelegraf,
+            6 => Self::ServiceStatus,
+            7 => Self::BackupGrafana,
+            _ => Self::GenerateConfig, // Default fallback
         }
     }
 }
@@ -151,6 +183,7 @@ struct App {
     // Config tab selection states
     opcua_config_selection: usize,
     iot_config_selection: usize,
+    actions_selection: usize,
 }
 
 impl App {
@@ -188,6 +221,7 @@ impl App {
             input_buffer: String::new(),
             opcua_config_selection: 0,
             iot_config_selection: 0,
+            actions_selection: 0,
         };
         
         app.load_directory_entries();
@@ -537,6 +571,127 @@ impl App {
         self.current_edit_field = None;
         self.input_buffer.clear();
     }
+    
+    // Operational commands for Actions tab
+    fn get_telegraf_status(&mut self) {
+        self.add_status_message("Retrieving Telegraf status...".to_string());
+        
+        match ConfigGenerator::new(self.config.clone()) {
+            Ok(generator) => {
+                match generator.get_telegraf_status() {
+                    Ok(status) => {
+                        self.add_status_message(format!("Telegraf Status:\n{}", status));
+                    }
+                    Err(e) => {
+                        self.add_status_message(format!("Failed to get Telegraf status: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.add_status_message(format!("Configuration error: {}", e));
+            }
+        }
+    }
+    
+    fn get_telegraf_logs(&mut self) {
+        self.add_status_message("Retrieving Telegraf logs...".to_string());
+        
+        match ConfigGenerator::new(self.config.clone()) {
+            Ok(generator) => {
+                match generator.get_telegraf_logs(30) {
+                    Ok(logs) => {
+                        self.add_status_message(format!("Telegraf Logs (last 30 lines):\n{}", logs));
+                    }
+                    Err(e) => {
+                        self.add_status_message(format!("Failed to get Telegraf logs: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.add_status_message(format!("Configuration error: {}", e));
+            }
+        }
+    }
+    
+    fn restart_telegraf(&mut self) {
+        self.add_status_message("Restarting Telegraf service...".to_string());
+        
+        let host = self.config.iot_host.clone();
+        let username = self.config.iot_username.clone();
+        let password = self.config.iot_password.clone();
+        
+        if host.is_empty() || username.is_empty() || password.is_empty() {
+            self.add_status_message("IoT device credentials not configured".to_string());
+            return;
+        }
+        
+        match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(&host, &username, &password) {
+            Ok(output) => {
+                self.add_status_message(format!("Telegraf restart successful:\n{}", output));
+            }
+            Err(e) => {
+                self.add_status_message(format!("Failed to restart Telegraf: {}", e));
+            }
+        }
+    }
+    
+    fn check_service_status(&mut self) {
+        let is_prometheus = self.config.output_format
+            .as_deref()
+            .unwrap_or("influxdb") == "prometheus";
+        
+        let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+        self.add_status_message(format!("Checking {} status...", service_name));
+        
+        match ConfigGenerator::new(self.config.clone()) {
+            Ok(generator) => {
+                if is_prometheus {
+                    match generator.check_service_status(&self.config.iot_host, ServiceType::Prometheus, 5) {
+                        Ok((is_healthy, status)) => {
+                            let health_status = if is_healthy { "Healthy" } else { "Unhealthy" };
+                            self.add_status_message(format!("Prometheus Status: {}\n{}", health_status, status));
+                        }
+                        Err(e) => {
+                            self.add_status_message(format!("Failed to check Prometheus status: {}", e));
+                        }
+                    }
+                } else {
+                    match generator.check_influxdb_status() {
+                        Ok((is_healthy, status)) => {
+                            let health_status = if is_healthy { "Healthy" } else { "Unhealthy" };
+                            self.add_status_message(format!("InfluxDB Status: {}\n{}", health_status, status));
+                        }
+                        Err(e) => {
+                            self.add_status_message(format!("Failed to check InfluxDB status: {}", e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                self.add_status_message(format!("Configuration error: {}", e));
+            }
+        }
+    }
+    
+    fn backup_grafana(&mut self) {
+        self.add_status_message("Backing up Grafana...".to_string());
+        
+        match ConfigGenerator::new(self.config.clone()) {
+            Ok(generator) => {
+                match generator.backup_grafana() {
+                    Ok(backup_info) => {
+                        self.add_status_message(format!("Grafana backup successful:\n{}", backup_info));
+                    }
+                    Err(e) => {
+                        self.add_status_message(format!("Failed to backup Grafana: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.add_status_message(format!("Configuration error: {}", e));
+            }
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -849,9 +1004,39 @@ fn handle_config_input(app: &mut App, key: KeyCode) {
 
 fn handle_actions_input(app: &mut App, key: KeyCode) {
     match key {
+        // Arrow key navigation
+        KeyCode::Up => {
+            if app.actions_selection > 0 {
+                app.actions_selection -= 1;
+            } else {
+                app.actions_selection = ActionsField::count() - 1;
+            }
+        }
+        KeyCode::Down => {
+            app.actions_selection = (app.actions_selection + 1) % ActionsField::count();
+        }
+        KeyCode::Enter => {
+            let selected_field = ActionsField::from_index(app.actions_selection);
+            match selected_field {
+                ActionsField::GenerateConfig => app.generate_config(),
+                ActionsField::SendConfig => app.send_config(),
+                ActionsField::ClearMessages => app.status_messages.clear(),
+                ActionsField::TelegrafStatus => app.get_telegraf_status(),
+                ActionsField::TelegrafLogs => app.get_telegraf_logs(),
+                ActionsField::RestartTelegraf => app.restart_telegraf(),
+                ActionsField::ServiceStatus => app.check_service_status(),
+                ActionsField::BackupGrafana => app.backup_grafana(),
+            }
+        }
+        // Legacy hotkeys for backward compatibility
         KeyCode::Char('g') => app.generate_config(),
         KeyCode::Char('s') => app.send_config(),
         KeyCode::Char('c') => app.status_messages.clear(),
+        KeyCode::Char('t') => app.get_telegraf_status(),
+        KeyCode::Char('l') => app.get_telegraf_logs(),
+        KeyCode::Char('r') => app.restart_telegraf(),
+        KeyCode::Char('v') => app.check_service_status(),
+        KeyCode::Char('b') => app.backup_grafana(),
         _ => {}
     }
 }
@@ -1301,13 +1486,24 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    // Action buttons
+    // Actions with selection bar
+    let selected_field = ActionsField::from_index(app.actions_selection);
+    
     let actions = vec![
-        Line::from("Available Actions:"),
+        Line::from("Available Actions (↑/↓ to navigate, Enter to execute):"),
         Line::from(""),
-        Line::from("g - Generate Configuration"),
-        Line::from("s - Send Config to IoT Device"),
-        Line::from("c - Clear Status Messages"),
+        render_action_item("Generate Configuration", matches!(selected_field, ActionsField::GenerateConfig), "g"),
+        render_action_item("Send Config to IoT Device", matches!(selected_field, ActionsField::SendConfig), "s"),
+        render_action_item("Clear Status Messages", matches!(selected_field, ActionsField::ClearMessages), "c"),
+        Line::from(""),
+        Line::from("Operational Commands:"),
+        render_action_item("🔍 Get Telegraf Status", matches!(selected_field, ActionsField::TelegrafStatus), "t"),
+        render_action_item("📋 Get Telegraf Logs", matches!(selected_field, ActionsField::TelegrafLogs), "l"),
+        render_action_item("🔄 Restart Telegraf", matches!(selected_field, ActionsField::RestartTelegraf), "r"),
+        render_action_item(&format!("✅ Check {} Status", 
+            if app.config.output_format.as_deref().unwrap_or("influxdb") == "prometheus" { "Prometheus" } else { "InfluxDB" }
+        ), matches!(selected_field, ActionsField::ServiceStatus), "v"),
+        render_action_item("📊 Backup Grafana", matches!(selected_field, ActionsField::BackupGrafana), "b"),
     ];
 
     let actions_block = Paragraph::new(actions)
@@ -1334,6 +1530,22 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let summary_block = Paragraph::new(summary)
         .block(Block::default().borders(Borders::ALL).title("Summary"));
     f.render_widget(summary_block, chunks[1]);
+}
+
+fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'static> {
+    if is_selected {
+        Line::from(vec![
+            Span::styled("► ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled(text.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" ({})", hotkey), Style::default().fg(Color::Gray)),
+        ])
+    } else {
+        Line::from(vec![
+            Span::raw("  "),
+            Span::raw(text.to_string()),
+            Span::styled(format!(" ({})", hotkey), Style::default().fg(Color::Gray)),
+        ])
+    }
 }
 
 fn render_config_field(
