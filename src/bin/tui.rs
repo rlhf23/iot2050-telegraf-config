@@ -61,6 +61,54 @@ enum EditField {
     FileInterval(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OpcUaConfigField {
+    Ip,
+    Username,
+    Password,
+    Anonymous,
+    TestInputs,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum IoTConfigField {
+    Host,
+    Username,
+    Password,
+}
+
+impl OpcUaConfigField {
+    fn count() -> usize {
+        5 // Ip, Username, Password, Anonymous, TestInputs
+    }
+    
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::Ip,
+            1 => Self::Username,
+            2 => Self::Password,
+            3 => Self::Anonymous,
+            4 => Self::TestInputs,
+            _ => Self::Ip, // Default fallback
+        }
+    }
+}
+
+impl IoTConfigField {
+    fn count() -> usize {
+        3 // Host, Username, Password
+    }
+    
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::Host,
+            1 => Self::Username,
+            2 => Self::Password,
+            _ => Self::Host, // Default fallback
+        }
+    }
+}
+
 struct App {
     // Navigation
     current_tab: Tab,
@@ -97,6 +145,10 @@ struct App {
     
     // Temporary input buffer
     input_buffer: String,
+    
+    // Config tab selection states
+    opcua_config_selection: usize,
+    iot_config_selection: usize,
 }
 
 impl App {
@@ -132,6 +184,8 @@ impl App {
             config_scroll: 0,
             config_horizontal_scroll: 0,
             input_buffer: String::new(),
+            opcua_config_selection: 0,
+            iot_config_selection: 0,
         };
         
         app.load_directory_entries();
@@ -680,6 +734,27 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
 
 fn handle_opcua_input(app: &mut App, key: KeyCode) {
     match key {
+        KeyCode::Up => {
+            if app.opcua_config_selection > 0 {
+                app.opcua_config_selection -= 1;
+            }
+        }
+        KeyCode::Down => {
+            if app.opcua_config_selection < OpcUaConfigField::count() - 1 {
+                app.opcua_config_selection += 1;
+            }
+        }
+        KeyCode::Enter => {
+            let field = OpcUaConfigField::from_index(app.opcua_config_selection);
+            match field {
+                OpcUaConfigField::Ip => app.start_editing(EditField::OpcUaIp),
+                OpcUaConfigField::Username => app.start_editing(EditField::OpcUaUsername),
+                OpcUaConfigField::Password => app.start_editing(EditField::OpcUaPassword),
+                OpcUaConfigField::Anonymous => app.toggle_anonymous_mode(),
+                OpcUaConfigField::TestInputs => app.config.include_test_inputs = !app.config.include_test_inputs,
+            }
+        }
+        // Keep some legacy hotkeys for now (can be removed later)
         KeyCode::Char('i') => app.start_editing(EditField::OpcUaIp),
         KeyCode::Char('u') => app.start_editing(EditField::OpcUaUsername),
         KeyCode::Char('p') => app.start_editing(EditField::OpcUaPassword),
@@ -692,6 +767,25 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
 
 fn handle_iot_input(app: &mut App, key: KeyCode) {
     match key {
+        KeyCode::Up => {
+            if app.iot_config_selection > 0 {
+                app.iot_config_selection -= 1;
+            }
+        }
+        KeyCode::Down => {
+            if app.iot_config_selection < IoTConfigField::count() - 1 {
+                app.iot_config_selection += 1;
+            }
+        }
+        KeyCode::Enter => {
+            let field = IoTConfigField::from_index(app.iot_config_selection);
+            match field {
+                IoTConfigField::Host => app.start_editing(EditField::IoTHost),
+                IoTConfigField::Username => app.start_editing(EditField::IoTUsername),
+                IoTConfigField::Password => app.start_editing(EditField::IoTPassword),
+            }
+        }
+        // Keep some legacy hotkeys for now (can be removed later)
         KeyCode::Char('h') => app.start_editing(EditField::IoTHost),
         KeyCode::Char('u') => app.start_editing(EditField::IoTUsername),
         KeyCode::Char('p') => app.start_editing(EditField::IoTPassword),
@@ -995,57 +1089,59 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
-            Constraint::Length(3),
         ])
         .split(chunks[0]);
 
-    // Render each field
-    render_config_field(f, "OPC-UA Server IP", &app.config.ip, 
+    // Render each field with selection highlighting
+    let selected_field = OpcUaConfigField::from_index(app.opcua_config_selection);
+    
+    render_config_field_with_selection(f, "OPC-UA Server IP", &app.config.ip, 
                        matches!(app.current_edit_field, Some(EditField::OpcUaIp)), 
-                       &app.input_buffer, config_chunks[0]);
+                       &app.input_buffer, config_chunks[0],
+                       matches!(selected_field, OpcUaConfigField::Ip));
 
     let username_display = if app.anonymous_mode { 
         "[Anonymous Mode]".to_string() 
     } else { 
         app.config.username.clone() 
     };
-    render_config_field(f, "Username", &username_display, 
+    render_config_field_with_selection(f, "Username", &username_display, 
                        matches!(app.current_edit_field, Some(EditField::OpcUaUsername)), 
-                       &app.input_buffer, config_chunks[1]);
+                       &app.input_buffer, config_chunks[1],
+                       matches!(selected_field, OpcUaConfigField::Username));
 
     let password_display = if app.anonymous_mode { 
         "[Anonymous Mode]".to_string() 
     } else { 
         "*".repeat(app.config.password.len()) 
     };
-    render_config_field(f, "Password", &password_display, 
+    render_config_field_with_selection(f, "Password", &password_display, 
                        matches!(app.current_edit_field, Some(EditField::OpcUaPassword)), 
-                       &app.input_buffer, config_chunks[2]);
-
-    render_config_field(f, "Output Format", 
-                       app.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()), 
-                       matches!(app.current_edit_field, Some(EditField::OutputFormat)), 
-                       &app.input_buffer, config_chunks[3]);
+                       &app.input_buffer, config_chunks[2],
+                       matches!(selected_field, OpcUaConfigField::Password));
 
     let anonymous_status = if app.anonymous_mode { "Enabled" } else { "Disabled" };
-    render_config_field(f, "Anonymous Mode", anonymous_status, false, "", config_chunks[4]);
+    render_config_field_with_selection(f, "Anonymous Mode", anonymous_status, false, "", config_chunks[3],
+                       matches!(selected_field, OpcUaConfigField::Anonymous));
 
     let test_inputs_status = if app.config.include_test_inputs { "Enabled" } else { "Disabled" };
-    render_config_field(f, "Test Inputs", test_inputs_status, false, "", config_chunks[5]);
+    render_config_field_with_selection(f, "Test Inputs", test_inputs_status, false, "", config_chunks[4],
+                       matches!(selected_field, OpcUaConfigField::TestInputs));
 
     // Instructions
     let instructions = vec![
         Line::from("Controls:"),
         Line::from(""),
+        Line::from("↑/↓   - Navigate fields"),
+        Line::from("Enter - Edit selected field"),
+        Line::from("Esc   - Cancel edit"),
+        Line::from(""),
+        Line::from("Legacy hotkeys:"),
         Line::from("i - Edit IP address"),
         Line::from("u - Edit username"),
         Line::from("p - Edit password"),
-        Line::from("o - Edit output format"),
         Line::from("a - Toggle anonymous mode"),
         Line::from("t - Toggle test inputs"),
-        Line::from(""),
-        Line::from("Enter - Confirm edit"),
-        Line::from("Esc   - Cancel edit"),
     ];
 
     let help_block = Paragraph::new(instructions)
@@ -1069,29 +1165,37 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(chunks[0]);
 
-    render_config_field(f, "IoT Device Host", &app.config.iot_host, 
+    // Render each field with selection highlighting
+    let selected_field = IoTConfigField::from_index(app.iot_config_selection);
+    
+    render_config_field_with_selection(f, "IoT Device Host", &app.config.iot_host, 
                        matches!(app.current_edit_field, Some(EditField::IoTHost)), 
-                       &app.input_buffer, config_chunks[0]);
+                       &app.input_buffer, config_chunks[0],
+                       matches!(selected_field, IoTConfigField::Host));
 
-    render_config_field(f, "IoT Username", &app.config.iot_username, 
+    render_config_field_with_selection(f, "IoT Username", &app.config.iot_username, 
                        matches!(app.current_edit_field, Some(EditField::IoTUsername)), 
-                       &app.input_buffer, config_chunks[1]);
+                       &app.input_buffer, config_chunks[1],
+                       matches!(selected_field, IoTConfigField::Username));
 
     let password_display = "*".repeat(app.config.iot_password.len());
-    render_config_field(f, "IoT Password", &password_display, 
+    render_config_field_with_selection(f, "IoT Password", &password_display, 
                        matches!(app.current_edit_field, Some(EditField::IoTPassword)), 
-                       &app.input_buffer, config_chunks[2]);
+                       &app.input_buffer, config_chunks[2],
+                       matches!(selected_field, IoTConfigField::Password));
 
     // Instructions
     let instructions = vec![
         Line::from("Controls:"),
         Line::from(""),
+        Line::from("↑/↓   - Navigate fields"),
+        Line::from("Enter - Edit selected field"),
+        Line::from("Esc   - Cancel edit"),
+        Line::from(""),
+        Line::from("Legacy hotkeys:"),
         Line::from("h - Edit IoT host"),
         Line::from("u - Edit IoT username"),
         Line::from("p - Edit IoT password"),
-        Line::from(""),
-        Line::from("Enter - Confirm edit"),
-        Line::from("Esc   - Cancel edit"),
     ];
 
     let help_block = Paragraph::new(instructions)
@@ -1229,6 +1333,42 @@ fn render_config_field(
 
     let paragraph = Paragraph::new(display_value)
         .block(Block::default().borders(Borders::ALL).title(label))
+        .style(style);
+    
+    f.render_widget(paragraph, area);
+}
+
+fn render_config_field_with_selection(
+    f: &mut Frame, 
+    label: &str, 
+    value: &str, 
+    is_editing: bool, 
+    input_buffer: &str, 
+    area: Rect,
+    is_selected: bool
+) {
+    let display_value = if is_editing {
+        format!("{}_", input_buffer)
+    } else {
+        value.to_string()
+    };
+
+    let style = if is_editing {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else if is_selected {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    };
+
+    let block_style = if is_selected {
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    };
+
+    let paragraph = Paragraph::new(display_value)
+        .block(Block::default().borders(Borders::ALL).title(label).border_style(block_style))
         .style(style);
     
     f.render_widget(paragraph, area);
