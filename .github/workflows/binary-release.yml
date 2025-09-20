@@ -57,6 +57,16 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
+      - name: Build TUI binary
+        run: cargo build --release --bin sie_generate_config_tui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
       - name: Create output directory
         run: mkdir -p bin-releases
 
@@ -64,6 +74,7 @@ jobs:
         run: |
           cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
           cp target/release/sie_generate_config_gui bin-releases/sie_generate_config_gui-ubuntu
+          cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
           chmod +x bin-releases/*
 
       - name: Create tarball
@@ -71,6 +82,7 @@ jobs:
           cd bin-releases
           tar -czvf sie_generate_config-ubuntu-binary.tar.gz sie_generate_config-ubuntu
           tar -czvf sie_generate_config_gui-ubuntu-binary.tar.gz sie_generate_config_gui-ubuntu
+          tar -czvf sie_generate_config_tui-ubuntu-binary.tar.gz sie_generate_config_tui-ubuntu
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
@@ -79,6 +91,7 @@ jobs:
           path: |
             bin-releases/sie_generate_config-ubuntu
             bin-releases/sie_generate_config_gui-ubuntu
+            bin-releases/sie_generate_config_tui-ubuntu
 
       - name: Upload tarballs
         uses: actions/upload-artifact@v4
@@ -140,6 +153,16 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
+      - name: Build TUI executable
+        run: cargo build --release --bin sie_generate_config_tui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
       - name: Create output directory
         run: mkdir -p bin-releases
 
@@ -147,12 +170,14 @@ jobs:
         run: |
           copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
           copy target\release\sie_generate_config_gui.exe bin-releases\sie_generate_config_gui-windows.exe
+          copy target\release\sie_generate_config_tui.exe bin-releases\sie_generate_config_tui-windows.exe
 
       - name: Create zip archives
         run: |
           cd bin-releases
           7z a sie_generate_config-windows-binary.zip sie_generate_config-windows.exe
           7z a sie_generate_config_gui-windows-binary.zip sie_generate_config_gui-windows.exe
+          7z a sie_generate_config_tui-windows-binary.zip sie_generate_config_tui-windows.exe
 
       - name: Upload executables
         uses: actions/upload-artifact@v4
@@ -161,6 +186,7 @@ jobs:
           path: |
             bin-releases/sie_generate_config-windows.exe
             bin-releases/sie_generate_config_gui-windows.exe
+            bin-releases/sie_generate_config_tui-windows.exe
 
       - name: Upload zip archives
         uses: actions/upload-artifact@v4
@@ -199,10 +225,12 @@ jobs:
             ### Ubuntu Binaries
             - `sie_generate_config-ubuntu`: Command-line interface version for Ubuntu
             - `sie_generate_config_gui-ubuntu`: Graphical interface version for Ubuntu
+            - `sie_generate_config_tui-ubuntu`: Terminal User Interface version for Ubuntu
             
             ### Windows Executables
             - `sie_generate_config-windows.exe`: Command-line interface version for Windows
             - `sie_generate_config_gui-windows.exe`: Graphical interface version for Windows
+            - `sie_generate_config_tui-windows.exe`: Terminal User Interface version for Windows
             
             Each executable is also available in compressed format (.tar.gz for Ubuntu, .zip for Windows).
           files: |

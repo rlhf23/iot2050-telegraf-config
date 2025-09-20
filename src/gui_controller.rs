@@ -502,6 +502,18 @@ impl GuiController {
             self.config.selected_opcua_nodes.remove(index);
         }
     }
+
+    /// Restart Telegraf service on the remote device
+    pub fn restart_telegraf(&mut self) {
+        let host = self.config.iot_host.clone();
+        let username = self.config.iot_username.clone();
+        let password = self.config.iot_password.clone();
+        
+        self.send_worker_command(
+            WorkerCommand::RestartTelegraf { host, username, password },
+            "Restarting Telegraf service..."
+        );
+    }
 }
 
 impl Default for GuiController {

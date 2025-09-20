@@ -55,6 +55,11 @@ pub enum WorkerCommand {
         config: TelegrafConfig,
         xml_files: Vec<String>,
     },
+    RestartTelegraf {
+        host: String,
+        username: String,
+        password: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -292,38 +297,14 @@ impl WorkerHandle {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = ssh_utils::execute_command_over_ssh(
-                                &host, &username, &password, &command,
+                                &host,
+                                &username,
+                                &password,
+                                &command,
                             )
                             .map(|output| WorkerResponse::SshCommandOutput(output))
                             .unwrap_or_else(|e| {
                                 WorkerResponse::SshError(format!("SSH command failed: {}", e))
-                            });
-                            let _ = response_sender.send(result);
-                        });
-                        continue;
-                    }
-                    WorkerCommand::SendFileOverSsh {
-                        host,
-                        username,
-                        password,
-                        local_path,
-                        remote_path,
-                    } => {
-                        let response_sender = response_sender.clone();
-                        std::thread::spawn(move || {
-                            let result = ssh_utils::send_file_over_ssh(
-                                &local_path,
-                                &remote_path,
-                                &host,
-                                &username,
-                                &password,
-                            )
-                            .map(|_| WorkerResponse::FileTransferComplete)
-                            .unwrap_or_else(|e| {
-                                WorkerResponse::FileTransferError(format!(
-                                    "File transfer failed: {}",
-                                    e
-                                ))
                             });
                             let _ = response_sender.send(result);
                         });
@@ -351,6 +332,36 @@ impl WorkerHandle {
                                         "Error getting namespaces: {}",
                                         e
                                     ))
+                                });
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::SendFileOverSsh { host, username, password, local_path, remote_path } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let result = ssh_utils::send_file_over_ssh(
+                                &local_path,
+                                &remote_path,
+                                &host,
+                                &username,
+                                &password,
+                            )
+                            .map(|_| WorkerResponse::FileTransferComplete)
+                            .unwrap_or_else(|e| {
+                                WorkerResponse::FileTransferError(format!("File transfer failed: {}", e))
+                            });
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::RestartTelegraf { host, username, password } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let result = ssh_utils::restart_telegraf_over_ssh(&host, &username, &password)
+                                .map(|output| WorkerResponse::SshCommandOutput(format!("Telegraf restarted successfully: {}", output)))
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Failed to restart Telegraf: {}", e))
                                 });
                             let _ = response_sender.send(result);
                         });

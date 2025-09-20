@@ -265,22 +265,26 @@ impl GuiRenderer {
     pub fn render_other_commands(ui: &mut egui::Ui, controller: &mut GuiController) {
         ui.collapsing("Other Commands", |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Backup InfluxDB").clicked() {
+                if ui.button("💾 Backup InfluxDB").clicked() {
                     controller.backup_influxdb();
                 }
 
-                if ui.button("Backup Grafana").clicked() {
+                if ui.button("📊 Backup Grafana").clicked() {
                     controller.backup_grafana();
                 }
             });
 
             ui.horizontal(|ui| {
-                if ui.button("Get Telegraf Status").clicked() {
+                if ui.button("🔍 Get Telegraf Status").clicked() {
                     controller.get_telegraf_status();
                 }
 
-                if ui.button("Get Telegraf Logs").clicked() {
+                if ui.button("📋 Get Telegraf Logs").clicked() {
                     controller.get_telegraf_logs();
+                }
+                
+                if ui.button("🔄 Restart Telegraf").clicked() {
+                    controller.restart_telegraf();
                 }
             });
 
@@ -295,7 +299,7 @@ impl GuiRenderer {
 
                 let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
 
-                if ui.button(format!("Check {} Status", service_name)).clicked() {
+                if ui.button(format!("✅ Check {} Status", service_name)).clicked() {
                     controller.check_service_status();
                 }
             });
