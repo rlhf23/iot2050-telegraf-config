@@ -28,6 +28,7 @@ enum Tab {
     Files,
     OpcUaConfig,
     IoTConfig,
+    Config,
     Actions,
 }
 
@@ -75,6 +76,11 @@ struct App {
     // Anonymous mode
     anonymous_mode: bool,
     
+    // Generated configuration
+    generated_config: Option<String>,
+    config_scroll: u16,
+    config_horizontal_scroll: u16,
+    
     // Temporary input buffer
     input_buffer: String,
 }
@@ -107,6 +113,9 @@ impl App {
             status_messages: Vec::new(),
             show_help: false,
             anonymous_mode: false,
+            generated_config: None,
+            config_scroll: 0,
+            config_horizontal_scroll: 0,
             input_buffer: String::new(),
         };
         
@@ -229,6 +238,7 @@ impl App {
         
         if selected_xml_files.is_empty() && !self.config.include_test_inputs {
             self.add_status_message("No files selected and test inputs not enabled".to_string());
+            self.generated_config = None;
             return;
         }
         
@@ -240,15 +250,18 @@ impl App {
                 }
                 
                 match generator.generate_config(&selected_xml_files, &Vec::new()) {
-                    Ok(_) => {
+                    Ok(config_content) => {
+                        self.generated_config = Some(config_content);
                         self.add_status_message("Configuration generated successfully!".to_string());
                     }
                     Err(e) => {
+                        self.generated_config = None;
                         self.add_status_message(format!("Failed to generate config: {}", e));
                     }
                 }
             }
             Err(e) => {
+                self.generated_config = None;
                 self.add_status_message(format!("Failed to create generator: {}", e));
             }
         }
@@ -361,7 +374,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                 Tab::Folder => Tab::Files,
                                 Tab::Files => Tab::OpcUaConfig,
                                 Tab::OpcUaConfig => Tab::IoTConfig,
-                                Tab::IoTConfig => Tab::Actions,
+                                Tab::IoTConfig => Tab::Config,
+                                Tab::Config => Tab::Actions,
                                 Tab::Actions => Tab::Folder,
                             };
                         }
@@ -369,13 +383,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         KeyCode::Char('2') => app.current_tab = Tab::Files,
                         KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
                         KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
-                        KeyCode::Char('5') => app.current_tab = Tab::Actions,
+                        KeyCode::Char('5') => app.current_tab = Tab::Config,
+                        KeyCode::Char('6') => app.current_tab = Tab::Actions,
                         _ => {
                             match app.current_tab {
                                 Tab::Folder => handle_folder_input(&mut app, key.code),
                                 Tab::Files => handle_files_input(&mut app, key.code),
                                 Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
                                 Tab::IoTConfig => handle_iot_input(&mut app, key.code),
+                                Tab::Config => handle_config_input(&mut app, key.code),
                                 Tab::Actions => handle_actions_input(&mut app, key.code),
                             }
                         }
@@ -497,6 +513,41 @@ fn handle_iot_input(app: &mut App, key: KeyCode) {
     }
 }
 
+fn handle_config_input(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Up => {
+            app.config_scroll = app.config_scroll.saturating_sub(1);
+        }
+        KeyCode::Down => {
+            app.config_scroll = app.config_scroll.saturating_add(1);
+        }
+        KeyCode::Left => {
+            app.config_horizontal_scroll = app.config_horizontal_scroll.saturating_sub(1);
+        }
+        KeyCode::Right => {
+            app.config_horizontal_scroll = app.config_horizontal_scroll.saturating_add(1);
+        }
+        KeyCode::PageUp => {
+            app.config_scroll = app.config_scroll.saturating_sub(10);
+        }
+        KeyCode::PageDown => {
+            app.config_scroll = app.config_scroll.saturating_add(10);
+        }
+        KeyCode::Home => {
+            app.config_scroll = 0;
+            app.config_horizontal_scroll = 0;
+        }
+        KeyCode::Char('g') => app.generate_config(),
+        KeyCode::Char('s') => app.send_config(),
+        KeyCode::Char('r') => {
+            app.generated_config = None;
+            app.config_scroll = 0;
+            app.config_horizontal_scroll = 0;
+        }
+        _ => {}
+    }
+}
+
 fn handle_actions_input(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Char('g') => app.generate_config(),
@@ -518,13 +569,14 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     // Render tabs
-    let tab_titles = vec!["Folder", "Files", "OPC-UA Config", "IoT Config", "Actions"];
+    let tab_titles = vec!["Folder", "Files", "OPC-UA Config", "IoT Config", "Config", "Actions"];
     let selected_tab = match app.current_tab {
         Tab::Folder => 0,
         Tab::Files => 1,
         Tab::OpcUaConfig => 2,
         Tab::IoTConfig => 3,
-        Tab::Actions => 4,
+        Tab::Config => 4,
+        Tab::Actions => 5,
     };
     
     let tabs = Tabs::new(tab_titles)
@@ -544,6 +596,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Files => render_files_tab(f, app, chunks[1]),
         Tab::OpcUaConfig => render_opcua_tab(f, app, chunks[1]),
         Tab::IoTConfig => render_iot_tab(f, app, chunks[1]),
+        Tab::Config => render_config_tab(f, app, chunks[1]),
         Tab::Actions => render_actions_tab(f, app, chunks[1]),
     }
 
@@ -792,6 +845,73 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(help_block, chunks[1]);
 }
 
+fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .split(area);
+
+    // Configuration display
+    let config_content = if let Some(ref config) = app.generated_config {
+        config.clone()
+    } else {
+        "No configuration generated yet.\n\nPress 'g' to generate configuration based on selected files and settings.".to_string()
+    };
+
+    let config_paragraph = Paragraph::new(config_content)
+        .block(Block::default().borders(Borders::ALL).title("Generated Configuration"))
+        .scroll((app.config_scroll, app.config_horizontal_scroll));
+    
+    f.render_widget(config_paragraph, chunks[0]);
+
+    // Controls and status
+    let control_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+
+    // Controls
+    let controls = vec![
+        Line::from("Controls:"),
+        Line::from(""),
+        Line::from("g      - Generate config"),
+        Line::from("s      - Send to IoT device"),
+        Line::from("r      - Clear config"),
+        Line::from("↑/↓    - Scroll vertical"),
+        Line::from("←/→    - Scroll horizontal"),
+        Line::from("PgUp/Dn- Fast scroll"),
+        Line::from("Home   - Reset scroll"),
+    ];
+
+    let controls_block = Paragraph::new(controls)
+        .block(Block::default().borders(Borders::ALL).title("Controls"));
+    f.render_widget(controls_block, control_chunks[0]);
+
+    // Status
+    let config_status = if app.generated_config.is_some() {
+        "✅ Configuration ready"
+    } else {
+        "⚠️  No configuration"
+    };
+    
+    let selected_count = app.selected_files.iter().filter(|&&x| x).count();
+    let auth_mode = if app.anonymous_mode { "Anonymous" } else { "Username/Password" };
+    
+    let status = vec![
+        Line::from("Status:"),
+        Line::from(""),
+        Line::from(config_status),
+        Line::from(format!("Files: {}", selected_count)),
+        Line::from(format!("Auth: {}", auth_mode)),
+        Line::from(format!("IoT: {}", 
+                          if app.config.iot_host.is_empty() { "Not set" } else { "Configured" })),
+    ];
+
+    let status_block = Paragraph::new(status)
+        .block(Block::default().borders(Borders::ALL).title("Status"));
+    f.render_widget(status_block, control_chunks[1]);
+}
+
 fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -880,7 +1000,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("IoT2050 Configuration TUI - Help"),
         Line::from(""),
         Line::from("Global Controls:"),
-        Line::from("  Tab/1-5 - Switch between tabs"),
+        Line::from("  Tab/1-6 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
         Line::from("  q       - Quit application"),
         Line::from(""),
@@ -899,6 +1019,14 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("  Letters - Edit corresponding fields"),
         Line::from("  Enter   - Confirm edit"),
         Line::from("  Esc     - Cancel edit"),
+        Line::from(""),
+        Line::from("Config Tab:"),
+        Line::from("  g       - Generate configuration"),
+        Line::from("  s       - Send config to IoT device"),
+        Line::from("  r       - Clear config"),
+        Line::from("  ↑/↓     - Scroll vertical"),
+        Line::from("  ←/→     - Scroll horizontal"),
+        Line::from("  Home    - Reset scroll"),
         Line::from(""),
         Line::from("Actions Tab:"),
         Line::from("  g       - Generate configuration"),
