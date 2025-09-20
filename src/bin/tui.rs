@@ -19,7 +19,7 @@ use dirs;
 use std::collections::HashMap;
 use std::{
     fs,
-    io,
+    io::{self, Write},
     path::PathBuf,
 };
 
@@ -572,65 +572,73 @@ impl App {
         self.input_buffer.clear();
     }
     
+
+    
     // Operational commands for Actions tab
     fn get_telegraf_status(&mut self) {
-        self.add_status_message("Retrieving Telegraf status...".to_string());
+        self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
+        self.add_status_message("Note: Some diagnostic output may appear at cursor position".to_string());
         
         match ConfigGenerator::new(self.config.clone()) {
             Ok(generator) => {
                 match generator.get_telegraf_status() {
                     Ok(status) => {
+                        self.add_status_message("✅ Telegraf status retrieved successfully".to_string());
                         self.add_status_message(format!("Telegraf Status:\n{}", status));
                     }
                     Err(e) => {
-                        self.add_status_message(format!("Failed to get Telegraf status: {}", e));
+                        self.add_status_message(format!("❌ Failed to get Telegraf status: {}", e));
                     }
                 }
             }
             Err(e) => {
-                self.add_status_message(format!("Configuration error: {}", e));
+                self.add_status_message(format!("⚠️ Configuration error: {}", e));
             }
         }
     }
     
     fn get_telegraf_logs(&mut self) {
-        self.add_status_message("Retrieving Telegraf logs...".to_string());
+        self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
+        self.add_status_message("Note: Some diagnostic output may appear at cursor position".to_string());
         
         match ConfigGenerator::new(self.config.clone()) {
             Ok(generator) => {
                 match generator.get_telegraf_logs(30) {
                     Ok(logs) => {
+                        self.add_status_message("✅ Telegraf logs retrieved successfully".to_string());
                         self.add_status_message(format!("Telegraf Logs (last 30 lines):\n{}", logs));
                     }
                     Err(e) => {
-                        self.add_status_message(format!("Failed to get Telegraf logs: {}", e));
+                        self.add_status_message(format!("❌ Failed to get Telegraf logs: {}", e));
                     }
                 }
             }
             Err(e) => {
-                self.add_status_message(format!("Configuration error: {}", e));
+                self.add_status_message(format!("⚠️ Configuration error: {}", e));
             }
         }
     }
     
     fn restart_telegraf(&mut self) {
-        self.add_status_message("Restarting Telegraf service...".to_string());
+        self.add_status_message("🔄 Restarting Telegraf service...".to_string());
+        self.add_status_message("Note: SSH diagnostic output may appear at cursor position".to_string());
         
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
         
         if host.is_empty() || username.is_empty() || password.is_empty() {
-            self.add_status_message("IoT device credentials not configured".to_string());
+            self.add_status_message("⚠️ IoT device credentials not configured".to_string());
             return;
         }
         
         match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(&host, &username, &password) {
             Ok(output) => {
-                self.add_status_message(format!("Telegraf restart successful:\n{}", output));
+                self.add_status_message("✅ Telegraf restart completed successfully".to_string());
+                self.add_status_message(format!("Restart Output:\n{}", output));
             }
             Err(e) => {
-                self.add_status_message(format!("Failed to restart Telegraf: {}", e));
+                self.add_status_message(format!("❌ Failed to restart Telegraf: {}", e));
             }
         }
     }
