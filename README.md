@@ -22,6 +22,14 @@ The stack streamlines the process of setting up industrial monitoring by automat
 - **Visual tag selection** with checkbox interface
 - **Configuration integration** directly into monitoring stack
 
+### 💻 **Terminal User Interface (TUI)**
+- **Cross-platform terminal interface** for headless environments and SSH sessions
+- **Arrow key navigation** with visual selection highlighting
+- **Per-file configuration editing** (namespace, IP, interval settings)
+- **OPC-UA namespace polling** with timeout and error feedback
+- **Anonymous authentication support** for OPC-UA servers
+- **Four-tab interface**: Files, OPC-UA Config, IoT Config, Actions
+
 ### 🚀 **Automated Deployment**
 - **One-command device provisioning** with Docker installation
 - **Cross-platform image building** and deployment
@@ -100,6 +108,27 @@ cd docker
 ```
 
 Services will be available at localhost with the same ports.
+
+### Terminal User Interface (TUI)
+
+For headless environments, SSH sessions, or when you prefer terminal-based interfaces:
+
+```bash
+# Launch the TUI
+./sie_generate_config_tui
+```
+
+**TUI Navigation:**
+- **Tab/1-4**: Switch between tabs (Files, OPC-UA Config, IoT Config, Actions)
+- **↑/↓**: Navigate fields in config tabs
+- **Enter**: Edit selected field or toggle boolean values
+- **Space**: Toggle file selections in Files tab
+- **Esc**: Cancel editing or exit
+- **h/F1**: Show help
+
+**Legacy hotkeys still supported:**
+- **i/u/p/a/t**: Edit IP/username/password/anonymous/test inputs in OPC-UA tab
+- **h/u/p**: Edit host/username/password in IoT tab
 
 ### CLI Deployment Management
 
