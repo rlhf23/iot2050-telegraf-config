@@ -313,7 +313,6 @@ pub fn parse_xml(
                     .and_then(|n| n.text())
                 {
                     display_name = found_name.to_string();
-                    println!("# BrowseName for {}: {}", file_name, found_name);
                 }
             }
         }

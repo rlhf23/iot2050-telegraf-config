@@ -155,6 +155,7 @@ struct App {
     // File management
     xml_files: Vec<String>,
     selected_files: Vec<bool>,
+    selected_listener_files: Vec<bool>,
     file_list_state: ListState,
     
     // Folder navigation
@@ -207,6 +208,7 @@ impl App {
             },
             xml_files: Vec::new(),
             selected_files: Vec::new(),
+            selected_listener_files: Vec::new(),
             file_list_state: ListState::default(),
             current_directory: PathBuf::from("."),
             directory_entries: Vec::new(),
@@ -233,6 +235,7 @@ impl App {
         self.config.folder = self.current_directory.clone();
         self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_files = vec![false; self.xml_files.len()];
+        self.selected_listener_files = vec![false; self.xml_files.len()];
         
         // Initialize configs for new files
         for file in &self.xml_files {
@@ -322,6 +325,26 @@ impl App {
         }
     }
     
+    fn toggle_listener_selection(&mut self) {
+        if let Some(selected) = self.file_list_state.selected() {
+            if selected < self.selected_listener_files.len() {
+                self.selected_listener_files[selected] = !self.selected_listener_files[selected];
+                let filename = self.xml_files.get(selected).map(|f| {
+                    std::path::Path::new(f)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(f)
+                }).unwrap_or("file");
+                
+                if self.selected_listener_files[selected] {
+                    self.add_status_message(format!("{} marked as listener (500ms default)", filename));
+                } else {
+                    self.add_status_message(format!("{} unmarked as listener (1000ms default)", filename));
+                }
+            }
+        }
+    }
+    
     fn toggle_anonymous_mode(&mut self) {
         self.anonymous_mode = !self.anonymous_mode;
         if self.anonymous_mode {
@@ -377,7 +400,20 @@ impl App {
                     }
                 }
 
-                match generator.generate_config(&self.xml_files, &self.config.listener_files) {
+                // Build listener files list from selected files
+                let listener_files: Vec<String> = self.xml_files
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, file)| {
+                        if i < self.selected_listener_files.len() && self.selected_listener_files[i] {
+                            Some(file.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                match generator.generate_config(&self.xml_files, &listener_files) {
                     Ok(output_path) => {
                         self.generated_config = Some(output_path.clone());
                         self.add_status_message(format!("Config generated: {:?}", output_path));
@@ -740,7 +776,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
-                        KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
+                        KeyCode::Tab | KeyCode::Right => {
                             app.current_tab = match app.current_tab {
                                 Tab::Folder => Tab::Files,
                                 Tab::Files => Tab::OpcUaConfig,
@@ -750,7 +786,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                 Tab::Actions => Tab::Folder,
                             };
                         }
-                        KeyCode::Left | KeyCode::Char('h') => {
+                        KeyCode::Left => {
                             app.current_tab = match app.current_tab {
                                 Tab::Folder => Tab::Actions,
                                 Tab::Files => Tab::Folder,
@@ -868,6 +904,7 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
             app.file_list_state.select(Some(i));
         }
         KeyCode::Char(' ') | KeyCode::Enter => app.toggle_file_selection(),
+        KeyCode::Char('l') => app.toggle_listener_selection(),
         KeyCode::Char('r') => app.refresh_files(),
         KeyCode::Char('n') => {
             if let Some(selected) = app.file_list_state.selected() {
@@ -1192,12 +1229,21 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             let ip = config.map(|c| c.ip.as_str()).unwrap_or("");
             let interval = config.map(|c| c.interval_ms.as_str()).unwrap_or("");
             
-            // Format: [x] filename.xml | NS:2 | IP:192.168.1.100 | INT:1000ms
+            // Show different default interval for listeners (500ms vs 1000ms)
+            let is_listener = *app.selected_listener_files.get(i).unwrap_or(&false);
+            let default_interval = if is_listener { "500" } else { "1000" };
+            let display_interval = if interval.is_empty() { default_interval } else { interval };
+            
+            let listener_checkbox = if is_listener { "[L]" } else { "[ ]" };
+            
+            // Format: [x] filename.xml (first line)
+            // Format:   [L] Listener | NS:2 | IP:192.168.1.100 | INT:1000ms (second line)
             let config_info = format!(
-                "NS:{} | IP:{} | INT:{}ms",
+                "{} Listener | NS:{} | IP:{} | INT:{}ms",
+                listener_checkbox,
                 if namespace.is_empty() { "2" } else { namespace },
                 if ip.is_empty() { "default" } else { ip },
-                if interval.is_empty() { "1000" } else { interval }
+                display_interval
             );
             
             ListItem::new(vec![
@@ -1657,6 +1703,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("Files Tab:"),
         Line::from("  ↑/↓     - Navigate files"),
         Line::from("  Space   - Toggle file selection"),
+        Line::from("  l       - Toggle listener mode (OPC-UA subscriptions)"),
         Line::from("  r       - Refresh file list"),
         Line::from("  n       - Edit namespace for selected file"),
         Line::from("  i       - Edit IP for selected file"),
