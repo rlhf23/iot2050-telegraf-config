@@ -389,6 +389,57 @@ impl App {
         };
     }
     
+    fn poll_namespaces(&mut self) {
+        if self.xml_files.is_empty() {
+            self.add_status_message("No XML files loaded to poll namespaces for".to_string());
+            return;
+        }
+
+        if self.config.ip.is_empty() {
+            self.add_status_message("OPC-UA IP not configured. Set IP first.".to_string());
+            return;
+        }
+
+        self.add_status_message("Connecting to OPC-UA server to poll namespaces...".to_string());
+
+        // Create OPC-UA poller with current config (relies on internal timeouts)
+        match OpcUaPoller::new(self.config.clone()) {
+            Ok(poller) => {
+                match poller.get_namespace_info(&self.xml_files) {
+                    Ok(namespace_map) => {
+                        if namespace_map.is_empty() {
+                            self.add_status_message("No matching namespaces found. Check XML filenames match namespace names.".to_string());
+                        } else {
+                            let mut updated_count = 0;
+                            for (file_name, namespace_index) in namespace_map {
+                                // Find the full file path that matches this filename
+                                if let Some(full_path) = self.xml_files.iter().find(|path| {
+                                    std::path::Path::new(path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .map(|n| n == file_name)
+                                        .unwrap_or(false)
+                                }) {
+                                    // Update the namespace for this file
+                                    let config = self.file_configs.entry(full_path.clone()).or_insert_with(|| XmlFileConfig::default());
+                                    config.namespace = namespace_index.to_string();
+                                    updated_count += 1;
+                                }
+                            }
+                            self.add_status_message(format!("Successfully updated namespaces for {} file(s)!", updated_count));
+                        }
+                    }
+                    Err(e) => {
+                        self.add_status_message(format!("Failed to poll namespaces: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                self.add_status_message(format!("Failed to create OPC-UA poller: {}", e));
+            }
+        }
+    }
+
     fn finish_editing(&mut self) {
         if let Some(field) = &self.current_edit_field {
             match field {
@@ -620,6 +671,9 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
                 }
             }
         }
+        KeyCode::Char('p') => {
+            app.poll_namespaces();
+        }
         _ => {}
     }
 }
@@ -696,7 +750,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(3),  // Tabs
             Constraint::Min(0),     // Main content
-            Constraint::Length(6),  // Status messages
+            Constraint::Length(15), // Status messages (made much taller for debugging)
         ])
         .split(f.area());
 
@@ -911,6 +965,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from("n      - Edit namespace"),
             Line::from("i      - Edit IP address"),
             Line::from("t      - Edit interval"),
+            Line::from("p      - Poll namespaces from server"),
             Line::from(""),
             Line::from("Tab    - Next tab"),
             Line::from("h/F1   - Help"),
@@ -1180,11 +1235,16 @@ fn render_config_field(
 }
 
 fn render_status_messages(f: &mut Frame, app: &App, area: Rect) {
-    let messages: Vec<ListItem> = app
+    let mut messages: Vec<ListItem> = app
         .status_messages
         .iter()
         .map(|m| ListItem::new(m.as_str()))
         .collect();
+    
+    // Add a test message to verify the status area is visible
+    if messages.is_empty() {
+        messages.push(ListItem::new("Status area ready - press 'c' to clear messages"));
+    }
 
     let messages_list = List::new(messages)
         .block(Block::default().borders(Borders::ALL).title("Status Messages"));
@@ -1216,6 +1276,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("  n       - Edit namespace for selected file"),
         Line::from("  i       - Edit IP for selected file"),
         Line::from("  t       - Edit interval for selected file"),
+        Line::from("  p       - Poll namespaces from OPC-UA server"),
         Line::from(""),
         Line::from("Config Tabs:"),
         Line::from("  Letters - Edit corresponding fields"),
