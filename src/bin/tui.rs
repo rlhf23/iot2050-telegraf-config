@@ -258,21 +258,39 @@ impl App {
         
         if selected_xml_files.is_empty() && !self.config.include_test_inputs {
             self.add_status_message("No files selected and test inputs not enabled".to_string());
-            self.generated_config = None;
             return;
         }
-        
+
         match ConfigGenerator::new(self.config.clone()) {
             Ok(mut generator) => {
-                // Configure each selected file with default settings
-                for file in &selected_xml_files {
-                    generator.set_file_config(file.clone(), "2".to_string(), 500, None);
+                // Set configurations for each file (like the GUI does)
+                for file in &self.xml_files {
+                    if let Some(file_config) = self.file_configs.get(file) {
+                        let is_listener = self.config.listener_files.contains(file);
+                        let default_interval = if is_listener { 500 } else { 1000 };
+
+                        let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
+
+                        // Convert empty IP string to None, otherwise Some(ip)
+                        let ip_option = if file_config.ip.is_empty() {
+                            None
+                        } else {
+                            Some(file_config.ip.clone())
+                        };
+
+                        generator.set_file_config(
+                            file.clone(),
+                            file_config.namespace.clone(),
+                            interval_ms,
+                            ip_option,
+                        );
+                    }
                 }
-                
-                match generator.generate_config(&selected_xml_files, &Vec::new()) {
-                    Ok(config_content) => {
-                        self.generated_config = Some(config_content);
-                        self.add_status_message("Configuration generated successfully!".to_string());
+
+                match generator.generate_config(&self.xml_files, &self.config.listener_files) {
+                    Ok(output_path) => {
+                        self.generated_config = Some(output_path.clone());
+                        self.add_status_message(format!("Config generated: {:?}", output_path));
                     }
                     Err(e) => {
                         self.generated_config = None;
@@ -294,7 +312,31 @@ impl App {
         }
         
         match ConfigGenerator::new(self.config.clone()) {
-            Ok(generator) => {
+            Ok(mut generator) => {
+                // Set configurations for each file (like the GUI does)
+                for file in &self.xml_files {
+                    if let Some(file_config) = self.file_configs.get(file) {
+                        let is_listener = self.config.listener_files.contains(file);
+                        let default_interval = if is_listener { 500 } else { 1000 };
+
+                        let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
+
+                        // Convert empty IP string to None, otherwise Some(ip)
+                        let ip_option = if file_config.ip.is_empty() {
+                            None
+                        } else {
+                            Some(file_config.ip.clone())
+                        };
+
+                        generator.set_file_config(
+                            file.clone(),
+                            file_config.namespace.clone(),
+                            interval_ms,
+                            ip_option,
+                        );
+                    }
+                }
+
                 match generator.send_config() {
                     Ok(_) => {
                         self.add_status_message("Configuration sent successfully!".to_string());
@@ -735,7 +777,8 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title(format!("Directory: {}", current_dir_display)))
         .highlight_style(
             Style::default()
-                .bg(Color::LightGreen)
+                .bg(Color::Cyan)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
@@ -808,7 +851,8 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title("XML Files"))
         .highlight_style(
             Style::default()
-                .bg(Color::LightGreen)
+                .bg(Color::Cyan)
+                .fg(Color::Black)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
@@ -1155,7 +1199,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("IoT2050 Configuration TUI - Help"),
         Line::from(""),
         Line::from("Global Controls:"),
-        Line::from("  Tab/1-6 - Switch between tabs"),
+        Line::from("  Tab/←→/h/l/1-6 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
         Line::from("  q       - Quit application"),
         Line::from(""),
