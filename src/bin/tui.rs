@@ -12,10 +12,11 @@ use ratatui::{
     Frame, Terminal,
 };
 use sie_generate_config::{
-    backend::ConfigGenerator,
-    TelegrafConfig,
+    backend::{ConfigGenerator, opcua_poller::OpcUaPoller},
+    TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 use dirs;
+use std::collections::HashMap;
 use std::{
     fs,
     io,
@@ -37,6 +38,13 @@ enum InputMode {
     Normal,
     Editing,
     FolderBrowsing,
+}
+
+#[derive(Default, Clone)]
+struct XmlFileConfig {
+    pub namespace: String,
+    pub interval_ms: String,
+    pub ip: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +84,9 @@ struct App {
     // Anonymous mode
     anonymous_mode: bool,
     
+    // Per-file configurations
+    file_configs: HashMap<String, XmlFileConfig>,
+    
     // Generated configuration
     generated_config: Option<String>,
     config_scroll: u16,
@@ -113,6 +124,7 @@ impl App {
             status_messages: Vec::new(),
             show_help: false,
             anonymous_mode: false,
+            file_configs: HashMap::new(),
             generated_config: None,
             config_scroll: 0,
             config_horizontal_scroll: 0,
