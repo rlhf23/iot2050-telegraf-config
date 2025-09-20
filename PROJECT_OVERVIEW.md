@@ -17,6 +17,7 @@ iot2050-telegraf-config/
 │   ├── bin/                  # Executable entry points and test tools
 │   │   ├── cli.rs            # Main CLI interface with deployment commands
 │   │   ├── gui.rs            # GUI with OPC UA browser and config generation
+│   │   ├── tui.rs            # Terminal UI with arrow key navigation
 │   │   ├── opcua_client_test.rs  # OPC UA client test tool
 │   │   └── opcua_test_server.rs  # OPC UA test server
 │   ├── lib.rs                # Core library functionality and TelegrafConfig
@@ -113,6 +114,15 @@ iot2050-telegraf-config/
    - Real-time node tree exploration
    - Visual configuration management
    - Integration with Docker deployment workflow
+
+3. **Terminal User Interface (bin/tui.rs)**
+   - Cross-platform terminal-based interface for headless environments
+   - Arrow key navigation with visual selection highlighting
+   - Four-tab interface: Files, OPC-UA Config, IoT Config, Actions
+   - Per-file configuration editing (namespace, IP, interval)
+   - OPC-UA namespace polling with timeout and error feedback
+   - Anonymous authentication support
+   - Backward compatible with legacy hotkeys
 
 ### Docker Monitoring Stack
 

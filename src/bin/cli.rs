@@ -223,23 +223,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Checking InfluxDB connectivity at {}...", host);
             
-            // Create a minimal config for the check
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: "".to_string(),
-                iot_password: "".to_string(),
-                listener_files: Vec::new(),
-                output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-            };
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            // Use default credentials from environment variables
+            let username = env!("DEFAULT_IOT_USERNAME");
+            let password = env!("DEFAULT_IOT_PASSWORD");
             
-            let generator = ConfigGenerator::new(config)?;
-            match generator.check_service_status(host, ServiceType::InfluxDB, timeout) {
+            match sie_generate_config::backend::ssh_utils::check_influxdb_status(host, username, password, timeout) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
@@ -259,23 +248,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Checking Prometheus connectivity at {}...", host);
             
-            // Create a minimal config for the check
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: "".to_string(),
-                iot_password: "".to_string(),
-                listener_files: Vec::new(),
-                output_format: Some("prometheus".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-            };
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            // Use default credentials from environment variables
+            let username = env!("DEFAULT_IOT_USERNAME");
+            let password = env!("DEFAULT_IOT_PASSWORD");
             
-            let generator = ConfigGenerator::new(config)?;
-            match generator.check_service_status(host, ServiceType::Prometheus, timeout) {
+            match sie_generate_config::backend::ssh_utils::check_service_status(host, username, password, host, ServiceType::Prometheus, timeout) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
@@ -285,6 +263,116 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 }
                 Err(e) => {
                     println!("❌ Failed to check Prometheus: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("telegraf-status", sub_matches)) => {
+            let host = sub_matches.get_one::<String>("host").unwrap();
+            let username = sub_matches.get_one::<String>("username").unwrap();
+            let password = sub_matches.get_one::<String>("password").unwrap();
+            
+            println!("Getting Telegraf status from {}...", host);
+            
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            match sie_generate_config::backend::ssh_utils::get_telegraf_status(host, username, password) {
+                Ok(status) => {
+                    println!("✅ Telegraf Status:");
+                    println!("{}", status);
+                }
+                Err(e) => {
+                    println!("❌ Failed to get Telegraf status: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("telegraf-logs", sub_matches)) => {
+            let host = sub_matches.get_one::<String>("host").unwrap();
+            let username = sub_matches.get_one::<String>("username").unwrap();
+            let password = sub_matches.get_one::<String>("password").unwrap();
+            let lines = sub_matches.get_one::<String>("lines").unwrap().parse::<usize>().unwrap_or(30);
+            
+            println!("Getting last {} lines of Telegraf logs from {}...", lines, host);
+            
+            // Call SSH utility function directly to avoid ConfigGenerator validation
+            match sie_generate_config::backend::ssh_utils::get_telegraf_logs(host, username, password, lines) {
+                Ok(logs) => {
+                    println!("✅ Telegraf Logs (last {} lines):", lines);
+                    println!("{}", logs);
+                }
+                Err(e) => {
+                    println!("❌ Failed to get Telegraf logs: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("telegraf-restart", sub_matches)) => {
+            let host = sub_matches.get_one::<String>("host").unwrap();
+            let username = sub_matches.get_one::<String>("username").unwrap();
+            let password = sub_matches.get_one::<String>("password").unwrap();
+            
+            println!("Restarting Telegraf service on {}...", host);
+            
+            // Create a minimal config for the operation
+            let config = TelegrafConfig {
+                folder: ".".into(),
+                ip: "".to_string(),
+                username: "".to_string(),
+                password: "".to_string(),
+                iot_host: host.clone(),
+                iot_username: username.clone(),
+                iot_password: password.clone(),
+                listener_files: Vec::new(),
+                output_format: Some("influxdb".to_string()),
+                include_test_inputs: false,
+                selected_opcua_nodes: Vec::new(),
+            };
+            
+            let _generator = ConfigGenerator::new(config)?;
+            // Use the ssh_utils function directly since ConfigGenerator doesn't expose restart_telegraf
+            match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(host, username, password) {
+                Ok(result) => {
+                    println!("✅ Telegraf Restart Result:");
+                    println!("{}", result);
+                }
+                Err(e) => {
+                    println!("❌ Failed to restart Telegraf: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("grafana-backup", sub_matches)) => {
+            let host = sub_matches.get_one::<String>("host").unwrap();
+            let username = sub_matches.get_one::<String>("username").unwrap();
+            let password = sub_matches.get_one::<String>("password").unwrap();
+            let output_dir = sub_matches.get_one::<String>("output").unwrap();
+            
+            println!("Backing up Grafana dashboards from {} to {}...", host, output_dir);
+            
+            // Create a minimal config for the operation
+            let config = TelegrafConfig {
+                folder: ".".into(),
+                ip: "".to_string(),
+                username: "".to_string(),
+                password: "".to_string(),
+                iot_host: host.clone(),
+                iot_username: username.clone(),
+                iot_password: password.clone(),
+                listener_files: Vec::new(),
+                output_format: Some("influxdb".to_string()),
+                include_test_inputs: false,
+                selected_opcua_nodes: Vec::new(),
+            };
+            
+            let generator = ConfigGenerator::new(config)?;
+            match generator.backup_grafana() {
+                Ok(result) => {
+                    println!("✅ Grafana Backup Result:");
+                    println!("Backup saved to: {}", output_dir);
+                    println!("{}", result);
+                }
+                Err(e) => {
+                    println!("❌ Failed to backup Grafana: {}", e);
                     std::process::exit(1);
                 }
             }
@@ -416,6 +504,36 @@ fn main() {
                         .about("Check if Prometheus is responding")
                         .arg(clap::Arg::new("host").help("IoT device host").required(true))
                         .arg(clap::Arg::new("timeout").long("timeout").default_value("5").help("Timeout in seconds"))
+                )
+                .subcommand(
+                    Command::new("telegraf-status")
+                        .about("Get Telegraf service status")
+                        .arg(clap::Arg::new("host").help("IoT device host").required(true))
+                        .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                )
+                .subcommand(
+                    Command::new("telegraf-logs")
+                        .about("Get Telegraf service logs")
+                        .arg(clap::Arg::new("host").help("IoT device host").required(true))
+                        .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("lines").short('n').long("lines").default_value("30").help("Number of log lines to retrieve"))
+                )
+                .subcommand(
+                    Command::new("telegraf-restart")
+                        .about("Restart Telegraf service")
+                        .arg(clap::Arg::new("host").help("IoT device host").required(true))
+                        .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                )
+                .subcommand(
+                    Command::new("grafana-backup")
+                        .about("Backup Grafana dashboards")
+                        .arg(clap::Arg::new("host").help("IoT device host").required(true))
+                        .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("output").short('o').long("output").default_value("./grafana_backup").help("Output directory for backup"))
                 )
         )
         .get_matches();
