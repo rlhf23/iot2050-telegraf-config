@@ -15,14 +15,16 @@ use sie_generate_config::{
     backend::ConfigGenerator,
     TelegrafConfig,
 };
+use dirs;
 use std::{
-    collections::HashMap,
+    fs,
     io,
     path::PathBuf,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 enum Tab {
+    Folder,
     Files,
     OpcUaConfig,
     IoTConfig,
@@ -33,6 +35,7 @@ enum Tab {
 enum InputMode {
     Normal,
     Editing,
+    FolderBrowsing,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +63,11 @@ struct App {
     selected_files: Vec<bool>,
     file_list_state: ListState,
     
+    // Folder navigation
+    current_directory: PathBuf,
+    directory_entries: Vec<PathBuf>,
+    directory_list_state: ListState,
+    
     // Status and messages
     status_messages: Vec<String>,
     show_help: bool,
@@ -74,7 +82,7 @@ struct App {
 impl App {
     fn new() -> App {
         let mut app = App {
-            current_tab: Tab::Files,
+            current_tab: Tab::Folder,
             input_mode: InputMode::Normal,
             current_edit_field: None,
             config: TelegrafConfig {
@@ -93,17 +101,22 @@ impl App {
             xml_files: Vec::new(),
             selected_files: Vec::new(),
             file_list_state: ListState::default(),
+            current_directory: PathBuf::from("."),
+            directory_entries: Vec::new(),
+            directory_list_state: ListState::default(),
             status_messages: Vec::new(),
             show_help: false,
             anonymous_mode: false,
             input_buffer: String::new(),
         };
         
+        app.load_directory_entries();
         app.load_xml_files();
         app
     }
     
     fn load_xml_files(&mut self) {
+        self.config.folder = self.current_directory.clone();
         self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_files = vec![false; self.xml_files.len()];
         
@@ -111,6 +124,67 @@ impl App {
             self.add_status_message("No XML files found in current directory".to_string());
         } else {
             self.add_status_message(format!("Found {} XML files", self.xml_files.len()));
+        }
+    }
+    
+    fn load_directory_entries(&mut self) {
+        self.directory_entries.clear();
+        
+        // Add parent directory entry if not at root
+        if let Some(parent) = self.current_directory.parent() {
+            self.directory_entries.push(parent.to_path_buf());
+        }
+        
+        // Read directory entries
+        if let Ok(entries) = fs::read_dir(&self.current_directory) {
+            let mut dirs: Vec<PathBuf> = Vec::new();
+            let mut files: Vec<PathBuf> = Vec::new();
+            
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    dirs.push(path);
+                } else {
+                    files.push(path);
+                }
+            }
+            
+            // Sort directories and files separately
+            dirs.sort();
+            files.sort();
+            
+            // Add directories first, then files
+            self.directory_entries.extend(dirs);
+            self.directory_entries.extend(files);
+        }
+        
+        // Reset selection
+        self.directory_list_state.select(Some(0));
+    }
+    
+    fn navigate_to_directory(&mut self, path: PathBuf) {
+        if path.is_dir() {
+            self.current_directory = path;
+            self.load_directory_entries();
+            self.load_xml_files();
+            self.add_status_message(format!("Changed to directory: {}", self.current_directory.display()));
+        }
+    }
+    
+    fn enter_selected_directory(&mut self) {
+        if let Some(selected) = self.directory_list_state.selected() {
+            if selected < self.directory_entries.len() {
+                let selected_path = self.directory_entries[selected].clone();
+                
+                // Handle parent directory (..) navigation
+                if selected == 0 && self.current_directory.parent().is_some() {
+                    if let Some(parent) = self.current_directory.parent() {
+                        self.navigate_to_directory(parent.to_path_buf());
+                    }
+                } else if selected_path.is_dir() {
+                    self.navigate_to_directory(selected_path);
+                }
+            }
         }
     }
     
@@ -284,18 +358,21 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
                         KeyCode::Tab => {
                             app.current_tab = match app.current_tab {
+                                Tab::Folder => Tab::Files,
                                 Tab::Files => Tab::OpcUaConfig,
                                 Tab::OpcUaConfig => Tab::IoTConfig,
                                 Tab::IoTConfig => Tab::Actions,
-                                Tab::Actions => Tab::Files,
+                                Tab::Actions => Tab::Folder,
                             };
                         }
-                        KeyCode::Char('1') => app.current_tab = Tab::Files,
-                        KeyCode::Char('2') => app.current_tab = Tab::OpcUaConfig,
-                        KeyCode::Char('3') => app.current_tab = Tab::IoTConfig,
-                        KeyCode::Char('4') => app.current_tab = Tab::Actions,
+                        KeyCode::Char('1') => app.current_tab = Tab::Folder,
+                        KeyCode::Char('2') => app.current_tab = Tab::Files,
+                        KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
+                        KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
+                        KeyCode::Char('5') => app.current_tab = Tab::Actions,
                         _ => {
                             match app.current_tab {
+                                Tab::Folder => handle_folder_input(&mut app, key.code),
                                 Tab::Files => handle_files_input(&mut app, key.code),
                                 Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
                                 Tab::IoTConfig => handle_iot_input(&mut app, key.code),
@@ -312,9 +389,56 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                         _ => {}
                     },
+                    InputMode::FolderBrowsing => {
+                        // Handle folder browsing mode if needed
+                        match key.code {
+                            KeyCode::Esc => app.input_mode = InputMode::Normal,
+                            _ => {}
+                        }
+                    },
                 }
             }
         }
+    }
+}
+
+fn handle_folder_input(app: &mut App, key: KeyCode) {
+    match key {
+        KeyCode::Up => {
+            let i = match app.directory_list_state.selected() {
+                Some(i) => {
+                    if i == 0 {
+                        app.directory_entries.len().saturating_sub(1)
+                    } else {
+                        i - 1
+                    }
+                }
+                None => 0,
+            };
+            app.directory_list_state.select(Some(i));
+        }
+        KeyCode::Down => {
+            let i = match app.directory_list_state.selected() {
+                Some(i) => {
+                    if i >= app.directory_entries.len().saturating_sub(1) {
+                        0
+                    } else {
+                        i + 1
+                    }
+                }
+                None => 0,
+            };
+            app.directory_list_state.select(Some(i));
+        }
+        KeyCode::Enter => app.enter_selected_directory(),
+        KeyCode::Char('r') => app.load_directory_entries(),
+        KeyCode::Char('h') => {
+            // Go to home directory
+            if let Some(home) = dirs::home_dir() {
+                app.navigate_to_directory(home);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -394,12 +518,13 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     // Render tabs
-    let tab_titles = vec!["Files", "OPC-UA Config", "IoT Config", "Actions"];
+    let tab_titles = vec!["Folder", "Files", "OPC-UA Config", "IoT Config", "Actions"];
     let selected_tab = match app.current_tab {
-        Tab::Files => 0,
-        Tab::OpcUaConfig => 1,
-        Tab::IoTConfig => 2,
-        Tab::Actions => 3,
+        Tab::Folder => 0,
+        Tab::Files => 1,
+        Tab::OpcUaConfig => 2,
+        Tab::IoTConfig => 3,
+        Tab::Actions => 4,
     };
     
     let tabs = Tabs::new(tab_titles)
@@ -415,6 +540,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Render main content based on current tab
     match app.current_tab {
+        Tab::Folder => render_folder_tab(f, app, chunks[1]),
         Tab::Files => render_files_tab(f, app, chunks[1]),
         Tab::OpcUaConfig => render_opcua_tab(f, app, chunks[1]),
         Tab::IoTConfig => render_iot_tab(f, app, chunks[1]),
@@ -428,6 +554,68 @@ fn ui(f: &mut Frame, app: &mut App) {
     if app.show_help {
         render_help_popup(f, app);
     }
+}
+
+fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .split(area);
+
+    // Directory listing
+    let items: Vec<ListItem> = app
+        .directory_entries
+        .iter()
+        .enumerate()
+        .map(|(i, path)| {
+            let display_name = if i == 0 && app.current_directory.parent().is_some() {
+                ".. (Parent Directory)".to_string()
+            } else {
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("<invalid>")
+                    .to_string();
+                
+                if path.is_dir() {
+                    format!("📁 {}/", name)
+                } else {
+                    format!("📄 {}", name)
+                }
+            };
+            ListItem::new(display_name)
+        })
+        .collect();
+
+    let current_dir_display = app.current_directory.display().to_string();
+    let directory_list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(format!("Directory: {}", current_dir_display)))
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+
+    f.render_stateful_widget(directory_list, chunks[0], &mut app.directory_list_state);
+
+    // Instructions
+    let instructions = vec![
+        Line::from("Folder Navigation:"),
+        Line::from(""),
+        Line::from("↑/↓    - Navigate entries"),
+        Line::from("Enter  - Enter directory"),
+        Line::from("r      - Refresh listing"),
+        Line::from("h      - Go to home directory"),
+        Line::from("Tab    - Next tab"),
+        Line::from(""),
+        Line::from("Current folder will be used"),
+        Line::from("for XML file discovery."),
+    ];
+
+    let help_block = Paragraph::new(instructions)
+        .block(Block::default().borders(Borders::ALL).title("Controls"));
+    f.render_widget(help_block, chunks[1]);
 }
 
 fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -470,12 +658,14 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let instructions = vec![
         Line::from("Controls:"),
         Line::from(""),
-        Line::from("↑/↓  - Navigate files"),
-        Line::from("Space - Toggle selection"),
-        Line::from("r    - Refresh file list"),
-        Line::from("Tab  - Next tab"),
-        Line::from("h/F1 - Help"),
-        Line::from("q    - Quit"),
+        Line::from("↑/↓    - Navigate files"),
+        Line::from("Space  - Toggle selection"),
+        Line::from("r      - Refresh file list"),
+        Line::from("Tab    - Next tab"),
+        Line::from("h/F1   - Help"),
+        Line::from("q      - Quit"),
+        Line::from(""),
+        Line::from(format!("Working Directory:")),
     ];
 
     let help_block = Paragraph::new(instructions)
@@ -690,9 +880,15 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("IoT2050 Configuration TUI - Help"),
         Line::from(""),
         Line::from("Global Controls:"),
-        Line::from("  Tab/1-4 - Switch between tabs"),
+        Line::from("  Tab/1-5 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
         Line::from("  q       - Quit application"),
+        Line::from(""),
+        Line::from("Folder Tab:"),
+        Line::from("  ↑/↓     - Navigate directories"),
+        Line::from("  Enter   - Enter directory"),
+        Line::from("  r       - Refresh listing"),
+        Line::from("  h       - Go to home directory"),
         Line::from(""),
         Line::from("Files Tab:"),
         Line::from("  ↑/↓     - Navigate file list"),
