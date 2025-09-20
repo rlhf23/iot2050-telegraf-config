@@ -56,6 +56,9 @@ enum EditField {
     IoTUsername,
     IoTPassword,
     OutputFormat,
+    FileNamespace(usize),
+    FileIp(usize),
+    FileInterval(usize),
 }
 
 struct App {
@@ -320,6 +323,27 @@ impl App {
             EditField::IoTUsername => self.config.iot_username.clone(),
             EditField::IoTPassword => self.config.iot_password.clone(),
             EditField::OutputFormat => self.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()).clone(),
+            EditField::FileNamespace(idx) => {
+                if let Some(file) = self.xml_files.get(idx) {
+                    self.file_configs.get(file).map(|c| c.namespace.clone()).unwrap_or_else(|| "2".to_string())
+                } else {
+                    "2".to_string()
+                }
+            },
+            EditField::FileIp(idx) => {
+                if let Some(file) = self.xml_files.get(idx) {
+                    self.file_configs.get(file).map(|c| c.ip.clone()).unwrap_or_default()
+                } else {
+                    String::new()
+                }
+            },
+            EditField::FileInterval(idx) => {
+                if let Some(file) = self.xml_files.get(idx) {
+                    self.file_configs.get(file).map(|c| c.interval_ms.clone()).unwrap_or_else(|| "1000".to_string())
+                } else {
+                    "1000".to_string()
+                }
+            },
         };
     }
     
@@ -333,6 +357,24 @@ impl App {
                 EditField::IoTUsername => self.config.iot_username = self.input_buffer.clone(),
                 EditField::IoTPassword => self.config.iot_password = self.input_buffer.clone(),
                 EditField::OutputFormat => self.config.output_format = Some(self.input_buffer.clone()),
+                EditField::FileNamespace(idx) => {
+                    if let Some(file) = self.xml_files.get(*idx) {
+                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        config.namespace = self.input_buffer.clone();
+                    }
+                },
+                EditField::FileIp(idx) => {
+                    if let Some(file) = self.xml_files.get(*idx) {
+                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        config.ip = self.input_buffer.clone();
+                    }
+                },
+                EditField::FileInterval(idx) => {
+                    if let Some(file) = self.xml_files.get(*idx) {
+                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        config.interval_ms = self.input_buffer.clone();
+                    }
+                },
             }
         }
         
@@ -386,7 +428,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
-                        KeyCode::Tab => {
+                        KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                             app.current_tab = match app.current_tab {
                                 Tab::Folder => Tab::Files,
                                 Tab::Files => Tab::OpcUaConfig,
@@ -394,6 +436,16 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                 Tab::IoTConfig => Tab::Config,
                                 Tab::Config => Tab::Actions,
                                 Tab::Actions => Tab::Folder,
+                            };
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            app.current_tab = match app.current_tab {
+                                Tab::Folder => Tab::Actions,
+                                Tab::Files => Tab::Folder,
+                                Tab::OpcUaConfig => Tab::Files,
+                                Tab::IoTConfig => Tab::OpcUaConfig,
+                                Tab::Config => Tab::IoTConfig,
+                                Tab::Actions => Tab::Config,
                             };
                         }
                         KeyCode::Char('1') => app.current_tab = Tab::Folder,
@@ -481,7 +533,7 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
             let i = match app.file_list_state.selected() {
                 Some(i) => {
                     if i == 0 {
-                        app.xml_files.len().saturating_sub(1)
+                        app.xml_files.len() - 1
                     } else {
                         i - 1
                     }
@@ -493,7 +545,7 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
         KeyCode::Down => {
             let i = match app.file_list_state.selected() {
                 Some(i) => {
-                    if i >= app.xml_files.len().saturating_sub(1) {
+                    if i >= app.xml_files.len() - 1 {
                         0
                     } else {
                         i + 1
@@ -505,6 +557,27 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
         }
         KeyCode::Char(' ') | KeyCode::Enter => app.toggle_file_selection(),
         KeyCode::Char('r') => app.refresh_files(),
+        KeyCode::Char('n') => {
+            if let Some(selected) = app.file_list_state.selected() {
+                if selected < app.xml_files.len() {
+                    app.start_editing(EditField::FileNamespace(selected));
+                }
+            }
+        }
+        KeyCode::Char('i') => {
+            if let Some(selected) = app.file_list_state.selected() {
+                if selected < app.xml_files.len() {
+                    app.start_editing(EditField::FileIp(selected));
+                }
+            }
+        }
+        KeyCode::Char('t') => {
+            if let Some(selected) = app.file_list_state.selected() {
+                if selected < app.xml_files.len() {
+                    app.start_editing(EditField::FileInterval(selected));
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -742,23 +815,70 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     f.render_stateful_widget(files_list, chunks[0], &mut app.file_list_state);
 
-    // Instructions
-    let instructions = vec![
-        Line::from("Controls:"),
-        Line::from(""),
-        Line::from("↑/↓    - Navigate files"),
-        Line::from("Space  - Toggle selection"),
-        Line::from("r      - Refresh file list"),
-        Line::from("Tab    - Next tab"),
-        Line::from("h/F1   - Help"),
-        Line::from("q      - Quit"),
-        Line::from(""),
-        Line::from(format!("Working Directory:")),
-    ];
+    // Right panel - show editing input if in edit mode, otherwise show instructions
+    if app.input_mode == InputMode::Editing {
+        // Show editing interface
+        let edit_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunks[1]);
 
-    let help_block = Paragraph::new(instructions)
-        .block(Block::default().borders(Borders::ALL).title("Controls"));
-    f.render_widget(help_block, chunks[1]);
+        // Determine what we're editing
+        let edit_title = if let Some(ref field) = app.current_edit_field {
+            match field {
+                EditField::FileNamespace(_) => "Edit Namespace",
+                EditField::FileIp(_) => "Edit IP Address", 
+                EditField::FileInterval(_) => "Edit Interval (ms)",
+                _ => "Edit Field",
+            }
+        } else {
+            "Edit Field"
+        };
+
+        // Input field
+        let input = Paragraph::new(app.input_buffer.as_str())
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL).title(edit_title));
+        f.render_widget(input, edit_chunks[0]);
+
+        // Edit instructions
+        let edit_instructions = vec![
+            Line::from("Editing Mode:"),
+            Line::from(""),
+            Line::from("Enter  - Save changes"),
+            Line::from("Esc    - Cancel editing"),
+            Line::from(""),
+            Line::from("Type new value and press Enter"),
+        ];
+
+        let edit_help = Paragraph::new(edit_instructions)
+            .block(Block::default().borders(Borders::ALL).title("Edit Help"));
+        f.render_widget(edit_help, edit_chunks[1]);
+    } else {
+        // Show normal instructions
+        let instructions = vec![
+            Line::from("Controls:"),
+            Line::from(""),
+            Line::from("↑/↓    - Navigate files"),
+            Line::from("Space  - Toggle selection"),
+            Line::from("r      - Refresh file list"),
+            Line::from(""),
+            Line::from("Per-file config:"),
+            Line::from("n      - Edit namespace"),
+            Line::from("i      - Edit IP address"),
+            Line::from("t      - Edit interval"),
+            Line::from(""),
+            Line::from("Tab    - Next tab"),
+            Line::from("h/F1   - Help"),
+            Line::from("q      - Quit"),
+            Line::from(""),
+            Line::from(format!("Working Directory:")),
+        ];
+
+        let help_block = Paragraph::new(instructions)
+            .block(Block::default().borders(Borders::ALL).title("Controls"));
+        f.render_widget(help_block, chunks[1]);
+    }
 }
 
 fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -1046,9 +1166,12 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("  h       - Go to home directory"),
         Line::from(""),
         Line::from("Files Tab:"),
-        Line::from("  ↑/↓     - Navigate file list"),
+        Line::from("  ↑/↓     - Navigate files"),
         Line::from("  Space   - Toggle file selection"),
         Line::from("  r       - Refresh file list"),
+        Line::from("  n       - Edit namespace for selected file"),
+        Line::from("  i       - Edit IP for selected file"),
+        Line::from("  t       - Edit interval for selected file"),
         Line::from(""),
         Line::from("Config Tabs:"),
         Line::from("  Letters - Edit corresponding fields"),
