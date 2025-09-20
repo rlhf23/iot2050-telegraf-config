@@ -98,6 +98,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let ip = matches.get_one::<String>("ip").unwrap();
     let username = matches.get_one::<String>("username").unwrap();
     let password = matches.get_one::<String>("password").unwrap();
+    let anonymous = matches.get_flag("anonymous");
     let output_format = matches.get_one::<String>("output_format").unwrap();
     let test_inputs = matches.get_flag("test_inputs");
     let default_interval = matches.get_one::<String>("default_interval").unwrap().parse::<u32>().unwrap_or(500);
@@ -107,6 +108,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     println!("Generating Telegraf configuration with sane defaults...");
     println!("Folder: {}", folder);
     println!("OPC UA Server: {}", ip);
+    println!("Authentication: {}", if anonymous { "Anonymous" } else { "Username/Password" });
     println!("Output format: {}", output_format);
     println!("Default interval: {}ms", default_interval);
     println!("Listener interval: {}ms", listener_interval);
@@ -115,8 +117,8 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let config = TelegrafConfig {
         folder: folder.into(),
         ip: ip.clone(),
-        username: username.clone(),
-        password: password.clone(),
+        username: if anonymous { String::new() } else { username.clone() },
+        password: if anonymous { String::new() } else { password.clone() },
         iot_host: matches.get_one::<String>("iot_host").unwrap().clone(),
         iot_username: matches.get_one::<String>("iot_username").unwrap().clone(),
         iot_password: matches.get_one::<String>("iot_password").unwrap().clone(),
@@ -340,6 +342,7 @@ fn main() {
                 .arg(clap::Arg::new("ip").short('i').long("ip").default_value(env!("DEFAULT_IP")).help("OPC UA server IP address"))
                 .arg(clap::Arg::new("username").short('u').long("username").default_value(env!("DEFAULT_USERNAME")).help("OPC UA username"))
                 .arg(clap::Arg::new("password").short('p').long("password").default_value(env!("DEFAULT_PASSWORD")).help("OPC UA password"))
+                .arg(clap::Arg::new("anonymous").short('a').long("anonymous").action(clap::ArgAction::SetTrue).help("Use anonymous authentication (ignores username/password)"))
                 .arg(clap::Arg::new("output_format").short('o').long("output-format").default_value("influxdb").help("Output format (influxdb or prometheus)"))
                 .arg(clap::Arg::new("test_inputs").long("test-inputs").action(clap::ArgAction::SetTrue).help("Include test inputs (CPU, disk, memory)"))
                 .arg(clap::Arg::new("default_interval").long("default-interval").default_value("500").help("Default interval in milliseconds for active polling"))
