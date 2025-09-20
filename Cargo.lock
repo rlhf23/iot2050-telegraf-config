@@ -3483,6 +3483,7 @@ dependencies = [
  "dotenv",
  "eframe",
  "insta",
+ "log",
  "opcua",
  "openssl",
  "ratatui",

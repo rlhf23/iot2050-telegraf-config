@@ -16,6 +16,7 @@ use ssh2::Session;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use log::debug;
 
 /// Checks if a service is running in a Docker container
 fn is_service_containerized(session: &Session, service_name: &str) -> Result<bool, TelegrafError> {
@@ -166,7 +167,7 @@ fn connect_ssh_with_config(
     // Use the provided host (already has port)
     let host_with_port = host.to_string();
 
-    println!(
+    debug!(
         "Connecting to {} with connect_timeout={}s, operation_timeout={}s, stream_timeout={}s",
         host_with_port, config.connect_timeout, config.operation_timeout, config.stream_timeout
     );
@@ -190,14 +191,14 @@ fn connect_ssh_with_config(
                 if let Err(e) =
                     tcp.set_read_timeout(Some(Duration::from_secs(config.stream_timeout)))
                 {
-                    println!("Failed to set read timeout: {}", e);
+                    debug!("Failed to set read timeout: {}", e);
                     continue;
                 }
 
                 if let Err(e) =
                     tcp.set_write_timeout(Some(Duration::from_secs(config.stream_timeout)))
                 {
-                    println!("Failed to set write timeout: {}", e);
+                    debug!("Failed to set write timeout: {}", e);
                     continue;
                 }
 
@@ -205,7 +206,7 @@ fn connect_ssh_with_config(
                 let mut session = match Session::new() {
                     Ok(s) => s,
                     Err(e) => {
-                        println!("Failed to create SSH session: {}", e);
+                        debug!("Failed to create SSH session: {}", e);
                         continue;
                     }
                 };
@@ -219,20 +220,20 @@ fn connect_ssh_with_config(
                     Ok(_) => match session.userauth_password(username, password) {
                         Ok(_) => return Ok(session),
                         Err(e) => {
-                            println!("Authentication failed: {}", e);
+                            debug!("Authentication failed: {}", e);
                             return Err(TelegrafError::SshError(crate::error::SshError::Auth(
                                 crate::error::SshAuthError::InvalidCredentials(e),
                             )));
                         }
                     },
                     Err(e) => {
-                        println!("Handshake failed: {}", e);
+                        debug!("Handshake failed: {}", e);
                         continue;
                     }
                 }
             }
             Err(e) => {
-                println!("Connection timeout: {}", e);
+                debug!("Connection timeout: {}", e);
                 // Connection failed, try next address
             }
         }
@@ -364,7 +365,7 @@ pub fn send_file_over_ssh(
     username: &str,
     password: &str,
 ) -> Result<(), TelegrafError> {
-    println!("Sending file over SSH to {}", remote_host);
+    debug!("Sending file over SSH to {}", remote_host);
 
     // Connect to SSH with appropriate timeouts for file transfer operations
     let config = SshConfig {
@@ -388,10 +389,10 @@ pub fn send_file_over_ssh(
     local_file.read_to_end(&mut contents)?;
 
     // Write content to remote file
-    println!("Uploading file ({} bytes)...", contents.len());
+    debug!("Uploading file ({} bytes)...", contents.len());
     remote_file.write_all(&contents)?;
 
-    println!("File upload completed successfully");
+    debug!("File upload completed successfully");
     Ok(())
 }
 
@@ -410,7 +411,7 @@ pub fn send_file_over_ssh(
 /// # // Internal function - examples would require module to be public
 /// # // let session = todo!(); // Assume we have an established session
 /// # // let output = execute_ssh_command(&session, "ls -la")?;
-/// # // println!("Directory listing: {}", output);
+/// # // debug!("Directory listing: {}", output);
 /// ```
 fn execute_ssh_command(session: &Session, command: &str) -> Result<String, TelegrafError> {
     let mut channel = session.channel_session()?;
@@ -433,8 +434,8 @@ fn execute_ssh_command(session: &Session, command: &str) -> Result<String, Teleg
     }
 
     // Print for debugging
-    println!("SSH command output length: {}", output.len());
-    println!(
+    debug!("SSH command output length: {}", output.len());
+    debug!(
         "First 100 chars: {}",
         if output.len() > 100 {
             &output[..100]
@@ -450,11 +451,11 @@ fn execute_ssh_command(session: &Session, command: &str) -> Result<String, Teleg
 pub fn restart_telegraf_docker_over_ssh(
     session: &Session,
 ) -> Result<String, TelegrafError> {
-    println!("Attempting to restart Telegraf Docker container...");
+    debug!("Attempting to restart Telegraf Docker container...");
     let command = "docker restart telegraf";
     match execute_ssh_command(session, command) {
         Ok(output) => {
-            println!("Telegraf Docker container restart command executed. Output: {}", output);
+            debug!("Telegraf Docker container restart command executed. Output: {}", output);
             Ok(format!("Telegraf Docker container restarted successfully.\nOutput: {}", output))
         }
         Err(e) => {
@@ -480,11 +481,11 @@ pub fn restart_telegraf_over_ssh(
     
     // Check if Telegraf is containerized
     if is_telegraf_containerized(&session)? {
-        println!("Telegraf is containerized. Using Docker restart logic.");
+        debug!("Telegraf is containerized. Using Docker restart logic.");
         return restart_telegraf_docker_over_ssh(&session);
     }
 
-    println!("Telegraf is not containerized or check failed. Using system service restart logic.");
+    debug!("Telegraf is not containerized or check failed. Using system service restart logic.");
     let mut output = Vec::new();
     output.push("Detected system Telegraf".to_string());
     output.push("Restarting telegraf service on the remote host...".to_string());
@@ -753,7 +754,7 @@ pub fn copy_directory_over_ssh(
         // Copy the file content
         std::io::copy(&mut remote_file, &mut local_file)?;
 
-        println!("Copied {} ({} bytes)", file_name, stat.size());
+        debug!("Copied {} ({} bytes)", file_name, stat.size());
     }
 
     Ok(())
@@ -833,7 +834,7 @@ pub fn get_telegraf_status(
     username: &str,
     password: &str,
 ) -> Result<String, TelegrafError> {
-    println!("Starting telegraf status retrieval from {}", remote_host);
+    debug!("Starting telegraf status retrieval from {}", remote_host);
 
     // Connect to SSH with appropriate timeouts for status check operations
     let config = SshConfig {
@@ -842,24 +843,24 @@ pub fn get_telegraf_status(
         stream_timeout: 10,    // Status output is usually small
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
-    println!("SSH connection established, checking Telegraf status");
+    debug!("SSH connection established, checking Telegraf status");
 
     // Check if Telegraf is running in a container
     let is_containerized = is_telegraf_containerized(&session).unwrap_or(false);
     
     if is_containerized {
-        println!("Detected containerized Telegraf");
+        debug!("Detected containerized Telegraf");
         let (is_healthy, status_msg) = check_containerized_telegraf_status(&session)?;
         let status = if is_healthy { "running" } else { "degraded" };
         Ok(format!("Telegraf container is {}\n{}", status, status_msg))
     } else {
-        println!("Checking non-containerized Telegraf service");
+        debug!("Checking non-containerized Telegraf service");
         // Use service command with non-interactive sudo for non-containerized Telegraf
         let command = format!("echo '{}' | sudo -S service telegraf status || true", password);
         let status = execute_ssh_command(&session, &command)?;
         
         if status.is_empty() {
-            println!("Warning: Empty status returned!");
+            debug!("Warning: Empty status returned!");
             Ok("Telegraf service status unknown (empty response)".to_string())
         } else {
             Ok(status)
@@ -872,14 +873,14 @@ fn get_telegraf_logs_docker(
     session: &Session,
     lines: usize,
 ) -> Result<String, TelegrafError> {
-    println!("Fetching last {} lines from Telegraf container...", lines);
+    debug!("Fetching last {} lines from Telegraf container...", lines);
     
     // Try with timestamps first, fall back to basic logs if that fails
     let command = format!("docker logs --tail={} --timestamps telegraf 2>&1 || docker logs --tail={} telegraf 2>&1 || true", lines, lines);
     
     match execute_ssh_command(session, &command) {
         Ok(output) if !output.trim().is_empty() => {
-            println!("Successfully retrieved {} bytes of logs", output.len());
+            debug!("Successfully retrieved {} bytes of logs", output.len());
             Ok(output)
         },
         Ok(_) => {
@@ -902,7 +903,7 @@ pub fn get_telegraf_logs(
     password: &str,
     lines: usize,
 ) -> Result<String, TelegrafError> {
-    println!("Starting telegraf logs retrieval from {}", remote_host);
+    debug!("Starting telegraf logs retrieval from {}", remote_host);
 
     // Connect to SSH with appropriate timeouts for log retrieval operations
     let config = SshConfig {
@@ -912,17 +913,17 @@ pub fn get_telegraf_logs(
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
-    println!("SSH connection established, retrieving logs");
+    debug!("SSH connection established, retrieving logs");
 
     // Check if Telegraf is containerized
     if is_telegraf_containerized(&session)? {
-        println!("Telegraf is containerized. Using Docker log retrieval.");
+        debug!("Telegraf is containerized. Using Docker log retrieval.");
         return get_telegraf_logs_docker(&session, lines);
     }
 
-    println!("Telegraf is not containerized or check failed. Using system service log retrieval.");
+    debug!("Telegraf is not containerized or check failed. Using system service log retrieval.");
     // Try to check if the log file exists first with non-interactive sudo
-    println!("Checking if log file exists for system service Telegraf");
+    debug!("Checking if log file exists for system service Telegraf");
     let check_cmd = format!("echo '{}' | sudo -S test -f /var/log/telegraf/telegraf.log && echo 'exists' || echo 'missing'", password);
     let check_result = execute_ssh_command(&session, &check_cmd)?;
 
@@ -935,7 +936,7 @@ pub fn get_telegraf_logs(
         let alt_result = execute_ssh_command(&session, &alt_check)?;
 
         if alt_result.trim() == "exists" {
-            println!("Found log file in alternative location");
+            debug!("Found log file in alternative location");
             // Get last n lines from alternative log location
             let alt_command = format!(
                 "echo '{}' | sudo -S tail -n {} /var/log/telegraf.log",
@@ -943,14 +944,14 @@ pub fn get_telegraf_logs(
             );
             let logs = execute_ssh_command(&session, &alt_command)?;
 
-            println!(
+            debug!(
                 "Telegraf logs retrieved from alternative location, length: {}",
                 logs.len()
             );
             return Ok(logs);
         }
 
-        println!("Log file not found in standard locations!");
+        debug!("Log file not found in standard locations!");
         return Err(TelegrafError::SshError(crate::error::SshError::Other(
             ssh2::Error::new(
                 ssh2::ErrorCode::Session(-1),
@@ -964,15 +965,15 @@ pub fn get_telegraf_logs(
         "echo '{}' | sudo -S tail -n {} /var/log/telegraf/telegraf.log",
         password, lines
     );
-    println!("Executing command to retrieve logs");
+    debug!("Executing command to retrieve logs");
     let logs = execute_ssh_command(&session, &command)?;
 
-    println!(
+    debug!(
         "Telegraf logs retrieved successfully, length: {}",
         logs.len()
     );
     if logs.is_empty() {
-        println!("Warning: Empty logs returned!");
+        debug!("Warning: Empty logs returned!");
     }
 
     Ok(logs)
@@ -1038,7 +1039,7 @@ pub fn check_influxdb_status(
     password: &str,
     timeout_seconds: u64,
 ) -> Result<(bool, String), TelegrafError> {
-    println!("Checking InfluxDB status at {}", remote_host);
+    debug!("Checking InfluxDB status at {}", remote_host);
 
     // Connect to the remote host
     let session = connect_ssh_with_timeout(remote_host, username, password, timeout_seconds)?;
@@ -1047,11 +1048,11 @@ pub fn check_influxdb_status(
     let is_containerized = is_influxdb_containerized(&session).unwrap_or(false);
 
     if is_containerized {
-        println!("Detected containerized InfluxDB");
+        debug!("Detected containerized InfluxDB");
         return check_containerized_influxdb_status(&session);
     }
 
-    println!("Checking non-containerized InfluxDB");
+    debug!("Checking non-containerized InfluxDB");
     let command = "influx ping";
 
     // Execute the command
