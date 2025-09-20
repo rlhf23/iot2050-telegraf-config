@@ -132,14 +132,19 @@ impl App {
         };
         
         app.load_directory_entries();
-        app.load_xml_files();
+        app.refresh_files();
         app
     }
     
-    fn load_xml_files(&mut self) {
+    fn refresh_files(&mut self) {
         self.config.folder = self.current_directory.clone();
         self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_files = vec![false; self.xml_files.len()];
+        
+        // Initialize configs for new files
+        for file in &self.xml_files {
+            self.file_configs.entry(file.clone()).or_default();
+        }
         
         if self.xml_files.is_empty() {
             self.add_status_message("No XML files found in current directory".to_string());
@@ -187,7 +192,7 @@ impl App {
         if path.is_dir() {
             self.current_directory = path;
             self.load_directory_entries();
-            self.load_xml_files();
+            self.refresh_files();
             self.add_status_message(format!("Changed to directory: {}", self.current_directory.display()));
         }
     }
@@ -499,7 +504,7 @@ fn handle_files_input(app: &mut App, key: KeyCode) {
             app.file_list_state.select(Some(i));
         }
         KeyCode::Char(' ') | KeyCode::Enter => app.toggle_file_selection(),
-        KeyCode::Char('r') => app.load_xml_files(),
+        KeyCode::Char('r') => app.refresh_files(),
         _ => {}
     }
 }
@@ -689,7 +694,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
 
-    // File list
+    // File list with per-file configuration
     let items: Vec<ListItem> = app
         .xml_files
         .iter()
@@ -704,7 +709,25 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(file);
-            ListItem::new(format!("{} {}", checkbox, filename))
+            
+            // Get per-file configuration
+            let config = app.file_configs.get(file);
+            let namespace = config.map(|c| c.namespace.as_str()).unwrap_or("2");
+            let ip = config.map(|c| c.ip.as_str()).unwrap_or("");
+            let interval = config.map(|c| c.interval_ms.as_str()).unwrap_or("");
+            
+            // Format: [x] filename.xml | NS:2 | IP:192.168.1.100 | INT:1000ms
+            let config_info = format!(
+                "NS:{} | IP:{} | INT:{}ms",
+                if namespace.is_empty() { "2" } else { namespace },
+                if ip.is_empty() { "default" } else { ip },
+                if interval.is_empty() { "1000" } else { interval }
+            );
+            
+            ListItem::new(vec![
+                Line::from(format!("{} {}", checkbox, filename)),
+                Line::from(format!("  {}", config_info)).style(Style::default().fg(Color::Gray)),
+            ])
         })
         .collect();
 
