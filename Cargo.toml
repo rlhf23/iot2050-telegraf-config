@@ -19,6 +19,10 @@ path = "src/bin/opcua_test_server.rs"
 name = "opcua_client_test"
 path = "src/bin/opcua_client_test.rs"
 
+[[bin]]
+name = "sie_generate_config_tui"
+path = "src/bin/tui.rs"
+
 [lib]
 name = "sie_generate_config"
 path = "src/lib.rs"
@@ -32,6 +36,8 @@ dotenv = "0.15.0"
 ctrlc = "3.4" 
 rfd = "0.15.0"     # Native file dialogs
 eframe = { version = "0.31", features = [] }  # GUI framework
+ratatui = "0.29.0"  # TUI framework
+crossterm = "0.28.1"  # Terminal handling
 opcua = { version = "0.12.0", features = ["console-logging"] }
 thiserror = "2.0.12"
 
