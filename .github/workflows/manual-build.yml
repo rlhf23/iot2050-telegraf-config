@@ -1,0 +1,177 @@
+name: Manual Build Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'Build target'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - ubuntu-only
+        - windows-only
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'iced-gui-experiment'
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  build-ubuntu-test:
+    name: Build Ubuntu Test
+    runs-on: ubuntu-latest
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'ubuntu-only' }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libssl-dev
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI binary
+        run: cargo build --release --bin sie_generate_config
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build TUI binary
+        run: cargo build --release --bin sie_generate_config_tui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build Iced GUI binary
+        run: cargo build --release --bin sie_generate_config_iced
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Create output directory
+        run: mkdir -p bin-releases
+
+      - name: Copy executables
+        run: |
+          cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
+          cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
+          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_iced-ubuntu
+
+      - name: Upload Ubuntu executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-binaries-${{ inputs.branch }}
+          path: bin-releases/
+
+  build-windows-test:
+    name: Build Windows Test
+    runs-on: windows-latest
+    if: ${{ inputs.build_target == 'all' || inputs.build_target == 'windows-only' }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ inputs.branch }}
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install vcpkg and OpenSSL
+        shell: pwsh
+        run: |
+          # Clone vcpkg
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          
+          # Bootstrap vcpkg
+          ./bootstrap-vcpkg.bat -disableMetrics
+          
+          # Install OpenSSL
+          ./vcpkg install openssl:x64-windows-static-md
+          
+          # Set environment variables
+          echo "OPENSSL_DIR=$PWD/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKG_ROOT=$PWD" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build CLI executable
+        run: cargo build --release --bin sie_generate_config
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build TUI executable
+        run: cargo build --release --bin sie_generate_config_tui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Build Iced GUI executable
+        run: cargo build --release --bin sie_generate_config_iced
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Create output directory
+        run: mkdir -p bin-releases
+
+      - name: Copy executables
+        run: |
+          copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
+          copy target\release\sie_generate_config_tui.exe bin-releases\sie_generate_config_tui-windows.exe
+          copy target\release\sie_generate_config_iced.exe bin-releases\sie_generate_config_iced-windows.exe
+
+      - name: Upload Windows executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-binaries-${{ inputs.branch }}
+          path: bin-releases/
