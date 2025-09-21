@@ -25,7 +25,7 @@ path = "src/bin/tui.rs"
 
 [[bin]]
 name = "sie_generate_config_iced"
-path = "src/bin/iced_gui_minimal.rs"
+path = "src/bin/iced_gui.rs"
 
 [lib]
 name = "sie_generate_config"
