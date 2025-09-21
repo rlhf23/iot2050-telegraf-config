@@ -7,9 +7,9 @@ edition = "2021"
 name = "sie_generate_config"
 path = "src/bin/cli.rs"
 
-[[bin]]
-name = "sie_generate_config_gui"
-path = "src/bin/gui.rs"
+# [[bin]]
+# name = "sie_generate_config_gui"
+# path = "src/bin/gui.rs"
 
 [[bin]]
 name = "opcua_test_server"
@@ -23,6 +23,10 @@ path = "src/bin/opcua_client_test.rs"
 name = "sie_generate_config_tui"
 path = "src/bin/tui.rs"
 
+[[bin]]
+name = "sie_generate_config_iced"
+path = "src/bin/iced_gui_minimal.rs"
+
 [lib]
 name = "sie_generate_config"
 path = "src/lib.rs"
@@ -35,10 +39,11 @@ chrono = { version = "0.4.34", features = ["serde"] }
 dotenv = "0.15.0"
 ctrlc = "3.4" 
 rfd = "0.15.0"     # Native file dialogs
-eframe = { version = "0.31", features = [] }  # GUI framework
+# eframe = { version = "0.31", features = [] }  # GUI framework (commented out for Iced experiment)
 ratatui = "0.29.0"  # TUI framework
 crossterm = "0.28.1"  # Terminal handling
 dirs = "5.0.1"  # Directory utilities
+iced = "0.13"  # Modern GUI framework
 opcua = { version = "0.12.0", features = ["console-logging"] }
 thiserror = "2.0.12"
 log = "0.4"

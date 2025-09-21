@@ -341,8 +341,9 @@ pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
 pub mod backend;
 pub mod error;
 pub mod worker;
-pub mod gui_controller;
-pub mod gui_renderer;
+// Temporarily disabled for Iced experiment
+// pub mod gui_controller;
+// pub mod gui_renderer;
 
 pub use worker::{WorkerCommand, WorkerHandle, WorkerResponse};
 
