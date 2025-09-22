@@ -111,88 +111,119 @@ impl TelegrafFltkApp {
         config_scroll.set_color(BG_COLOR);
         config_scroll.set_type(fltk::group::ScrollType::Vertical);
         
-        let mut config_pack = Pack::new(20, 50, 860, 600, "");
-        config_pack.set_type(PackType::Vertical);
-        config_pack.set_spacing(15);
-        config_pack.set_color(BG_COLOR);
+        let mut config_inner = Group::new(20, 50, 860, 600, "");
+        config_inner.set_color(BG_COLOR);
+        
+        let mut y_pos = 60;
         
         // Folder selection
-        let mut folder_frame = Frame::new(0, 0, 860, 30, "XML Folder:");
-        folder_frame.set_align(Align::Left | Align::Inside);
-        folder_frame.set_label_color(TEXT_COLOR);
+        let mut folder_label = Frame::new(30, y_pos, 120, 30, "XML Folder:");
+        folder_label.set_align(Align::Left | Align::Inside);
+        folder_label.set_label_color(TEXT_COLOR);
         
-        let mut folder_group = Group::new(0, 0, 860, 30, "");
-        folder_group.set_color(BG_COLOR);
-        let mut folder_input = Input::new(0, 0, 600, 30, "");
+        let mut folder_input = Input::new(160, y_pos, 500, 30, "");
         folder_input.set_color(WIDGET_BG);
         folder_input.set_text_color(TEXT_COLOR);
-        let mut browse_folder_btn = Button::new(610, 0, 100, 30, "Browse");
+        let mut browse_folder_btn = Button::new(670, y_pos, 100, 30, "Browse");
         browse_folder_btn.set_color(ACCENT_COLOR);
         browse_folder_btn.set_label_color(TEXT_COLOR);
-        folder_group.end();
         
-        // Main configuration inputs
-        let mut ip_input = Input::new(150, 0, 200, 30, "OPC IP:");
+        y_pos += 50;
+        
+        // Main configuration inputs with proper positioning
+        let mut ip_label = Frame::new(30, y_pos, 120, 30, "OPC IP:");
+        ip_label.set_align(Align::Left | Align::Inside);
+        ip_label.set_label_color(TEXT_COLOR);
+        let mut ip_input = Input::new(160, y_pos, 200, 30, "");
         ip_input.set_color(WIDGET_BG);
         ip_input.set_text_color(TEXT_COLOR);
-        ip_input.set_label_color(TEXT_COLOR);
         
-        let mut iot_host_input = Input::new(150, 0, 200, 30, "IOT Host:");
+        y_pos += 40;
+        
+        let mut iot_host_label = Frame::new(30, y_pos, 120, 30, "IOT Host:");
+        iot_host_label.set_align(Align::Left | Align::Inside);
+        iot_host_label.set_label_color(TEXT_COLOR);
+        let mut iot_host_input = Input::new(160, y_pos, 200, 30, "");
         iot_host_input.set_color(WIDGET_BG);
         iot_host_input.set_text_color(TEXT_COLOR);
-        iot_host_input.set_label_color(TEXT_COLOR);
+        
+        y_pos += 60;
         
         // Credentials section
-        let mut cred_frame = Frame::new(0, 0, 860, 30, "Credentials:");
+        let mut cred_frame = Frame::new(30, y_pos, 300, 30, "Credentials:");
         cred_frame.set_align(Align::Left | Align::Inside);
         cred_frame.set_label_color(TEXT_COLOR);
         cred_frame.set_label_font(Font::HelveticaBold);
         
-        let mut username_input = Input::new(150, 0, 200, 30, "OPC Username:");
+        y_pos += 40;
+        
+        let mut username_label = Frame::new(30, y_pos, 120, 30, "OPC Username:");
+        username_label.set_align(Align::Left | Align::Inside);
+        username_label.set_label_color(TEXT_COLOR);
+        let mut username_input = Input::new(160, y_pos, 200, 30, "");
         username_input.set_color(WIDGET_BG);
         username_input.set_text_color(TEXT_COLOR);
-        username_input.set_label_color(TEXT_COLOR);
         
-        let mut password_input = SecretInput::new(150, 0, 200, 30, "OPC Password:");
+        y_pos += 40;
+        
+        let mut password_label = Frame::new(30, y_pos, 120, 30, "OPC Password:");
+        password_label.set_align(Align::Left | Align::Inside);
+        password_label.set_label_color(TEXT_COLOR);
+        let mut password_input = SecretInput::new(160, y_pos, 200, 30, "");
         password_input.set_color(WIDGET_BG);
         password_input.set_text_color(TEXT_COLOR);
-        password_input.set_label_color(TEXT_COLOR);
         
-        let mut iot_username_input = Input::new(150, 0, 200, 30, "IOT Username:");
+        y_pos += 40;
+        
+        let mut iot_username_label = Frame::new(30, y_pos, 120, 30, "IOT Username:");
+        iot_username_label.set_align(Align::Left | Align::Inside);
+        iot_username_label.set_label_color(TEXT_COLOR);
+        let mut iot_username_input = Input::new(160, y_pos, 200, 30, "");
         iot_username_input.set_color(WIDGET_BG);
         iot_username_input.set_text_color(TEXT_COLOR);
-        iot_username_input.set_label_color(TEXT_COLOR);
         
-        let mut iot_password_input = SecretInput::new(150, 0, 200, 30, "IOT Password:");
+        y_pos += 40;
+        
+        let mut iot_password_label = Frame::new(30, y_pos, 120, 30, "IOT Password:");
+        iot_password_label.set_align(Align::Left | Align::Inside);
+        iot_password_label.set_label_color(TEXT_COLOR);
+        let mut iot_password_input = SecretInput::new(160, y_pos, 200, 30, "");
         iot_password_input.set_color(WIDGET_BG);
         iot_password_input.set_text_color(TEXT_COLOR);
-        iot_password_input.set_label_color(TEXT_COLOR);
+        
+        y_pos += 60;
         
         // Options
-        let mut include_test_inputs = CheckButton::new(0, 0, 400, 30, "Include System Inputs (CPU, Disk, Memory)");
+        let mut include_test_inputs = CheckButton::new(30, y_pos, 400, 30, "Include System Inputs (CPU, Disk, Memory)");
         include_test_inputs.set_color(WIDGET_BG);
         include_test_inputs.set_label_color(TEXT_COLOR);
         
-        let mut anonymous_auth = CheckButton::new(0, 0, 300, 30, "Anonymous OPC-UA Authentication");
+        y_pos += 40;
+        
+        let mut anonymous_auth = CheckButton::new(30, y_pos, 300, 30, "Anonymous OPC-UA Authentication");
         anonymous_auth.set_color(WIDGET_BG);
         anonymous_auth.set_label_color(TEXT_COLOR);
         
+        y_pos += 60;
+        
         // Output format
-        let mut format_frame = Frame::new(0, 0, 860, 30, "Output Format:");
+        let mut format_frame = Frame::new(30, y_pos, 300, 30, "Output Format:");
         format_frame.set_align(Align::Left | Align::Inside);
         format_frame.set_label_color(TEXT_COLOR);
         format_frame.set_label_font(Font::HelveticaBold);
         
-        let mut output_format_prometheus = RadioButton::new(0, 0, 150, 30, "Prometheus");
+        y_pos += 40;
+        
+        let mut output_format_prometheus = RadioButton::new(30, y_pos, 150, 30, "Prometheus");
         output_format_prometheus.set_color(WIDGET_BG);
         output_format_prometheus.set_label_color(TEXT_COLOR);
         output_format_prometheus.set_value(true);
         
-        let mut output_format_influx = RadioButton::new(160, 0, 150, 30, "InfluxDB");
+        let mut output_format_influx = RadioButton::new(190, y_pos, 150, 30, "InfluxDB");
         output_format_influx.set_color(WIDGET_BG);
         output_format_influx.set_label_color(TEXT_COLOR);
         
-        config_pack.end();
+        config_inner.end();
         config_scroll.end();
         config_group.end();
         
