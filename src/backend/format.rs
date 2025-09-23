@@ -174,6 +174,11 @@ pub fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let auth_method = if config.username.is_empty() && config.password.is_empty() {
+        "Anonymous"
+    } else {
+        "UserName"
+    };
 
     format!(
         r#"
@@ -186,7 +191,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "gather"
@@ -201,6 +206,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
       ]
     "#,
         config.ip,
+        auth_method,
         config.username,
         config.password,
         interval,
@@ -213,6 +219,11 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let auth_method = if config.username.is_empty() && config.password.is_empty() {
+        "Anonymous"
+    } else {
+        "UserName"
+    };
 
     format!(
         r#"
@@ -226,7 +237,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "gather"
@@ -241,6 +252,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
       ]
     "#,
         config.ip,
+        auth_method,
         config.username,
         config.password,
         config.group_name,
