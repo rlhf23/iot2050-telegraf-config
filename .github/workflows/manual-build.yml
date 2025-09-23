@@ -12,12 +12,7 @@ on:
         - all
         - ubuntu-only
         - windows-only
-      branch:
-        description: 'Branch to build'
-        required: true
-        default: 'iced-gui-experiment'
-        type: string
-
+        
 env:
   CARGO_TERM_COLOR: always
 
@@ -69,6 +64,16 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
+      - name: Build GUI binary
+        run: cargo build --release --bin sie_generate_config_gui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
       - name: Create output directory
         run: mkdir -p bin-releases
 
@@ -76,7 +81,7 @@ jobs:
         run: |
           cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
           cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
-          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_iced-ubuntu
+          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_gui-ubuntu
 
       - name: Upload Ubuntu executables
         uses: actions/upload-artifact@v4
@@ -141,6 +146,16 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
+      - name: Build GUI executable
+        run: cargo build --release --bin sie_generate_config_gui
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
       - name: Create output directory
         run: mkdir -p bin-releases
 
@@ -148,6 +163,7 @@ jobs:
         run: |
           copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
           copy target\release\sie_generate_config_tui.exe bin-releases\sie_generate_config_tui-windows.exe
+          copy target\release\sie_generate_config_iced.exe bin-releases\sie_generate_config_iced-windows.exe
 
       - name: Upload Windows executables
         uses: actions/upload-artifact@v4
