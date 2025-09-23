@@ -52,7 +52,7 @@ jobs:
       - name: Build CLI binary
         run: cargo build --release --bin sie_generate_config
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -62,7 +62,7 @@ jobs:
       - name: Build TUI binary
         run: cargo build --release --bin sie_generate_config_tui
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -72,7 +72,7 @@ jobs:
       - name: Build Iced GUI binary
         run: cargo build --release --bin sie_generate_config_iced
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -86,7 +86,7 @@ jobs:
         run: |
           cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
           cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
-          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_iced-ubuntu
+          cp target/release/sie_generate_config_gui bin-releases/sie_generate_config_gui-ubuntu
 
       - name: Upload Ubuntu executables
         uses: actions/upload-artifact@v4
@@ -134,7 +134,7 @@ jobs:
       - name: Build CLI executable
         run: cargo build --release --bin sie_generate_config
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -144,7 +144,7 @@ jobs:
       - name: Build TUI executable
         run: cargo build --release --bin sie_generate_config_tui
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -154,7 +154,7 @@ jobs:
       - name: Build Iced GUI executable
         run: cargo build --release --bin sie_generate_config_iced
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -168,7 +168,7 @@ jobs:
         run: |
           copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
           copy target\release\sie_generate_config_tui.exe bin-releases\sie_generate_config_tui-windows.exe
-          copy target\release\sie_generate_config_iced.exe bin-releases\sie_generate_config_iced-windows.exe
+          copy target\release\sie_generate_config_gui.exe bin-releases\sie_generate_config_gui-windows.exe
 
       - name: Upload Windows executables
         uses: actions/upload-artifact@v4

@@ -36,7 +36,7 @@ jobs:
       - name: Build CLI binary
         run: cargo build --release --bin sie_generate_config
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -46,7 +46,7 @@ jobs:
       - name: Build GUI binary
         run: cargo build --release --bin sie_generate_config_gui
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
@@ -56,7 +56,7 @@ jobs:
       - name: Build TUI binary
         run: cargo build --release --bin sie_generate_config_tui
         env:
-          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
           DEFAULT_PASSWORD: "testpass"
           DEFAULT_IOT_IP: "192.168.1.2:22"
