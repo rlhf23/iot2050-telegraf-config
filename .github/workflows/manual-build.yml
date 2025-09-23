@@ -79,7 +79,7 @@ jobs:
         run: |
           cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
           cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
-          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_gui-ubuntu
+          cp target/release/sie_generate_config_gui bin-releases/sie_generate_config_gui-ubuntu
 
       - name: Upload Ubuntu executables
         uses: actions/upload-artifact@v4
@@ -159,7 +159,7 @@ jobs:
         run: |
           copy target\release\sie_generate_config.exe bin-releases\sie_generate_config-windows.exe
           copy target\release\sie_generate_config_tui.exe bin-releases\sie_generate_config_tui-windows.exe
-          copy target\release\sie_generate_config_iced.exe bin-releases\sie_generate_config_iced-windows.exe
+          copy target\release\sie_generate_config_gui.exe bin-releases\sie_generate_config_gui-windows.exe
 
       - name: Upload Windows executables
         uses: actions/upload-artifact@v4
