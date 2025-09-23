@@ -69,8 +69,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI binary
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build fltk GUI binary
+        run: cargo build --release --bin sie_generate_config_fltk
         env:
           DEFAULT_IP: "192.168.1.1"
           DEFAULT_USERNAME: "testuser"
@@ -151,8 +151,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI executable
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build fltk GUI executable
+        run: cargo build --release --bin sie_generate_config_fltk
         env:
           DEFAULT_IP: "192.168.1.1"
           DEFAULT_USERNAME: "testuser"
