@@ -165,7 +165,12 @@ struct App {
     
     // Status and messages
     status_messages: Vec<String>,
+    status_list_state: ListState,
     show_help: bool,
+    
+    // Worker for async operations
+    worker: Option<WorkerHandle>,
+    is_working: bool,
     
     // Anonymous mode
     anonymous_mode: bool,
@@ -214,7 +219,10 @@ impl App {
             directory_entries: Vec::new(),
             directory_list_state: ListState::default(),
             status_messages: Vec::new(),
+            status_list_state: ListState::default(),
             show_help: false,
+            worker: Some(WorkerHandle::new()),
+            is_working: false,
             anonymous_mode: false,
             file_configs: HashMap::new(),
             generated_config: None,
@@ -312,8 +320,44 @@ impl App {
     
     fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
-        if self.status_messages.len() > 10 {
+        // Increased buffer size to accommodate larger outputs like logs
+        if self.status_messages.len() > 50 {
             self.status_messages.remove(0);
+        }
+        // Auto-scroll to the latest message
+        if !self.status_messages.is_empty() {
+            self.status_list_state.select(Some(self.status_messages.len() - 1));
+        }
+    }
+    
+    fn process_worker_responses(&mut self) {
+        if let Some(worker) = &self.worker {
+            if let Some(response) = worker.try_get_response() {
+                // Set working state for non-progress responses
+                if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
+                    self.is_working = false;
+                }
+                
+                // Process the response
+                match response {
+                    WorkerResponse::SshCommandOutput(output) => {
+                        self.add_status_message(format!("✅ Command completed successfully:\n{}", output));
+                    }
+                    WorkerResponse::SshError(err) => {
+                        self.add_status_message(format!("❌ SSH error: {}", err));
+                    }
+                    WorkerResponse::ProgressUpdate(progress) => {
+                        self.add_status_message(progress);
+                    }
+                    WorkerResponse::Error(err) => {
+                        self.add_status_message(format!("❌ Error: {}", err));
+                    }
+                    _ => {
+                        // Handle other response types as needed
+                        self.add_status_message("✅ Operation completed".to_string());
+                    }
+                }
+            }
         }
     }
     
@@ -612,53 +656,41 @@ impl App {
     
     // Operational commands for Actions tab
     fn get_telegraf_status(&mut self) {
-        self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
-        self.add_status_message("Note: Some diagnostic output may appear at cursor position".to_string());
-        
-        match ConfigGenerator::new(self.config.clone()) {
-            Ok(generator) => {
-                match generator.get_telegraf_status() {
-                    Ok(status) => {
-                        self.add_status_message("✅ Telegraf status retrieved successfully".to_string());
-                        self.add_status_message(format!("Telegraf Status:\n{}", status));
-                    }
-                    Err(e) => {
-                        self.add_status_message(format!("❌ Failed to get Telegraf status: {}", e));
-                    }
+        if self.worker.is_some() {
+            self.is_working = true;
+            self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
+            if let Some(worker) = &self.worker {
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus { 
+                    config: self.config.clone() 
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
                 }
             }
-            Err(e) => {
-                self.add_status_message(format!("⚠️ Configuration error: {}", e));
-            }
+        } else {
+            self.add_status_message("❌ Worker not available".to_string());
         }
     }
     
     fn get_telegraf_logs(&mut self) {
-        self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
-        self.add_status_message("Note: Some diagnostic output may appear at cursor position".to_string());
-        
-        match ConfigGenerator::new(self.config.clone()) {
-            Ok(generator) => {
-                match generator.get_telegraf_logs(30) {
-                    Ok(logs) => {
-                        self.add_status_message("✅ Telegraf logs retrieved successfully".to_string());
-                        self.add_status_message(format!("Telegraf Logs (last 30 lines):\n{}", logs));
-                    }
-                    Err(e) => {
-                        self.add_status_message(format!("❌ Failed to get Telegraf logs: {}", e));
-                    }
+        if self.worker.is_some() {
+            self.is_working = true;
+            self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
+            if let Some(worker) = &self.worker {
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs { 
+                    config: self.config.clone(),
+                    lines: 30
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
                 }
             }
-            Err(e) => {
-                self.add_status_message(format!("⚠️ Configuration error: {}", e));
-            }
+        } else {
+            self.add_status_message("❌ Worker not available".to_string());
         }
     }
     
     fn restart_telegraf(&mut self) {
-        self.add_status_message("🔄 Restarting Telegraf service...".to_string());
-        self.add_status_message("Note: SSH diagnostic output may appear at cursor position".to_string());
-        
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
@@ -668,14 +700,21 @@ impl App {
             return;
         }
         
-        match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(&host, &username, &password) {
-            Ok(output) => {
-                self.add_status_message("✅ Telegraf restart completed successfully".to_string());
-                self.add_status_message(format!("Restart Output:\n{}", output));
+        if self.worker.is_some() {
+            self.is_working = true;
+            self.add_status_message("🔄 Restarting Telegraf service...".to_string());
+            if let Some(worker) = &self.worker {
+                if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf { 
+                    host,
+                    username,
+                    password
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
+                }
             }
-            Err(e) => {
-                self.add_status_message(format!("❌ Failed to restart Telegraf: {}", e));
-            }
+        } else {
+            self.add_status_message("❌ Worker not available".to_string());
         }
     }
     
@@ -768,6 +807,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
+        // Process worker responses before drawing
+        app.process_worker_responses();
+        
         terminal.draw(|f| ui(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -776,6 +818,25 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') => return Ok(()),
                         KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
+                        // Global status message scrolling
+                        KeyCode::PageUp => {
+                            if let Some(selected) = app.status_list_state.selected() {
+                                if selected > 0 {
+                                    app.status_list_state.select(Some(selected - 1));
+                                }
+                            } else if !app.status_messages.is_empty() {
+                                app.status_list_state.select(Some(app.status_messages.len() - 1));
+                            }
+                        }
+                        KeyCode::PageDown => {
+                            if let Some(selected) = app.status_list_state.selected() {
+                                if selected < app.status_messages.len().saturating_sub(1) {
+                                    app.status_list_state.select(Some(selected + 1));
+                                }
+                            } else if !app.status_messages.is_empty() {
+                                app.status_list_state.select(Some(0));
+                            }
+                        }
                         KeyCode::Tab | KeyCode::Right => {
                             app.current_tab = match app.current_tab {
                                 Tab::Folder => Tab::Files,
@@ -1093,7 +1154,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([
             Constraint::Length(3),  // Tabs
             Constraint::Min(0),     // Main content
-            Constraint::Length(15), // Status messages (made much taller for debugging)
+            Constraint::Length(25), // Status messages - increased for better visibility
         ])
         .split(f.area());
 
@@ -1665,22 +1726,35 @@ fn render_config_field_with_selection(
     f.render_widget(paragraph, area);
 }
 
-fn render_status_messages(f: &mut Frame, app: &App, area: Rect) {
+fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
     let mut messages: Vec<ListItem> = app
         .status_messages
         .iter()
-        .map(|m| ListItem::new(m.as_str()))
+        .enumerate()
+        .map(|(i, m)| {
+            // Split long messages into multiple lines for better readability
+            let lines: Vec<&str> = m.lines().collect();
+            if lines.len() > 1 {
+                // Multi-line message - show with line numbers for clarity
+                ListItem::new(format!("[{}] {}", i + 1, lines.join("\n    ")))
+            } else {
+                ListItem::new(format!("[{}] {}", i + 1, m))
+            }
+        })
         .collect();
     
-    // Add a test message to verify the status area is visible
+    // Add helpful message if empty
     if messages.is_empty() {
-        messages.push(ListItem::new("Status area ready - press 'c' to clear messages"));
+        messages.push(ListItem::new("Status area ready - press 'c' to clear messages, PgUp/PgDn to scroll"));
     }
 
+    let title = format!("Status Messages ({}/{}) - PgUp/PgDn to scroll", 
+                       app.status_messages.len(), 50);
     let messages_list = List::new(messages)
-        .block(Block::default().borders(Borders::ALL).title("Status Messages"));
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
-    f.render_widget(messages_list, area);
+    f.render_stateful_widget(messages_list, area, &mut app.status_list_state);
 }
 
 fn render_help_popup(f: &mut Frame, _app: &App) {
@@ -1692,6 +1766,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("Global Controls:"),
         Line::from("  Tab/←→/h/l/1-6 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
+        Line::from("  PgUp/PgDn - Scroll status messages"),
         Line::from("  q       - Quit application"),
         Line::from(""),
         Line::from("Folder Tab:"),

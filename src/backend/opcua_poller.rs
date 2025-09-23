@@ -295,8 +295,8 @@ impl OpcUaPoller {
             } else {
                 let endpoint: EndpointDescription = (
                     discovery_url,
-                    "None",
-                    MessageSecurityMode::None,
+                    "Basic256Sha256",
+                    MessageSecurityMode::Sign,
                     UserTokenPolicy::anonymous(),
                 )
                     .into();

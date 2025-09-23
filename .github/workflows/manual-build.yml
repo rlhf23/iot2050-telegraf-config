@@ -12,12 +12,7 @@ on:
         - all
         - ubuntu-only
         - windows-only
-      branch:
-        description: 'Branch to build'
-        required: true
-        default: 'iced-gui-experiment'
-        type: string
-
+        
 env:
   CARGO_TERM_COLOR: always
 
@@ -31,8 +26,6 @@ jobs:
     if: ${{ inputs.build_target == 'all' || inputs.build_target == 'ubuntu-only' }}
     steps:
       - uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.branch }}
 
       - name: Install dependencies
         run: |
@@ -69,8 +62,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI binary
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build GUI binary
+        run: cargo build --release --bin sie_generate_config_gui
         env:
           DEFAULT_IP: "192.168.1.1"
           DEFAULT_USERNAME: "testuser"
@@ -86,12 +79,12 @@ jobs:
         run: |
           cp target/release/sie_generate_config bin-releases/sie_generate_config-ubuntu
           cp target/release/sie_generate_config_tui bin-releases/sie_generate_config_tui-ubuntu
-          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_iced-ubuntu
+          cp target/release/sie_generate_config_iced bin-releases/sie_generate_config_gui-ubuntu
 
       - name: Upload Ubuntu executables
         uses: actions/upload-artifact@v4
         with:
-          name: ubuntu-binaries-${{ inputs.branch }}
+          name: ubuntu-binaries-${{ github.ref_name }}
           path: bin-releases/
 
   build-windows-test:
@@ -100,8 +93,6 @@ jobs:
     if: ${{ inputs.build_target == 'all' || inputs.build_target == 'windows-only' }}
     steps:
       - uses: actions/checkout@v3
-        with:
-          ref: ${{ inputs.branch }}
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -151,8 +142,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI executable
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build GUI executable
+        run: cargo build --release --bin sie_generate_config_gui
         env:
           DEFAULT_IP: "192.168.1.1"
           DEFAULT_USERNAME: "testuser"
@@ -173,5 +164,5 @@ jobs:
       - name: Upload Windows executables
         uses: actions/upload-artifact@v4
         with:
-          name: windows-binaries-${{ inputs.branch }}
+          name: windows-binaries-${{ github.ref_name }}
           path: bin-releases/
