@@ -660,9 +660,12 @@ impl App {
             self.is_working = true;
             self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
             if let Some(worker) = &self.worker {
-                let _ = worker.send_command(WorkerCommand::GetTelegrafStatus { 
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus { 
                     config: self.config.clone() 
-                });
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
+                }
             }
         } else {
             self.add_status_message("❌ Worker not available".to_string());
@@ -674,10 +677,13 @@ impl App {
             self.is_working = true;
             self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
             if let Some(worker) = &self.worker {
-                let _ = worker.send_command(WorkerCommand::GetTelegrafLogs { 
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs { 
                     config: self.config.clone(),
                     lines: 30
-                });
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
+                }
             }
         } else {
             self.add_status_message("❌ Worker not available".to_string());
@@ -698,11 +704,14 @@ impl App {
             self.is_working = true;
             self.add_status_message("🔄 Restarting Telegraf service...".to_string());
             if let Some(worker) = &self.worker {
-                let _ = worker.send_command(WorkerCommand::RestartTelegraf { 
+                if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf { 
                     host,
                     username,
                     password
-                });
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
+                }
             }
         } else {
             self.add_status_message("❌ Worker not available".to_string());
