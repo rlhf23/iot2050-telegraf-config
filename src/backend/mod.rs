@@ -236,7 +236,7 @@ impl ConfigGenerator {
                     is_listener: false,
                     group_name: &folder_name,
                     namespace_number: &namespace_str,
-                    interval_ms: 1000,                      // Default interval
+                    interval_ms: 500,                       // Default interval for regular configs
                     identifier_type: group_identifier_type, // Use identifier type from the first node
                 };
 
@@ -325,7 +325,7 @@ impl ConfigGenerator {
                         is_listener: false,
                         group_name: &format!("opcua_browser_ns{}", namespace),
                         namespace_number: &namespace.to_string(),
-                        interval_ms: 1000,                      // Default interval
+                        interval_ms: 500,                       // Default interval for regular configs
                         identifier_type: group_identifier_type, // Use identifier type from the first node
                     };
 

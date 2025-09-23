@@ -337,9 +337,9 @@ impl App {
                 }).unwrap_or("file");
                 
                 if self.selected_listener_files[selected] {
-                    self.add_status_message(format!("{} marked as listener (500ms default)", filename));
+                    self.add_status_message(format!("{} marked as listener (1000ms default)", filename));
                 } else {
-                    self.add_status_message(format!("{} unmarked as listener (1000ms default)", filename));
+                    self.add_status_message(format!("{} unmarked as listener (500ms default)", filename));
                 }
             }
         }
@@ -380,7 +380,7 @@ impl App {
                 for file in &self.xml_files {
                     if let Some(file_config) = self.file_configs.get(file) {
                         let is_listener = self.config.listener_files.contains(file);
-                        let default_interval = if is_listener { 500 } else { 1000 };
+                        let default_interval = if is_listener { 1000 } else { 500 };
 
                         let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
 
@@ -443,7 +443,7 @@ impl App {
                 for file in &self.xml_files {
                     if let Some(file_config) = self.file_configs.get(file) {
                         let is_listener = self.config.listener_files.contains(file);
-                        let default_interval = if is_listener { 500 } else { 1000 };
+                        let default_interval = if is_listener { 1000 } else { 500 };
 
                         let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
 
@@ -1229,9 +1229,9 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             let ip = config.map(|c| c.ip.as_str()).unwrap_or("");
             let interval = config.map(|c| c.interval_ms.as_str()).unwrap_or("");
             
-            // Show different default interval for listeners (500ms vs 1000ms)
+            // Show different default interval for listeners (1000ms vs 500ms)
             let is_listener = *app.selected_listener_files.get(i).unwrap_or(&false);
-            let default_interval = if is_listener { "500" } else { "1000" };
+            let default_interval = if is_listener { "1000" } else { "500" };
             let display_interval = if interval.is_empty() { default_interval } else { interval };
             
             let listener_checkbox = if is_listener { "[L]" } else { "[ ]" };

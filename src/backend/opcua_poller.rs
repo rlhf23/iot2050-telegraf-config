@@ -855,7 +855,7 @@ impl OpcUaNode {
                         .clone()
                         .replace(" ", "_")
                         .to_lowercase(),
-                    interval_ms: 1000,                     // Default interval
+                    interval_ms: 500,                      // Default interval for regular configs
                     folder_name: Some(group_name.clone()), // Set the folder name for grouping
                 };
 
@@ -878,7 +878,7 @@ impl OpcUaNode {
                     .clone()
                     .replace(" ", "_")
                     .to_lowercase(),
-                interval_ms: 1000, // Default interval
+                interval_ms: 500,  // Default interval for regular configs
                 folder_name: None, // Not part of a folder group
             };
 

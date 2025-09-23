@@ -194,7 +194,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "{}"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "source"
   client_trace = false
   interval = "{}"
     [[inputs.opcua.group]]
@@ -240,7 +240,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "{}"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "source"
   client_trace = false
     [[inputs.opcua_listener.group]]
       name = "{}"
@@ -265,6 +265,11 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let auth_method = if config.username.is_empty() && config.password.is_empty() {
+        "Anonymous"
+    } else {
+        "UserName"
+    };
 
     format!(
         r#"
@@ -277,15 +282,15 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "source"
   client_trace = false
   interval = "{}" 
 {}
     "#,
-        config.ip, config.username, config.password, interval, nodes_str
+        config.ip, auth_method, config.username, config.password, interval, nodes_str
     )
 }
 
