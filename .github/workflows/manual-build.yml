@@ -69,16 +69,6 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI binary
-        run: cargo build --release --bin sie_generate_config_iced
-        env:
-          DEFAULT_IP: "192.168.1.1"
-          DEFAULT_USERNAME: "testuser"
-          DEFAULT_PASSWORD: "testpass"
-          DEFAULT_IOT_IP: "192.168.1.2:22"
-          DEFAULT_IOT_USERNAME: "iotuser"
-          DEFAULT_IOT_PASSWORD: "iotpass"
-
       - name: Create output directory
         run: mkdir -p bin-releases
 
@@ -143,16 +133,6 @@ jobs:
 
       - name: Build TUI executable
         run: cargo build --release --bin sie_generate_config_tui
-        env:
-          DEFAULT_IP: "192.168.1.1"
-          DEFAULT_USERNAME: "testuser"
-          DEFAULT_PASSWORD: "testpass"
-          DEFAULT_IOT_IP: "192.168.1.2:22"
-          DEFAULT_IOT_USERNAME: "iotuser"
-          DEFAULT_IOT_PASSWORD: "iotpass"
-
-      - name: Build Iced GUI executable
-        run: cargo build --release --bin sie_generate_config_iced
         env:
           DEFAULT_IP: "192.168.1.1"
           DEFAULT_USERNAME: "testuser"
