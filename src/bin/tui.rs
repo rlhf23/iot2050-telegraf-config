@@ -493,9 +493,9 @@ impl App {
             EditField::OutputFormat => self.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()).clone(),
             EditField::FileNamespace(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
-                    self.file_configs.get(file).map(|c| c.namespace.clone()).unwrap_or_else(|| "2".to_string())
+                    self.file_configs.get(file).map(|c| c.namespace.clone()).unwrap_or_else(|| "".to_string())
                 } else {
-                    "2".to_string()
+                    "".to_string()
                 }
             },
             EditField::FileIp(idx) => {
@@ -1225,7 +1225,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             
             // Get per-file configuration
             let config = app.file_configs.get(file);
-            let namespace = config.map(|c| c.namespace.as_str()).unwrap_or("2");
+            let namespace = config.map(|c| c.namespace.as_str()).unwrap_or("");
             let ip = config.map(|c| c.ip.as_str()).unwrap_or("");
             let interval = config.map(|c| c.interval_ms.as_str()).unwrap_or("");
             
@@ -1241,7 +1241,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             let config_info = format!(
                 "{} Listener | NS:{} | IP:{} | INT:{}ms",
                 listener_checkbox,
-                if namespace.is_empty() { "2" } else { namespace },
+                if namespace.is_empty() { "" } else { namespace },
                 if ip.is_empty() { "default" } else { ip },
                 display_interval
             );
