@@ -12,11 +12,6 @@ on:
         - all
         - ubuntu-only
         - windows-only
-      branch:
-        description: 'Branch to build'
-        required: true
-        default: 'iced-gui-experiment'
-        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -69,8 +64,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI binary
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build GUI binary
+        run: cargo build --release --bin sie_generate_config_gui
         env:
           DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
@@ -151,8 +146,8 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
 
-      - name: Build Iced GUI executable
-        run: cargo build --release --bin sie_generate_config_iced
+      - name: Build GUI executable
+        run: cargo build --release --bin sie_generate_config_gui
         env:
           DEFAULT_IP: "192.168.1.1:4840"
           DEFAULT_USERNAME: "testuser"
