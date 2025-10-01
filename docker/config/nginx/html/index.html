@@ -342,15 +342,18 @@
             try {
                 const response = await fetch(config.healthUrl, {
                     method: 'GET',
-                    mode: 'no-cors', // Allow cross-origin requests
                     cache: 'no-cache'
                 });
 
-                // With no-cors, we can't read the response, but if fetch succeeds, service is likely up
-                // We'll consider it healthy if no error is thrown
-                statusIndicator.className = 'status-indicator healthy';
-                statusText.textContent = 'Healthy';
-                serviceLink.classList.remove('disabled');
+                if (response.ok) {
+                    statusIndicator.className = 'status-indicator healthy';
+                    statusText.textContent = 'Healthy';
+                    serviceLink.classList.remove('disabled');
+                } else {
+                    statusIndicator.className = 'status-indicator unhealthy';
+                    statusText.textContent = `Error (${response.status})`;
+                    serviceLink.classList.add('disabled');
+                }
             } catch (error) {
                 // If fetch fails, service is likely down
                 statusIndicator.className = 'status-indicator unhealthy';
