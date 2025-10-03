@@ -13,6 +13,11 @@ tower-http = { version = "0.5", features = ["cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+hyper = "1.0"
+
 [profile.release]
 opt-level = "z"     # Optimize for size
 lto = true          # Enable link-time optimization

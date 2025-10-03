@@ -257,9 +257,12 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bollard",
+ "http-body-util",
+ "hyper",
  "serde",
  "serde_json",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",
