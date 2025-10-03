@@ -1,5 +1,5 @@
 # Multi-stage build for minimal final image
-FROM rust:1.75-alpine AS builder
+FROM rust:1.84-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache musl-dev
