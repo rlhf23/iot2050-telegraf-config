@@ -137,7 +137,7 @@ jobs:
           
           # Check if all expected containers are running
           RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
-          EXPECTED_CONTAINERS=5  # influxdb, telegraf, grafana, prometheus, nginx
+          EXPECTED_CONTAINERS=6  # influxdb, telegraf, grafana, prometheus, nginx, api-service
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -199,7 +199,16 @@ jobs:
               NGINX_HEALTHY=false
             fi
             
-            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ]; then
+            # Check API Service health
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✓ API Service is healthy"
+              API_SERVICE_HEALTHY=true
+            else
+              echo "✗ API Service not ready yet"
+              API_SERVICE_HEALTHY=false
+            fi
+            
+            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ]; then
               echo "All services are healthy!"
               break
             fi
@@ -269,6 +278,100 @@ jobs:
             echo "✓ Prometheus accessible via /prometheus proxy"
           else
             echo "✗ Prometheus not accessible via /prometheus proxy"
+            exit 1
+          fi
+
+      - name: Test API Service endpoints
+        run: |
+          echo "Testing API Service endpoints..."
+          
+          # Test API Service health endpoint
+          echo "Testing API Service health..."
+          API_HEALTH=$(curl -s http://localhost:8000/health)
+          echo "API Service health response: $API_HEALTH"
+          if echo "$API_HEALTH" | grep -q '"success":true'; then
+            echo "✓ API Service health check passed"
+          else
+            echo "✗ API Service health check failed"
+            exit 1
+          fi
+          
+          # Test list containers endpoint
+          echo "Testing API Service list containers..."
+          CONTAINERS_LIST=$(curl -s http://localhost:8000/api/containers)
+          echo "Containers list response: $CONTAINERS_LIST"
+          if echo "$CONTAINERS_LIST" | grep -q '"success":true'; then
+            echo "✓ API Service list containers passed"
+          else
+            echo "✗ API Service list containers failed"
+            exit 1
+          fi
+          
+          # Test forbidden container (should return 403)
+          echo "Testing API Service security (forbidden container)..."
+          FORBIDDEN_RESPONSE=$(curl -s -w "%{http_code}" -X POST http://localhost:8000/api/containers/nginx/restart)
+          if echo "$FORBIDDEN_RESPONSE" | grep -q "403"; then
+            echo "✓ API Service correctly blocks unauthorized containers"
+          else
+            echo "✗ API Service security check failed"
+            exit 1
+          fi
+          
+          # Test actual container restart (LIVE TEST!)
+          echo "Testing API Service restart functionality with Telegraf..."
+          
+          # Get Telegraf container ID before restart
+          TELEGRAF_ID_BEFORE=$(docker compose ps -q telegraf)
+          echo "Telegraf container ID before restart: $TELEGRAF_ID_BEFORE"
+          
+          # Trigger restart via API
+          RESTART_RESPONSE=$(curl -s -X POST http://localhost:8000/api/containers/telegraf/restart)
+          echo "Restart API response: $RESTART_RESPONSE"
+          
+          if echo "$RESTART_RESPONSE" | grep -q '"success":true'; then
+            echo "✓ API Service accepted restart request"
+          else
+            echo "✗ API Service restart request failed"
+            echo "Response: $RESTART_RESPONSE"
+            exit 1
+          fi
+          
+          # Wait for Telegraf to restart (with retry logic)
+          echo "Waiting for Telegraf to restart..."
+          RESTART_SUCCESS=false
+          for i in {1..12}; do
+            sleep 5
+            echo "Checking Telegraf status (attempt $i/12)..."
+            
+            # Check if container is running
+            if docker compose ps telegraf | grep -q "Up"; then
+              # Get new container ID
+              TELEGRAF_ID_AFTER=$(docker compose ps -q telegraf)
+              echo "Telegraf container ID after restart: $TELEGRAF_ID_AFTER"
+              
+              # Verify it's a different container (was actually restarted)
+              if [ "$TELEGRAF_ID_BEFORE" != "$TELEGRAF_ID_AFTER" ]; then
+                echo "✓ Telegraf successfully restarted (container ID changed)"
+                RESTART_SUCCESS=true
+                break
+              else
+                echo "Container is running but ID hasn't changed yet..."
+              fi
+            else
+              echo "Telegraf not running yet..."
+            fi
+            
+            if [ $i -eq 12 ]; then
+              echo "✗ Telegraf failed to restart within timeout"
+              docker compose logs telegraf
+              exit 1
+            fi
+          done
+          
+          if [ "$RESTART_SUCCESS" = true ]; then
+            echo "✅ API Service restart functionality verified successfully!"
+          else
+            echo "✗ Restart verification failed"
             exit 1
           fi
 
