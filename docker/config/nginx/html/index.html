@@ -189,6 +189,108 @@
             opacity: 0.8;
         }
 
+        .view-btn {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .view-btn:hover {
+            background: #5568d3;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+        }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        .log-selector {
+            margin-bottom: 15px;
+        }
+
+        .log-selector select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            min-width: 200px;
+        }
+
         @media (max-width: 768px) {
             h1 {
                 font-size: 2em;
@@ -196,6 +298,11 @@
             
             .services-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
             }
         }
     </style>
@@ -294,6 +401,7 @@
                     </div>
                 </div>
                 <a href="/telegraf" class="service-link" id="telegraf-link">View Metrics</a>
+                <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
             </div>
         </div>
 
@@ -310,10 +418,47 @@
                 <li><strong>Running Containers:</strong> <span id="sys-containers">Loading...</span></li>
                 <li><strong>Auto-refresh:</strong> Every 10 seconds</li>
             </ul>
+            <button class="view-btn" onclick="viewDockerLogs()" style="margin-top: 15px;">📝 View Docker Logs</button>
         </div>
 
         <div class="refresh-info">
             Last updated: <span id="last-update">Never</span>
+        </div>
+    </div>
+
+    <!-- Config Viewer Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Telegraf Configuration</h2>
+                <span class="close" onclick="closeConfigModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <pre id="config-content">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Viewer Modal -->
+    <div id="logsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Docker Container Logs</h2>
+                <span class="close" onclick="closeLogsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="log-selector">
+                    <label for="container-select"><strong>Select Container:</strong></label>
+                    <select id="container-select" onchange="loadContainerLogs()">
+                        <option value="influxdb">InfluxDB</option>
+                        <option value="telegraf">Telegraf</option>
+                        <option value="grafana">Grafana</option>
+                        <option value="prometheus">Prometheus</option>
+                        <option value="nginx-dashboard">Nginx Dashboard</option>
+                    </select>
+                </div>
+                <pre id="logs-content">Loading...</pre>
+            </div>
         </div>
     </div>
 
@@ -413,6 +558,84 @@
             // Update last refresh time
             const now = new Date();
             document.getElementById('last-update').textContent = now.toLocaleTimeString();
+        }
+
+        // View Telegraf Config
+        async function viewTelegrafConfig() {
+            const modal = document.getElementById('configModal');
+            const content = document.getElementById('config-content');
+            
+            modal.style.display = 'block';
+            content.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch('/api/config/telegraf', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    content.textContent = text;
+                } else {
+                    content.textContent = `Error loading config: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                content.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Close Config Modal
+        function closeConfigModal() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+
+        // View Docker Logs
+        function viewDockerLogs() {
+            const modal = document.getElementById('logsModal');
+            modal.style.display = 'block';
+            loadContainerLogs();
+        }
+
+        // Load logs for selected container
+        async function loadContainerLogs() {
+            const select = document.getElementById('container-select');
+            const content = document.getElementById('logs-content');
+            const container = select.value;
+            
+            content.textContent = 'Loading logs...';
+            
+            try {
+                const response = await fetch(`/api/logs/${container}.log`, {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    content.textContent = text || 'No logs available';
+                } else {
+                    content.textContent = `Error loading logs: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                content.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Close Logs Modal
+        function closeLogsModal() {
+            document.getElementById('logsModal').style.display = 'none';
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const configModal = document.getElementById('configModal');
+            const logsModal = document.getElementById('logsModal');
+            
+            if (event.target == configModal) {
+                closeConfigModal();
+            }
+            if (event.target == logsModal) {
+                closeLogsModal();
+            }
         }
 
         // Initial checks
