@@ -206,6 +206,106 @@
             background: #5568d3;
         }
 
+        .restart-btn {
+            display: inline-block;
+            margin-top: 10px;
+            margin-left: 8px;
+            padding: 8px 16px;
+            background: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .restart-btn:hover {
+            background: #d97706;
+        }
+
+        .restart-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .confirm-modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .confirm-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn-cancel {
+            padding: 10px 20px;
+            background: #6b7280;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn-cancel:hover {
+            background: #4b5563;
+        }
+
+        .btn-confirm {
+            padding: 10px 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn-confirm:hover {
+            background: #dc2626;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 2000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: #10b981;
+        }
+
+        .notification.error {
+            background: #ef4444;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -335,6 +435,7 @@
                     </div>
                 </div>
                 <a href="/grafana" class="service-link" id="grafana-link">Open Grafana</a>
+                <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
             </div>
 
             <!-- InfluxDB -->
@@ -357,6 +458,7 @@
                     </div>
                 </div>
                 <a href="/influxdb" class="service-link" id="influxdb-link">Open InfluxDB</a>
+                <button class="restart-btn" id="restart-influxdb" onclick="confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
             </div>
 
             <!-- Prometheus -->
@@ -379,6 +481,7 @@
                     </div>
                 </div>
                 <a href="/prometheus" class="service-link" id="prometheus-link">Open Prometheus</a>
+                <button class="restart-btn" id="restart-prometheus" onclick="confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
             </div>
 
             <!-- Telegraf -->
@@ -402,6 +505,7 @@
                 </div>
                 <a href="/telegraf" class="service-link" id="telegraf-link">View Metrics</a>
                 <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
+                <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
             </div>
         </div>
 
@@ -458,6 +562,24 @@
                     </select>
                 </div>
                 <pre id="logs-content">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Confirmation Modal -->
+    <div id="restartModal" class="modal">
+        <div class="confirm-modal-content">
+            <div class="modal-header">
+                <h2>⚠️ Restart Service?</h2>
+                <span class="close" onclick="closeRestartModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to restart <strong id="restart-service-name"></strong>?</p>
+                <p style="color: #666; font-size: 0.9em; margin-top: 10px;">This will cause a brief service interruption.</p>
+                <div class="confirm-buttons">
+                    <button class="btn-cancel" onclick="closeRestartModal()">Cancel</button>
+                    <button class="btn-confirm" onclick="executeRestart()">Yes, Restart</button>
+                </div>
             </div>
         </div>
     </div>
@@ -625,16 +747,82 @@
             document.getElementById('logsModal').style.display = 'none';
         }
 
+        // Restart service functionality
+        let pendingRestart = null;
+
+        function confirmRestart(container, displayName) {
+            pendingRestart = container;
+            document.getElementById('restart-service-name').textContent = displayName;
+            document.getElementById('restartModal').style.display = 'block';
+        }
+
+        function closeRestartModal() {
+            document.getElementById('restartModal').style.display = 'none';
+            pendingRestart = null;
+        }
+
+        async function executeRestart() {
+            if (!pendingRestart) return;
+            
+            const container = pendingRestart;
+            const button = document.getElementById(`restart-${container}`);
+            
+            // Close modal
+            closeRestartModal();
+            
+            // Disable button and show restarting state
+            button.disabled = true;
+            button.textContent = '⏳ Restarting...';
+            
+            try {
+                const response = await fetch(`/api/containers/${container}/restart`, {
+                    method: 'POST',
+                    cache: 'no-cache'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showNotification(`✅ ${container} restarted successfully`, 'success');
+                    // Refresh service status after 2 seconds
+                    setTimeout(() => checkAllServices(), 2000);
+                } else {
+                    showNotification(`❌ Failed to restart ${container}: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = '🔄 Restart';
+            }
+        }
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
         // Close modals when clicking outside
         window.onclick = function(event) {
             const configModal = document.getElementById('configModal');
             const logsModal = document.getElementById('logsModal');
+            const restartModal = document.getElementById('restartModal');
             
             if (event.target == configModal) {
                 closeConfigModal();
             }
             if (event.target == logsModal) {
                 closeLogsModal();
+            }
+            if (event.target == restartModal) {
+                closeRestartModal();
             }
         }
 
