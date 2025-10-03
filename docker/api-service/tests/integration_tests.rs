@@ -143,3 +143,42 @@ async fn test_restart_allowed_container_not_found() {
             || response.status() == StatusCode::OK
     );
 }
+
+#[tokio::test]
+async fn test_get_logs_forbidden_container() {
+    let app = create_test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/containers/nginx/logs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_get_logs_allowed_container() {
+    let app = create_test_app();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/containers/grafana/logs")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Should return 200 if container exists
+    // or 500 if it doesn't exist
+    assert!(
+        response.status() == StatusCode::OK
+            || response.status() == StatusCode::INTERNAL_SERVER_ERROR
+    );
+}
