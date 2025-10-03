@@ -727,7 +727,7 @@
             content.textContent = 'Loading logs...';
             
             try {
-                const response = await fetch(`/api/logs/${container}.log`, {
+                const response = await fetch(`/api/containers/${container}/logs`, {
                     cache: 'no-cache'
                 });
                 

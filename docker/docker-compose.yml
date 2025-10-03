@@ -165,9 +165,7 @@ services:
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/nginx/html:/usr/share/nginx/html:ro
       - ./config/nginx/scripts/system-info.sh:/usr/local/bin/system-info.sh:ro
-      - ./config/nginx/scripts/collect-logs.sh:/usr/local/bin/collect-logs.sh:ro
       - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
     depends_on:
@@ -180,11 +178,8 @@ services:
       - monitoring
     restart: unless-stopped
     command: >
-      sh -c "apk add --no-cache docker-cli &&
-             chmod +x /usr/local/bin/system-info.sh /usr/local/bin/collect-logs.sh &&
-             mkdir -p /usr/share/nginx/html/logs &&
+      sh -c "chmod +x /usr/local/bin/system-info.sh &&
              (while true; do /usr/local/bin/system-info.sh > /usr/share/nginx/html/system-info.json; sleep 5; done) &
-             (while true; do /usr/local/bin/collect-logs.sh; sleep 15; done) &
              nginx -g 'daemon off;'"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
