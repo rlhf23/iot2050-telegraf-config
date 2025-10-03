@@ -53,12 +53,19 @@ services:
     ports:
       - "9273:9273"  # Prometheus metrics endpoint
     volumes:
-      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - /sys:/host/sys:ro
+      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./config/telegraf/telegraf.conf.minimal:/etc/telegraf/telegraf.conf.minimal:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
       - /proc:/host/proc:ro
       - /etc:/host/etc:ro
       - /var/run/utmp:/var/run/utmp:ro
+    command: >
+      sh -c "if [ ! -f /etc/telegraf/telegraf.conf ]; then
+               echo 'No telegraf.conf found, using minimal config...';
+               cp /etc/telegraf/telegraf.conf.minimal /etc/telegraf/telegraf.conf;
+             fi &&
+             telegraf"
     networks:
       monitoring:
         aliases:

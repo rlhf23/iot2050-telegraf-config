@@ -121,7 +121,12 @@ jobs:
         run: |
           cd docker
           mkdir -p $HOME/telegraf
-          cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+          # Use minimal config for testing if example doesn't exist
+          if [ -f config/telegraf/telegraf.conf.example ]; then
+            cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+          else
+            cp config/telegraf/telegraf.conf.minimal $HOME/telegraf/telegraf.conf
+          fi
 
       - name: Start monitoring stack
         run: |
