@@ -363,6 +363,73 @@ jobs:
           
           echo "✅ API Service logs functionality verified successfully!"
 
+      - name: Test API Service restart functionality
+        run: |
+          echo "Testing API Service restart functionality with Prometheus..."
+          
+          # Get Prometheus container ID before restart
+          PROMETHEUS_ID_BEFORE=$(docker compose ps -q prometheus)
+          echo "Prometheus container ID before restart: $PROMETHEUS_ID_BEFORE"
+          
+          # Trigger restart via API
+          RESTART_RESPONSE=$(curl -s -X POST http://localhost:8000/api/containers/prometheus/restart)
+          echo "Restart API response: $RESTART_RESPONSE"
+          
+          if echo "$RESTART_RESPONSE" | grep -q '"success":true'; then
+            echo "✓ API Service accepted restart request"
+          else
+            echo "✗ API Service restart request failed"
+            echo "Response: $RESTART_RESPONSE"
+            exit 1
+          fi
+          
+          # Wait for Prometheus to restart (with retry logic)
+          echo "Waiting for Prometheus to restart..."
+          RESTART_SUCCESS=false
+          for i in {1..10}; do
+            sleep 3
+            echo "Checking Prometheus status (attempt $i/10)..."
+            
+            # Check if container is running
+            if docker compose ps prometheus | grep -q "Up"; then
+              # Get new container ID
+              PROMETHEUS_ID_AFTER=$(docker compose ps -q prometheus)
+              echo "Prometheus container ID after restart: $PROMETHEUS_ID_AFTER"
+              
+              # Verify it's a different container (was actually restarted)
+              if [ "$PROMETHEUS_ID_BEFORE" != "$PROMETHEUS_ID_AFTER" ]; then
+                echo "✓ Prometheus successfully restarted (container ID changed)"
+                
+                # Verify Prometheus is healthy
+                sleep 5
+                if curl -f http://localhost:9090/-/healthy > /dev/null 2>&1; then
+                  echo "✓ Prometheus is healthy after restart"
+                  RESTART_SUCCESS=true
+                  break
+                else
+                  echo "Prometheus restarted but not healthy yet..."
+                fi
+              else
+                echo "Container is running but ID hasn't changed yet..."
+              fi
+            else
+              echo "Prometheus not running yet..."
+            fi
+            
+            if [ $i -eq 10 ]; then
+              echo "✗ Prometheus failed to restart within timeout"
+              docker compose logs prometheus
+              exit 1
+            fi
+          done
+          
+          if [ "$RESTART_SUCCESS" = true ]; then
+            echo "✅ API Service restart functionality verified successfully!"
+          else
+            echo "✗ Restart verification failed"
+            exit 1
+          fi
+
       - name: Test InfluxDB integration
         run: |
           echo "Testing InfluxDB integration..."
