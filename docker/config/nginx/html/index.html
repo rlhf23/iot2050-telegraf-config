@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT2050 Monitoring Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .service-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .service-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+        }
+
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .service-name {
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.checking {
+            background-color: #fbbf24;
+        }
+
+        .status-indicator.healthy {
+            background-color: #10b981;
+        }
+
+        .status-indicator.unhealthy {
+            background-color: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .service-description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+
+        .service-info {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9em;
+        }
+
+        .info-label {
+            color: #888;
+        }
+
+        .info-value {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .service-link {
+            display: inline-block;
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+
+        .service-link:hover {
+            opacity: 0.9;
+        }
+
+        .service-link.disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .info-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .info-panel h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .info-panel ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-panel li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .info-panel li:last-child {
+            border-bottom: none;
+        }
+
+        .refresh-info {
+            text-align: center;
+            color: white;
+            margin-top: 20px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .view-btn {
+            display: inline-block;
+            margin-top: 10px;
+            margin-right: 5px;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .view-btn:hover {
+            background: #5568d3;
+        }
+
+        .restart-btn {
+            display: inline-block;
+            margin-top: 10px;
+            margin-right: 5px;
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .restart-btn:hover {
+            background: #5568d3;
+        }
+
+        .restart-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .confirm-modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .confirm-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .btn-cancel {
+            padding: 10px 20px;
+            background: #6b7280;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn-cancel:hover {
+            background: #4b5563;
+        }
+
+        .btn-confirm {
+            padding: 10px 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+
+        .btn-confirm:hover {
+            background: #dc2626;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 2000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: #10b981;
+        }
+
+        .notification.error {
+            background: #ef4444;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+        }
+
+        .modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        .log-selector {
+            margin-bottom: 15px;
+        }
+
+        .log-selector select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 1em;
+            min-width: 200px;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+            
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>IoT Monitoring Dashboard</h1>
+            <p class="subtitle">Real-time monitoring and metrics collection</p>
+        </header>
+
+        <div class="services-grid">
+            <!-- Grafana -->
+            <div class="service-card" id="grafana-card">
+                <div class="service-header">
+                    <div class="service-name">Grafana</div>
+                    <div class="status-indicator checking" id="grafana-status"></div>
+                </div>
+                <div class="service-description">
+                    Visualization and analytics platform
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Port:</span>
+                        <span class="info-value">3000</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="grafana-status-text">Checking...</span>
+                    </div>
+                </div>
+                <a href="/grafana" class="service-link" id="grafana-link">Open Grafana</a>
+                <button class="view-btn" onclick="viewContainerLogs('grafana')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
+            </div>
+
+            <!-- InfluxDB -->
+            <div class="service-card" id="influxdb-card">
+                <div class="service-header">
+                    <div class="service-name">InfluxDB</div>
+                    <div class="status-indicator checking" id="influxdb-status"></div>
+                </div>
+                <div class="service-description">
+                    Time-series database for metrics storage
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Port:</span>
+                        <span class="info-value">8086</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="influxdb-status-text">Checking...</span>
+                    </div>
+                </div>
+                <a href="/influxdb" class="service-link" id="influxdb-link">Open InfluxDB</a>
+                <button class="view-btn" onclick="viewContainerLogs('influxdb')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-influxdb" onclick="confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
+            </div>
+
+            <!-- Prometheus -->
+            <div class="service-card" id="prometheus-card">
+                <div class="service-header">
+                    <div class="service-name">Prometheus</div>
+                    <div class="status-indicator checking" id="prometheus-status"></div>
+                </div>
+                <div class="service-description">
+                    Monitoring system and time-series database
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Port:</span>
+                        <span class="info-value">9090</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="prometheus-status-text">Checking...</span>
+                    </div>
+                </div>
+                <a href="/prometheus" class="service-link" id="prometheus-link">Open Prometheus</a>
+                <button class="view-btn" onclick="viewContainerLogs('prometheus')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-prometheus" onclick="confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
+            </div>
+
+            <!-- Telegraf -->
+            <div class="service-card" id="telegraf-card">
+                <div class="service-header">
+                    <div class="service-name">Telegraf</div>
+                    <div class="status-indicator checking" id="telegraf-status"></div>
+                </div>
+                <div class="service-description">
+                    Metrics collection agent
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Port:</span>
+                        <span class="info-value">9273</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="telegraf-status-text">Checking...</span>
+                    </div>
+                </div>
+                <a href="/telegraf" class="service-link" id="telegraf-link">View Metrics</a>
+                <button class="view-btn" onclick="viewContainerLogs('telegraf')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
+                <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <h2>📊 System Information</h2>
+            <ul id="system-info-list">
+                <li><strong>Hostname:</strong> <span id="sys-hostname">Loading...</span></li>
+                <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
+                <li><strong>Architecture:</strong> <span id="sys-arch">Loading...</span></li>
+                <li><strong>Uptime:</strong> <span id="sys-uptime">Loading...</span></li>
+                <li><strong>Load Average:</strong> <span id="sys-load">Loading...</span></li>
+                <li><strong>Memory:</strong> <span id="sys-memory">Loading...</span></li>
+                <li><strong>Disk Usage:</strong> <span id="sys-disk">Loading...</span></li>
+                <li><strong>Running Containers:</strong> <span id="sys-containers">Loading...</span></li>
+                <li><strong>Auto-refresh:</strong> Every 10 seconds</li>
+            </ul>
+            <button class="view-btn" onclick="viewDockerLogs()" style="margin-top: 15px;">📝 View Docker Logs</button>
+        </div>
+
+        <div class="refresh-info">
+            Last updated: <span id="last-update">Never</span>
+        </div>
+    </div>
+
+    <!-- Config Viewer Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Telegraf Configuration</h2>
+                <span class="close" onclick="closeConfigModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <pre id="config-content">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs Viewer Modal -->
+    <div id="logsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Docker Container Logs</h2>
+                <span class="close" onclick="closeLogsModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="log-selector">
+                    <label for="container-select"><strong>Select Container:</strong></label>
+                    <select id="container-select" onchange="loadContainerLogs()">
+                        <option value="influxdb">InfluxDB</option>
+                        <option value="telegraf">Telegraf</option>
+                        <option value="grafana">Grafana</option>
+                        <option value="prometheus">Prometheus</option>
+                        <option value="nginx-dashboard">Nginx Dashboard</option>
+                    </select>
+                </div>
+                <pre id="logs-content">Loading...</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Confirmation Modal -->
+    <div id="restartModal" class="modal">
+        <div class="confirm-modal-content">
+            <div class="modal-header">
+                <h2>⚠️ Restart Service?</h2>
+                <span class="close" onclick="closeRestartModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to restart <strong id="restart-service-name"></strong>?</p>
+                <p style="color: #666; font-size: 0.9em; margin-top: 10px;">This will cause a brief service interruption.</p>
+                <div class="confirm-buttons">
+                    <button class="btn-cancel" onclick="closeRestartModal()">Cancel</button>
+                    <button class="btn-confirm" onclick="executeRestart()">Yes, Restart</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Service configuration
+        const services = {
+            grafana: {
+                healthUrl: '/grafana/api/health',
+                port: 3000
+            },
+            influxdb: {
+                healthUrl: '/influxdb/health',
+                port: 8086
+            },
+            prometheus: {
+                healthUrl: '/prometheus/-/healthy',
+                port: 9090
+            },
+            telegraf: {
+                healthUrl: '/telegraf/metrics',
+                port: 9273
+            }
+        };
+
+        // Check service health
+        async function checkServiceHealth(serviceName, config) {
+            const statusIndicator = document.getElementById(`${serviceName}-status`);
+            const statusText = document.getElementById(`${serviceName}-status-text`);
+            const serviceLink = document.getElementById(`${serviceName}-link`);
+
+            try {
+                const response = await fetch(config.healthUrl, {
+                    method: 'GET',
+                    cache: 'no-cache'
+                });
+
+                if (response.ok) {
+                    statusIndicator.className = 'status-indicator healthy';
+                    statusText.textContent = 'Healthy';
+                    serviceLink.classList.remove('disabled');
+                } else {
+                    statusIndicator.className = 'status-indicator unhealthy';
+                    statusText.textContent = `Error (${response.status})`;
+                    serviceLink.classList.add('disabled');
+                }
+            } catch (error) {
+                // If fetch fails, service is likely down
+                statusIndicator.className = 'status-indicator unhealthy';
+                statusText.textContent = 'Unavailable';
+                serviceLink.classList.add('disabled');
+            }
+        }
+
+        // Fetch and display system information
+        async function updateSystemInfo() {
+            try {
+                const response = await fetch('/api/system-info', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    document.getElementById('sys-hostname').textContent = data.hostname || 'N/A';
+                    document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';
+                    document.getElementById('sys-arch').textContent = data.architecture || 'N/A';
+                    document.getElementById('sys-uptime').textContent = data.uptime || 'N/A';
+                    document.getElementById('sys-load').textContent = data.load_average || 'N/A';
+                    
+                    // Format memory info
+                    if (data.memory) {
+                        const memText = `${data.memory.used_mb} MB / ${data.memory.total_mb} MB (${data.memory.percent}%)`;
+                        document.getElementById('sys-memory').textContent = memText;
+                    }
+                    
+                    // Format disk info
+                    if (data.disk) {
+                        const diskText = `${data.disk.used} / ${data.disk.total} (${data.disk.percent})`;
+                        document.getElementById('sys-disk').textContent = diskText;
+                    }
+                    
+                    document.getElementById('sys-containers').textContent = data.containers_running || 'N/A';
+                } else {
+                    console.error('Failed to fetch system info:', response.status);
+                }
+            } catch (error) {
+                console.error('Error fetching system info:', error);
+            }
+        }
+
+        // Check all services
+        async function checkAllServices() {
+            for (const [serviceName, config] of Object.entries(services)) {
+                await checkServiceHealth(serviceName, config);
+            }
+            
+            // Update last refresh time
+            const now = new Date();
+            document.getElementById('last-update').textContent = now.toLocaleTimeString();
+        }
+
+        // View Telegraf Config
+        async function viewTelegrafConfig() {
+            const modal = document.getElementById('configModal');
+            const content = document.getElementById('config-content');
+            
+            modal.style.display = 'block';
+            content.textContent = 'Loading...';
+            
+            try {
+                const response = await fetch('/api/config/telegraf', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    content.textContent = text;
+                } else {
+                    content.textContent = `Error loading config: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                content.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Close Config Modal
+        function closeConfigModal() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+
+        // View Docker Logs (from System Info panel)
+        function viewDockerLogs() {
+            const modal = document.getElementById('logsModal');
+            modal.style.display = 'block';
+            loadContainerLogs();
+        }
+
+        // View logs for a specific container (from service card)
+        function viewContainerLogs(container) {
+            const modal = document.getElementById('logsModal');
+            const select = document.getElementById('container-select');
+            
+            // Set the dropdown to the selected container
+            select.value = container;
+            
+            // Open modal and load logs
+            modal.style.display = 'block';
+            loadContainerLogs();
+        }
+
+        // Load logs for selected container
+        async function loadContainerLogs() {
+            const select = document.getElementById('container-select');
+            const content = document.getElementById('logs-content');
+            const container = select.value;
+            
+            content.textContent = 'Loading logs...';
+            
+            try {
+                const response = await fetch(`/api/containers/${container}/logs`, {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    content.textContent = text || 'No logs available';
+                } else {
+                    content.textContent = `Error loading logs: ${response.status} ${response.statusText}`;
+                }
+            } catch (error) {
+                content.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Close Logs Modal
+        function closeLogsModal() {
+            document.getElementById('logsModal').style.display = 'none';
+        }
+
+        // Restart service functionality
+        let pendingRestart = null;
+
+        function confirmRestart(container, displayName) {
+            pendingRestart = container;
+            document.getElementById('restart-service-name').textContent = displayName;
+            document.getElementById('restartModal').style.display = 'block';
+        }
+
+        function closeRestartModal() {
+            document.getElementById('restartModal').style.display = 'none';
+            pendingRestart = null;
+        }
+
+        async function executeRestart() {
+            if (!pendingRestart) return;
+            
+            const container = pendingRestart;
+            const button = document.getElementById(`restart-${container}`);
+            
+            // Close modal
+            closeRestartModal();
+            
+            // Disable button and show restarting state
+            button.disabled = true;
+            button.textContent = '⏳ Restarting...';
+            
+            try {
+                const response = await fetch(`/api/containers/${container}/restart`, {
+                    method: 'POST',
+                    cache: 'no-cache'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showNotification(`✅ ${container} restarted successfully`, 'success');
+                    // Refresh service status after 2 seconds
+                    setTimeout(() => checkAllServices(), 2000);
+                } else {
+                    showNotification(`❌ Failed to restart ${container}: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`❌ Error: ${error.message}`, 'error');
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = '🔄 Restart';
+            }
+        }
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 5000);
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const configModal = document.getElementById('configModal');
+            const logsModal = document.getElementById('logsModal');
+            const restartModal = document.getElementById('restartModal');
+            
+            if (event.target == configModal) {
+                closeConfigModal();
+            }
+            if (event.target == logsModal) {
+                closeLogsModal();
+            }
+            if (event.target == restartModal) {
+                closeRestartModal();
+            }
+        }
+
+        // Initial checks
+        checkAllServices();
+        updateSystemInfo();
+
+        // Refresh every 10 seconds
+        setInterval(() => {
+            checkAllServices();
+            updateSystemInfo();
+        }, 10000);
+    </script>
+</body>
+</html>

@@ -11,9 +11,11 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
 
 ## Components
 
-- **InfluxDB 2.7**: Time-series database
-- **Telegraf**: Metrics collection (system, Docker, custom)
-- **Grafana**: Visualization dashboard
+- **Nginx**: Landing page dashboard with service status and links (port 80)
+- **InfluxDB 2.7**: Time-series database (port 8086)
+- **Telegraf**: Metrics collection (system, Docker, custom) (port 9273)
+- **Grafana**: Visualization dashboard (port 3000)
+- **Prometheus**: Monitoring system and time-series database (port 9090)
 
 ## Prerequisites
 
@@ -37,8 +39,11 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    ```
 
 3. **Access the services**:
-   - Grafana: http://localhost:3000
-   - InfluxDB: http://localhost:8086
+   - **Landing Page**: http://localhost (port 80) - Main dashboard with service status and links
+   - Grafana: http://localhost:3000 (or via landing page at http://localhost/grafana)
+   - InfluxDB: http://localhost:8086 (or via landing page at http://localhost/influxdb)
+   - Prometheus: http://localhost:9090 (or via landing page at http://localhost/prometheus)
+   - Telegraf Metrics: http://localhost:9273 (or via landing page at http://localhost/telegraf)
    - Default credentials are in `.env`
 
 4. **Stop the stack**:
@@ -103,10 +108,14 @@ Use the `deploy.sh` script to build locally and deploy to the provisioned device
 ### Step 3: Access Your Services
 
 After deployment, access your services at:
-- **Grafana**: http://[device-ip]:3000
-- **InfluxDB**: http://[device-ip]:8086
+- **Landing Page**: http://[device-ip] (port 80) - Main dashboard with service status and quick links
+- **Grafana**: http://[device-ip]:3000 (or http://[device-ip]/grafana)
+- **InfluxDB**: http://[device-ip]:8086 (or http://[device-ip]/influxdb)
+- **Prometheus**: http://[device-ip]:9090 (or http://[device-ip]/prometheus)
 
 Credentials will be displayed after successful deployment.
+
+> **💡 Tip**: The landing page provides a convenient overview of all services with real-time health status checks. Simply navigate to your device's IP address in a browser (e.g., http://192.168.0.1) to access it.
 
 ## Manual Deployment Methods
 
@@ -158,11 +167,49 @@ Credentials will be displayed after successful deployment.
    ./scripts/start.sh
    ```
 
+## Landing Page Dashboard
+
+The monitoring stack includes a beautiful landing page accessible on port 80 that provides:
+
+### Features
+- **Real-time Service Status**: Automatic health checks every 10 seconds
+- **Quick Access Links**: Direct links to all web interfaces (Grafana, InfluxDB, Prometheus, Telegraf)
+- **Reverse Proxy**: Access all services through a single port with path-based routing
+- **Modern UI**: Responsive design that works on desktop and mobile devices
+- **Service Information**: Port numbers and service descriptions at a glance
+
+### Access Methods
+
+1. **Direct access to landing page**: http://[device-ip] or http://[device-ip]:80
+2. **Access services through landing page**:
+   - Grafana: http://[device-ip]/grafana
+   - InfluxDB: http://[device-ip]/influxdb
+   - Prometheus: http://[device-ip]/prometheus
+   - Telegraf: http://[device-ip]/telegraf
+
+3. **Direct access to services** (still available):
+   - Grafana: http://[device-ip]:3000
+   - InfluxDB: http://[device-ip]:8086
+   - Prometheus: http://[device-ip]:9090
+   - Telegraf: http://[device-ip]:9273
+
+### Customization
+
+The landing page can be customized by editing:
+- **HTML/CSS/JS**: `config/nginx/html/index.html`
+- **Nginx configuration**: `config/nginx/nginx.conf`
+
+After making changes, restart the nginx service:
+```bash
+docker-compose restart nginx
+```
+
 ## Data Management
 
 - **Persistent data** is stored in Docker volumes:
   - `influxdb_data`: Time-series data
   - `grafana_data`: Dashboards and settings
+  - `prometheus_data`: Prometheus metrics and data
 
 - **Backup InfluxDB data**:
   ```bash

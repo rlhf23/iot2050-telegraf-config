@@ -53,12 +53,19 @@ services:
     ports:
       - "9273:9273"  # Prometheus metrics endpoint
     volumes:
-      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:rw
-      - /var/run/docker.sock:/var/run/docker.sock:rw
-      - /sys:/host/sys:ro
+      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./config/telegraf/telegraf.conf.minimal:/etc/telegraf/telegraf.conf.minimal:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/localtime:/etc/localtime:ro
       - /proc:/host/proc:ro
       - /etc:/host/etc:ro
       - /var/run/utmp:/var/run/utmp:ro
+    command: >
+      sh -c "if [ ! -f /etc/telegraf/telegraf.conf ]; then
+               echo 'No telegraf.conf found, using minimal config...';
+               cp /etc/telegraf/telegraf.conf.minimal /etc/telegraf/telegraf.conf;
+             fi &&
+             telegraf"
     networks:
       monitoring:
         aliases:
@@ -93,6 +100,8 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=%(protocol)s://%(domain)s:%(http_port)s/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     depends_on:
       - influxdb
       - prometheus
@@ -116,6 +125,8 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
+      - '--web.external-url=http://localhost/prometheus'
+      - '--web.route-prefix=/'
     restart: unless-stopped
     networks:
       - monitoring
@@ -125,6 +136,57 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  api-service:
+    build:
+      context: ./api-service
+      dockerfile: Dockerfile
+    container_name: api-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-dashboard
+    ports:
+      - "80:80"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/html:/usr/share/nginx/html:ro
+      - ./config/nginx/scripts/system-info.sh:/usr/local/bin/system-info.sh:ro
+      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    depends_on:
+      - grafana
+      - influxdb
+      - prometheus
+      - telegraf
+      - api-service
+    networks:
+      - monitoring
+    restart: unless-stopped
+    command: >
+      sh -c "chmod +x /usr/local/bin/system-info.sh &&
+             (while true; do /usr/local/bin/system-info.sh > /usr/share/nginx/html/system-info.json; sleep 5; done) &
+             nginx -g 'daemon off;'"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 networks:
   monitoring:

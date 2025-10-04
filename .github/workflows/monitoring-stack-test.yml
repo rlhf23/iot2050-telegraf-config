@@ -121,7 +121,12 @@ jobs:
         run: |
           cd docker
           mkdir -p $HOME/telegraf
-          cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+          # Use minimal config for testing if example doesn't exist
+          if [ -f config/telegraf/telegraf.conf.example ]; then
+            cp config/telegraf/telegraf.conf.example $HOME/telegraf/telegraf.conf
+          else
+            cp config/telegraf/telegraf.conf.minimal $HOME/telegraf/telegraf.conf
+          fi
 
       - name: Start monitoring stack
         run: |
@@ -137,7 +142,7 @@ jobs:
           
           # Check if all expected containers are running
           RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
-          EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
+          EXPECTED_CONTAINERS=6  # influxdb, telegraf, grafana, prometheus, nginx, api-service
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -190,7 +195,25 @@ jobs:
               TELEGRAF_HEALTHY=false
             fi
             
-            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ]; then
+            # Check Nginx health
+            if curl -f http://localhost:80/health > /dev/null 2>&1; then
+              echo "✓ Nginx is healthy"
+              NGINX_HEALTHY=true
+            else
+              echo "✗ Nginx not ready yet"
+              NGINX_HEALTHY=false
+            fi
+            
+            # Check API Service health
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✓ API Service is healthy"
+              API_SERVICE_HEALTHY=true
+            else
+              echo "✗ API Service not ready yet"
+              API_SERVICE_HEALTHY=false
+            fi
+            
+            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ]; then
               echo "All services are healthy!"
               break
             fi
@@ -230,6 +253,115 @@ jobs:
           else
             echo "ℹ Telegraf metrics endpoint not accessible (may be expected)"
           fi
+          
+          # Test Nginx landing page
+          echo "Testing Nginx landing page..."
+          if curl -f http://localhost:80/ > /dev/null 2>&1; then
+            echo "✓ Landing page is accessible"
+          else
+            echo "✗ Landing page is not accessible"
+            exit 1
+          fi
+          
+          # Test Nginx reverse proxy paths
+          echo "Testing Nginx reverse proxy paths..."
+          if curl -f http://localhost:80/grafana/api/health > /dev/null 2>&1; then
+            echo "✓ Grafana accessible via /grafana proxy"
+          else
+            echo "✗ Grafana not accessible via /grafana proxy"
+            exit 1
+          fi
+          
+          if curl -f http://localhost:80/influxdb/health > /dev/null 2>&1; then
+            echo "✓ InfluxDB accessible via /influxdb proxy"
+          else
+            echo "✗ InfluxDB not accessible via /influxdb proxy"
+            exit 1
+          fi
+          
+          if curl -f http://localhost:80/prometheus/-/healthy > /dev/null 2>&1; then
+            echo "✓ Prometheus accessible via /prometheus proxy"
+          else
+            echo "✗ Prometheus not accessible via /prometheus proxy"
+            exit 1
+          fi
+
+      - name: Test API Service endpoints
+        run: |
+          echo "Testing API Service endpoints..."
+          
+          # Test API Service health endpoint
+          echo "Testing API Service health..."
+          API_HEALTH=$(curl -s http://localhost:8000/health)
+          echo "API Service health response: $API_HEALTH"
+          if echo "$API_HEALTH" | grep -q '"success":true'; then
+            echo "✓ API Service health check passed"
+          else
+            echo "✗ API Service health check failed"
+            exit 1
+          fi
+          
+          # Test list containers endpoint
+          echo "Testing API Service list containers..."
+          CONTAINERS_LIST=$(curl -s http://localhost:8000/api/containers)
+          echo "Containers list response: $CONTAINERS_LIST"
+          if echo "$CONTAINERS_LIST" | grep -q '"success":true'; then
+            echo "✓ API Service list containers passed"
+          else
+            echo "✗ API Service list containers failed"
+            exit 1
+          fi
+          
+          # Test forbidden container (should return 403)
+          echo "Testing API Service security (forbidden container)..."
+          FORBIDDEN_RESPONSE=$(curl -s -w "%{http_code}" -X POST http://localhost:8000/api/containers/nginx/restart)
+          if echo "$FORBIDDEN_RESPONSE" | grep -q "403"; then
+            echo "✓ API Service correctly blocks unauthorized containers"
+          else
+            echo "✗ API Service security check failed"
+            exit 1
+          fi
+          
+          # Test logs endpoint (LIVE TEST!)
+          echo "Testing API Service logs functionality..."
+          
+          # Test fetching logs for Grafana
+          echo "Fetching logs for Grafana..."
+          LOGS_RESPONSE=$(curl -s http://localhost:8000/api/containers/grafana/logs)
+          
+          if [ -n "$LOGS_RESPONSE" ]; then
+            echo "✓ API Service returned logs for Grafana"
+            echo "Log preview (first 200 chars):"
+            echo "$LOGS_RESPONSE" | head -c 200
+            echo ""
+          else
+            echo "✗ API Service returned empty logs"
+            exit 1
+          fi
+          
+          # Test fetching logs for InfluxDB
+          echo "Fetching logs for InfluxDB..."
+          INFLUX_LOGS=$(curl -s http://localhost:8000/api/containers/influxdb/logs)
+          
+          if [ -n "$INFLUX_LOGS" ]; then
+            echo "✓ API Service returned logs for InfluxDB"
+          else
+            echo "✗ API Service returned empty logs for InfluxDB"
+            exit 1
+          fi
+          
+          # Test that forbidden container logs are blocked
+          echo "Testing logs security (forbidden container)..."
+          FORBIDDEN_LOGS_STATUS=$(curl -s -w "%{http_code}" -o /dev/null http://localhost:8000/api/containers/nginx/logs)
+          
+          if [ "$FORBIDDEN_LOGS_STATUS" = "403" ]; then
+            echo "✓ API Service correctly blocks unauthorized container logs"
+          else
+            echo "✗ API Service logs security check failed (got $FORBIDDEN_LOGS_STATUS, expected 403)"
+            exit 1
+          fi
+          
+          echo "✅ API Service logs functionality verified successfully!"
 
       - name: Test InfluxDB integration
         run: |
