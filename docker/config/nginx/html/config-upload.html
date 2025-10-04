@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT2050 Configuration Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .step {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .step h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f9fa;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e9ecef;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-size {
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .notification {
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .notification.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .notification.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .session-info {
+            background: #e7f3ff;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #004085;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 IoT2050 Configuration Generator</h1>
+            <p>Upload XML files and generate Telegraf configuration</p>
+        </div>
+
+        <div class="content">
+            <div id="notification" class="notification"></div>
+            <div class="session-info">
+                Session ID: <strong id="session-id">Loading...</strong>
+            </div>
+
+            <!-- Step 1: Upload Files -->
+            <div class="step">
+                <h2>Step 1: Upload XML Configuration Files</h2>
+                
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📁</div>
+                    <p><strong>Drag & drop XML files here</strong></p>
+                    <p style="color: #6c757d; font-size: 14px; margin-top: 8px;">or click to browse</p>
+                    <input type="file" id="file-input" multiple accept=".xml" style="display: none;">
+                </div>
+
+                <div class="file-list" id="file-list"></div>
+
+                <div class="loading" id="upload-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Uploading files...</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Configure Settings -->
+            <div class="step">
+                <h2>Step 2: Configure Settings</h2>
+                
+                <div class="form-group">
+                    <label for="namespace">Namespace</label>
+                    <input type="text" id="namespace" placeholder="my_namespace" value="default">
+                </div>
+
+                <div class="form-group">
+                    <label for="interval">Interval (ms)</label>
+                    <input type="number" id="interval" placeholder="1000" value="1000" min="100">
+                </div>
+
+                <div class="form-group">
+                    <label for="output-format">Output Format</label>
+                    <select id="output-format">
+                        <option value="influxdb">InfluxDB</option>
+                        <option value="prometheus">Prometheus</option>
+                    </select>
+                </div>
+
+                <h3 style="margin-top: 25px; margin-bottom: 15px; font-size: 16px;">OPC-UA Server Settings</h3>
+
+                <div class="form-group">
+                    <label for="opcua-ip">IP Address</label>
+                    <input type="text" id="opcua-ip" placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-username">Username</label>
+                    <input type="text" id="opcua-username" placeholder="admin">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-password">Password</label>
+                    <input type="password" id="opcua-password" placeholder="password">
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="anonymous-auth">
+                        <label for="anonymous-auth" style="margin-bottom: 0;">Anonymous Authentication</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Generate & Deploy -->
+            <div class="step">
+                <h2>Step 3: Generate & Deploy</h2>
+                
+                <button class="btn btn-primary" id="generate-btn" disabled>
+                    Generate Configuration
+                </button>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-success" id="deploy-btn" disabled>
+                        Deploy to Telegraf
+                    </button>
+                </div>
+
+                <div class="loading" id="generate-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Generating configuration...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let sessionId = null;
+        let uploadedFiles = [];
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await createSession();
+            await loadFiles();
+            setupEventListeners();
+        });
+
+        // Create session
+        async function createSession() {
+            try {
+                const response = await fetch('/api/session/create');
+                const data = await response.json();
+                
+                if (data.success) {
+                    sessionId = data.session_id;
+                    document.getElementById('session-id').textContent = sessionId;
+                } else {
+                    showNotification('Failed to create session', 'error');
+                }
+            } catch (error) {
+                showNotification('Error creating session: ' + error.message, 'error');
+            }
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+
+            // Click to upload
+            uploadArea.addEventListener('click', () => fileInput.click());
+
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+
+            // Drag and drop
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+
+            // Generate button
+            document.getElementById('generate-btn').addEventListener('click', generateConfig);
+
+            // Deploy button
+            document.getElementById('deploy-btn').addEventListener('click', deployConfig);
+
+            // Anonymous auth checkbox
+            document.getElementById('anonymous-auth').addEventListener('change', (e) => {
+                const username = document.getElementById('opcua-username');
+                const password = document.getElementById('opcua-password');
+                username.disabled = e.target.checked;
+                password.disabled = e.target.checked;
+            });
+        }
+
+        // Handle file upload
+        async function handleFiles(files) {
+            if (!sessionId) {
+                showNotification('Session not initialized', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('session_id', sessionId);
+
+            let hasFiles = false;
+            for (const file of files) {
+                if (file.name.toLowerCase().endsWith('.xml')) {
+                    formData.append('files', file);
+                    hasFiles = true;
+                } else {
+                    showNotification(`Skipped non-XML file: ${file.name}`, 'error');
+                }
+            }
+
+            if (!hasFiles) {
+                return;
+            }
+
+            showLoading('upload-loading', true);
+
+            try {
+                const response = await fetch('/api/config/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    await loadFiles();
+                } else {
+                    showNotification(data.message || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error uploading files: ' + error.message, 'error');
+            } finally {
+                showLoading('upload-loading', false);
+                document.getElementById('file-input').value = '';
+            }
+        }
+
+        // Load files for session
+        async function loadFiles() {
+            if (!sessionId) return;
+
+            try {
+                const response = await fetch(`/api/config/files/${sessionId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    uploadedFiles = data.files;
+                    renderFileList();
+                    updateGenerateButton();
+                }
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+
+        // Render file list
+        function renderFileList() {
+            const fileList = document.getElementById('file-list');
+            
+            if (uploadedFiles.length === 0) {
+                fileList.innerHTML = '';
+                return;
+            }
+
+            fileList.innerHTML = uploadedFiles.map(file => `
+                <div class="file-item">
+                    <div class="file-info">
+                        <span>✓</span>
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">(${formatFileSize(file.size)})</span>
+                    </div>
+                    <button class="btn btn-danger" onclick="deleteFile('${file.name}')">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Delete file
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+
+            try {
+                const response = await fetch(`/api/config/files/${sessionId}/${filename}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    await loadFiles();
+                } else {
+                    showNotification(data.message || 'Delete failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deleting file: ' + error.message, 'error');
+            }
+        }
+
+        // Generate configuration
+        async function generateConfig() {
+            showNotification('Configuration generation not yet implemented', 'error');
+            // TODO: Implement in Phase 2
+        }
+
+        // Deploy configuration
+        async function deployConfig() {
+            showNotification('Deployment not yet implemented', 'error');
+            // TODO: Implement in Phase 3
+        }
+
+        // Update generate button state
+        function updateGenerateButton() {
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = uploadedFiles.length === 0;
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+
+        // Show/hide loading
+        function showLoading(elementId, show) {
+            const element = document.getElementById(elementId);
+            if (show) {
+                element.classList.add('show');
+            } else {
+                element.classList.remove('show');
+            }
+        }
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+    </script>
+</body>
+</html>

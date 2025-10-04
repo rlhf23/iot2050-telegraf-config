@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use bollard::Docker;
@@ -11,6 +11,8 @@ use serde::Serialize;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, error};
+
+mod config;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -70,6 +72,11 @@ pub fn create_app() -> Router {
         .route("/api/containers/:name/start", post(start_container))
         .route("/api/containers/:name/stop", post(stop_container))
         .route("/api/containers/:name/logs", get(get_container_logs))
+        // Configuration management endpoints
+        .route("/api/session/create", get(config::create_session))
+        .route("/api/config/upload", post(config::upload_files))
+        .route("/api/config/files/:session_id", get(config::list_files))
+        .route("/api/config/files/:session_id/:filename", delete(config::delete_file))
         .layer(cors)
         .with_state(state)
 }
