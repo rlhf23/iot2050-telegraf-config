@@ -55,16 +55,22 @@ pub struct DeleteResponse {
 }
 
 #[derive(Deserialize)]
-pub struct GenerateConfigRequest {
-    pub session_id: String,
+pub struct FileConfig {
+    pub filename: String,
     pub namespace: String,
     pub interval_ms: u64,
+    pub use_listener: bool,
+}
+
+#[derive(Deserialize)]
+pub struct GenerateConfigRequest {
+    pub session_id: String,
     pub opcua_ip: Option<String>,
     pub opcua_username: Option<String>,
     pub opcua_password: Option<String>,
     pub anonymous: bool,
     pub output_format: String,
-    pub selected_files: Option<Vec<String>>,
+    pub file_configs: Vec<FileConfig>,
 }
 
 #[derive(Serialize)]
@@ -445,51 +451,33 @@ pub async fn generate_config(
         ));
     }
 
-    // Get list of XML files to process
-    let files_to_process = if let Some(selected) = request.selected_files {
-        selected
-    } else {
-        // Use all XML files in the session
-        match fs::read_dir(&session_dir).await {
-            Ok(mut entries) => {
-                let mut files = Vec::new();
-                while let Ok(Some(entry)) = entries.next_entry().await {
-                    if let Ok(metadata) = entry.metadata().await {
-                        if metadata.is_file() {
-                            let filename = entry.file_name().to_string_lossy().to_string();
-                            if is_xml_file(&filename) {
-                                files.push(filename);
-                            }
-                        }
-                    }
-                }
-                files
-            }
-            Err(e) => {
-                error!("Failed to read session directory: {}", e);
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(GenerateConfigResponse {
-                        success: false,
-                        message: "Failed to read session files".to_string(),
-                        config_path: None,
-                        preview: None,
-                    }),
-                ));
-            }
-        }
-    };
-
-    if files_to_process.is_empty() {
+    // Validate file configs
+    if request.file_configs.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(GenerateConfigResponse {
                 success: false,
-                message: "No XML files to process".to_string(),
+                message: "No file configurations provided".to_string(),
                 config_path: None,
                 preview: None,
             }),
         ));
+    }
+
+    // Verify all files exist
+    for file_config in &request.file_configs {
+        let file_path = session_dir.join(&file_config.filename);
+        if !file_path.exists() {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: format!("File not found: {}", file_config.filename),
+                    config_path: None,
+                    preview: None,
+                }),
+            ));
+        }
     }
 
     // Determine OPC-UA credentials
@@ -510,17 +498,22 @@ pub async fn generate_config(
 
     // Create SimpleConfigGenerator
     let generator = SimpleConfigGenerator::new(
-        request.namespace.clone(),
-        request.interval_ms,
+        "".to_string(), // Not used with per-file config
+        1000, // Not used with per-file config
         request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
         username,
         password,
         output_format,
     );
 
-    // Build list of file paths
-    let file_paths: Vec<_> = files_to_process.iter()
-        .map(|filename| session_dir.join(filename))
+    // Build list of file configs with paths
+    let file_configs: Vec<_> = request.file_configs.iter()
+        .map(|fc| (
+            session_dir.join(&fc.filename),
+            fc.namespace.as_str(),
+            fc.interval_ms,
+            fc.use_listener
+        ))
         .collect();
 
     // Create generated directory
@@ -541,9 +534,9 @@ pub async fn generate_config(
         ));
     }
 
-    // Generate configuration
+    // Generate configuration with per-file settings
     let output_path = generated_dir.join("telegraf.conf");
-    match generator.generate_from_files(&file_paths, &output_path) {
+    match generator.generate_from_files_with_config(&file_configs, &output_path) {
         Ok(config_content) => {
             info!("Successfully generated config for session: {}", request.session_id);
             
@@ -557,7 +550,7 @@ pub async fn generate_config(
 
             Ok(Json(GenerateConfigResponse {
                 success: true,
-                message: format!("Configuration generated successfully from {} file(s)", files_to_process.len()),
+                message: format!("Configuration generated successfully from {} file(s)", request.file_configs.len()),
                 config_path: Some(output_path.to_string_lossy().to_string()),
                 preview: Some(preview),
             }))

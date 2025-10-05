@@ -93,14 +93,18 @@
         }
 
         .file-item {
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            border: 1px solid #dee2e6;
+        }
+
+        .file-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px;
-            background: white;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            border: 1px solid #dee2e6;
+            margin-bottom: 10px;
         }
 
         .file-info {
@@ -117,6 +121,44 @@
         .file-size {
             color: #6c757d;
             font-size: 14px;
+        }
+
+        .file-config {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .file-config-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-config-field label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 4px;
+        }
+
+        .file-config-field input {
+            padding: 6px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .file-config-field input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-config-field input[type="checkbox"] {
+            width: auto;
+            margin-top: 4px;
         }
 
         .btn {
@@ -359,9 +401,23 @@
 
                 <div class="file-list" id="file-list"></div>
 
+                <div style="margin-top: 15px;" id="poll-namespaces-section">
+                    <button class="btn btn-primary" id="poll-namespaces-btn" onclick="pollNamespaces()" disabled>
+                        🔍 Poll Namespaces from OPC-UA Server
+                    </button>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Automatically populate namespace fields by connecting to the OPC-UA server
+                    </p>
+                </div>
+
                 <div class="loading" id="upload-loading">
                     <div class="spinner"></div>
                     <p style="margin-top: 10px;">Uploading files...</p>
+                </div>
+
+                <div class="loading" id="poll-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Polling namespaces from OPC-UA server...</p>
                 </div>
             </div>
 
@@ -454,6 +510,7 @@
         // State
         let sessionId = null;
         let uploadedFiles = [];
+        let fileConfigs = {}; // Store per-file configuration
 
         // Initialize
         document.addEventListener('DOMContentLoaded', async () => {
@@ -598,16 +655,69 @@
                 return;
             }
 
-            fileList.innerHTML = uploadedFiles.map(file => `
-                <div class="file-item">
-                    <div class="file-info">
-                        <span>✓</span>
-                        <span class="file-name">${file.name}</span>
-                        <span class="file-size">(${formatFileSize(file.size)})</span>
+            fileList.innerHTML = uploadedFiles.map(file => {
+                // Initialize config for this file if not exists
+                if (!fileConfigs[file.name]) {
+                    fileConfigs[file.name] = {
+                        namespace: 'default',
+                        interval_ms: 1000,
+                        use_listener: false
+                    };
+                }
+                
+                const config = fileConfigs[file.name];
+                
+                return `
+                    <div class="file-item">
+                        <div class="file-header">
+                            <div class="file-info">
+                                <span>✓</span>
+                                <span class="file-name">${file.name}</span>
+                                <span class="file-size">(${formatFileSize(file.size)})</span>
+                            </div>
+                            <button class="btn btn-danger" onclick="deleteFile('${file.name}')">Remove</button>
+                        </div>
+                        <div class="file-config">
+                            <div class="file-config-field">
+                                <label>Namespace</label>
+                                <input type="text" 
+                                       value="${config.namespace}" 
+                                       onchange="updateFileConfig('${file.name}', 'namespace', this.value)"
+                                       placeholder="e.g., my_namespace">
+                            </div>
+                            <div class="file-config-field">
+                                <label>Interval (ms)</label>
+                                <input type="number" 
+                                       value="${config.interval_ms}" 
+                                       onchange="updateFileConfig('${file.name}', 'interval_ms', parseInt(this.value))"
+                                       min="100"
+                                       placeholder="1000">
+                            </div>
+                            <div class="file-config-field">
+                                <label>
+                                    <input type="checkbox" 
+                                           ${config.use_listener ? 'checked' : ''}
+                                           onchange="updateFileConfig('${file.name}', 'use_listener', this.checked)">
+                                    Use Listener
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <button class="btn btn-danger" onclick="deleteFile('${file.name}')">Remove</button>
-                </div>
-            `).join('');
+                `;
+            }).join('');
+        }
+
+        // Update file configuration
+        function updateFileConfig(filename, field, value) {
+            if (!fileConfigs[filename]) {
+                fileConfigs[filename] = {
+                    namespace: 'default',
+                    interval_ms: 1000,
+                    use_listener: false
+                };
+            }
+            fileConfigs[filename][field] = value;
+            console.log('Updated config for', filename, ':', fileConfigs[filename]);
         }
 
         // Delete file
@@ -641,16 +751,22 @@
 
             showLoading('generate-loading', true);
 
+            // Build file configurations array
+            const file_configs = uploadedFiles.map(file => ({
+                filename: file.name,
+                namespace: fileConfigs[file.name]?.namespace || 'default',
+                interval_ms: fileConfigs[file.name]?.interval_ms || 1000,
+                use_listener: fileConfigs[file.name]?.use_listener || false
+            }));
+
             const requestData = {
                 session_id: sessionId,
-                namespace: document.getElementById('namespace').value || 'default',
-                interval_ms: parseInt(document.getElementById('interval').value) || 1000,
                 opcua_ip: document.getElementById('opcua-ip').value || null,
                 opcua_username: document.getElementById('opcua-username').value || null,
                 opcua_password: document.getElementById('opcua-password').value || null,
                 anonymous: document.getElementById('anonymous-auth').checked,
                 output_format: document.getElementById('output-format').value || 'influxdb',
-                selected_files: null // Use all files
+                file_configs: file_configs
             };
 
             try {
@@ -737,6 +853,69 @@
         function updateGenerateButton() {
             const generateBtn = document.getElementById('generate-btn');
             generateBtn.disabled = uploadedFiles.length === 0;
+            
+            // Also update poll namespaces button
+            const pollBtn = document.getElementById('poll-namespaces-btn');
+            pollBtn.disabled = uploadedFiles.length === 0;
+        }
+
+        // Poll namespaces from OPC-UA server
+        async function pollNamespaces() {
+            if (!sessionId || uploadedFiles.length === 0) {
+                showNotification('Please upload XML files first', 'error');
+                return;
+            }
+
+            const opcuaIp = document.getElementById('opcua-ip').value;
+            if (!opcuaIp) {
+                showNotification('Please enter OPC-UA server IP address first', 'error');
+                return;
+            }
+
+            showLoading('poll-loading', true);
+
+            const requestData = {
+                session_id: sessionId,
+                opcua_ip: opcuaIp,
+                opcua_username: document.getElementById('opcua-username').value || null,
+                opcua_password: document.getElementById('opcua-password').value || null,
+                anonymous: document.getElementById('anonymous-auth').checked,
+                filenames: uploadedFiles.map(f => f.name)
+            };
+
+            try {
+                const response = await fetch('/api/opcua/poll-namespaces', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update file configs with retrieved namespaces
+                    let updatedCount = 0;
+                    for (const mapping of data.mappings) {
+                        if (fileConfigs[mapping.filename]) {
+                            fileConfigs[mapping.filename].namespace = mapping.namespace;
+                            updatedCount++;
+                        }
+                    }
+
+                    // Re-render file list to show updated namespaces
+                    renderFileList();
+
+                    showNotification(`Successfully updated namespaces for ${updatedCount} file(s)!`, 'success');
+                } else {
+                    showNotification(data.message || 'Failed to poll namespaces', 'error');
+                }
+            } catch (error) {
+                showNotification('Error polling namespaces: ' + error.message, 'error');
+            } finally {
+                showLoading('poll-loading', false);
+            }
         }
 
         // Show notification
