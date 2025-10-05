@@ -10,8 +10,8 @@ use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-// Import our simplified generator
-use crate::generator::{SimpleConfigGenerator, OutputFormat};
+// Import from main project
+use sie_generate_config::{TelegrafConfig, backend::{ConfigGenerator, OutputFormat}};
 
 const UPLOAD_DIR: &str = "/tmp/config-uploads";
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
@@ -490,31 +490,57 @@ pub async fn generate_config(
         )
     };
 
-    // Determine output format
+    // Create TelegrafConfig for ConfigGenerator
+    let telegraf_config = TelegrafConfig {
+        folder: session_dir.clone(),
+        ip: request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
+        username: username.clone(),
+        password: password.clone(),
+        iot_host: String::new(), // Not needed for generation
+        iot_username: String::new(),
+        iot_password: String::new(),
+        listener_files: request.file_configs.iter()
+            .filter(|fc| fc.use_listener)
+            .map(|fc| fc.filename.clone())
+            .collect(),
+        output_format: Some(request.output_format.clone()),
+        include_test_inputs: false,
+        selected_opcua_nodes: vec![],
+    };
+
+    // Create ConfigGenerator
+    let mut generator = match ConfigGenerator::new(telegraf_config) {
+        Ok(gen) => gen,
+        Err(e) => {
+            error!("Failed to create ConfigGenerator: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: format!("Failed to create ConfigGenerator: {}", e),
+                    config_path: None,
+                    preview: None,
+                }),
+            ));
+        }
+    };
+
+    // Set file configurations
+    for fc in &request.file_configs {
+        generator.set_file_config(
+            fc.filename.clone(),
+            fc.namespace.clone(),
+            fc.interval_ms,
+            Some(request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string())),
+        );
+    }
+
+    // Set output format
     let output_format = match request.output_format.as_str() {
         "prometheus" => OutputFormat::Prometheus,
         _ => OutputFormat::InfluxDB,
     };
-
-    // Create SimpleConfigGenerator
-    let generator = SimpleConfigGenerator::new(
-        "".to_string(), // Not used with per-file config
-        1000, // Not used with per-file config
-        request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
-        username,
-        password,
-        output_format,
-    );
-
-    // Build list of file configs with paths
-    let file_configs: Vec<_> = request.file_configs.iter()
-        .map(|fc| (
-            session_dir.join(&fc.filename),
-            fc.namespace.as_str(),
-            fc.interval_ms,
-            fc.use_listener
-        ))
-        .collect();
+    generator.set_output_format(output_format);
 
     // Create generated directory
     let generated_dir = PathBuf::from(UPLOAD_DIR)
@@ -534,10 +560,35 @@ pub async fn generate_config(
         ));
     }
 
-    // Generate configuration with per-file settings
+    // Collect XML filenames
+    let xml_files: Vec<String> = request.file_configs.iter()
+        .map(|fc| fc.filename.clone())
+        .collect();
+
+    // Collect listener files
+    let listener_files: Vec<String> = request.file_configs.iter()
+        .filter(|fc| fc.use_listener)
+        .map(|fc| fc.filename.clone())
+        .collect();
+
+    // Generate configuration
     let output_path = generated_dir.join("telegraf.conf");
-    match generator.generate_from_files_with_config(&file_configs, &output_path) {
+    match generator.generate_config(&xml_files, &listener_files) {
         Ok(config_content) => {
+            // Write config to file
+            if let Err(e) = fs::write(&output_path, &config_content).await {
+                error!("Failed to write config file: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(GenerateConfigResponse {
+                        success: false,
+                        message: format!("Failed to write configuration file: {}", e),
+                        config_path: None,
+                        preview: None,
+                    }),
+                ));
+            }
+
             info!("Successfully generated config for session: {}", request.session_id);
             
             // Limit preview to first 2000 characters

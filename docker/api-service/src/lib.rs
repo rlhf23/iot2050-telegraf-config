@@ -13,7 +13,6 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, error};
 
 mod config;
-mod generator;
 mod deploy;
 mod opcua;
 
