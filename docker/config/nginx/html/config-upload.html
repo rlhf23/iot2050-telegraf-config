@@ -689,8 +689,48 @@
 
         // Deploy configuration
         async function deployConfig() {
-            showNotification('Deployment not yet implemented', 'error');
-            // TODO: Implement in Phase 3
+            if (!window.generatedConfigPath) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy configuration to Telegraf? This will restart the Telegraf container.')) {
+                return;
+            }
+
+            showLoading('generate-loading', true);
+
+            const requestData = {
+                session_id: sessionId,
+                config_path: window.generatedConfigPath
+            };
+
+            try {
+                const response = await fetch('/api/config/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Show status
+                    if (data.telegraf_status) {
+                        console.log('Telegraf status:', data.telegraf_status);
+                    }
+                } else {
+                    showNotification(data.message || 'Deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying config: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
         }
 
         // Update generate button state

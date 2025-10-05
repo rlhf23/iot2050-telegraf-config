@@ -14,6 +14,7 @@ use tracing::{info, error};
 
 mod config;
 mod generator;
+mod deploy;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -79,6 +80,7 @@ pub fn create_app() -> Router {
         .route("/api/config/files/:session_id", get(config::list_files))
         .route("/api/config/files/:session_id/:filename", delete(config::delete_file))
         .route("/api/config/generate", post(config::generate_config))
+        .route("/api/config/deploy", post(deploy::deploy_config))
         .layer(cors)
         .with_state(state)
 }
