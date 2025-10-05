@@ -10,6 +10,9 @@ use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+// Import our simplified generator
+use crate::generator::{SimpleConfigGenerator, OutputFormat};
+
 const UPLOAD_DIR: &str = "/tmp/config-uploads";
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
 
@@ -49,6 +52,27 @@ pub struct FileListResponse {
 pub struct DeleteResponse {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Deserialize)]
+pub struct GenerateConfigRequest {
+    pub session_id: String,
+    pub namespace: String,
+    pub interval_ms: u64,
+    pub opcua_ip: Option<String>,
+    pub opcua_username: Option<String>,
+    pub opcua_password: Option<String>,
+    pub anonymous: bool,
+    pub output_format: String,
+    pub selected_files: Option<Vec<String>>,
+}
+
+#[derive(Serialize)]
+pub struct GenerateConfigResponse {
+    pub success: bool,
+    pub message: String,
+    pub config_path: Option<String>,
+    pub preview: Option<String>,
 }
 
 /// Create a new session
@@ -398,4 +422,157 @@ pub async fn cleanup_old_sessions() -> Result<(), std::io::Error> {
     }
 
     Ok(())
+}
+
+/// Generate Telegraf configuration from uploaded files
+pub async fn generate_config(
+    Json(request): Json<GenerateConfigRequest>,
+) -> Result<Json<GenerateConfigResponse>, (StatusCode, Json<GenerateConfigResponse>)> {
+    info!("Generating config for session: {}", request.session_id);
+
+    let session_dir = get_session_dir(&request.session_id);
+    
+    // Check if session directory exists
+    if !session_dir.exists() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(GenerateConfigResponse {
+                success: false,
+                message: "Session not found".to_string(),
+                config_path: None,
+                preview: None,
+            }),
+        ));
+    }
+
+    // Get list of XML files to process
+    let files_to_process = if let Some(selected) = request.selected_files {
+        selected
+    } else {
+        // Use all XML files in the session
+        match fs::read_dir(&session_dir).await {
+            Ok(mut entries) => {
+                let mut files = Vec::new();
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    if let Ok(metadata) = entry.metadata().await {
+                        if metadata.is_file() {
+                            let filename = entry.file_name().to_string_lossy().to_string();
+                            if is_xml_file(&filename) {
+                                files.push(filename);
+                            }
+                        }
+                    }
+                }
+                files
+            }
+            Err(e) => {
+                error!("Failed to read session directory: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(GenerateConfigResponse {
+                        success: false,
+                        message: "Failed to read session files".to_string(),
+                        config_path: None,
+                        preview: None,
+                    }),
+                ));
+            }
+        }
+    };
+
+    if files_to_process.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(GenerateConfigResponse {
+                success: false,
+                message: "No XML files to process".to_string(),
+                config_path: None,
+                preview: None,
+            }),
+        ));
+    }
+
+    // Determine OPC-UA credentials
+    let (username, password) = if request.anonymous {
+        ("".to_string(), "".to_string())
+    } else {
+        (
+            request.opcua_username.unwrap_or_default(),
+            request.opcua_password.unwrap_or_default(),
+        )
+    };
+
+    // Determine output format
+    let output_format = match request.output_format.as_str() {
+        "prometheus" => OutputFormat::Prometheus,
+        _ => OutputFormat::InfluxDB,
+    };
+
+    // Create SimpleConfigGenerator
+    let generator = SimpleConfigGenerator::new(
+        request.namespace.clone(),
+        request.interval_ms,
+        request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
+        username,
+        password,
+        output_format,
+    );
+
+    // Build list of file paths
+    let file_paths: Vec<_> = files_to_process.iter()
+        .map(|filename| session_dir.join(filename))
+        .collect();
+
+    // Create generated directory
+    let generated_dir = PathBuf::from(UPLOAD_DIR)
+        .join(&request.session_id)
+        .join("generated");
+    
+    if let Err(e) = fs::create_dir_all(&generated_dir).await {
+        error!("Failed to create generated directory: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(GenerateConfigResponse {
+                success: false,
+                message: "Failed to create output directory".to_string(),
+                config_path: None,
+                preview: None,
+            }),
+        ));
+    }
+
+    // Generate configuration
+    let output_path = generated_dir.join("telegraf.conf");
+    match generator.generate_from_files(&file_paths, &output_path) {
+        Ok(config_content) => {
+            info!("Successfully generated config for session: {}", request.session_id);
+            
+            // Limit preview to first 2000 characters
+            let preview = if config_content.len() > 2000 {
+                format!("{}...\n\n[Preview truncated - {} total characters]", 
+                    &config_content[..2000], config_content.len())
+            } else {
+                config_content
+            };
+
+            Ok(Json(GenerateConfigResponse {
+                success: true,
+                message: format!("Configuration generated successfully from {} file(s)", files_to_process.len()),
+                config_path: Some(output_path.to_string_lossy().to_string()),
+                preview: Some(preview),
+            }))
+        }
+        Err(e) => {
+            error!("Failed to generate config: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: format!("Failed to generate configuration: {}", e),
+                    config_path: None,
+                    preview: None,
+                }),
+            ))
+        }
+    }
 }
