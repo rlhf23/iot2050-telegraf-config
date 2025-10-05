@@ -401,23 +401,9 @@
 
                 <div class="file-list" id="file-list"></div>
 
-                <div style="margin-top: 15px;" id="poll-namespaces-section">
-                    <button class="btn btn-primary" id="poll-namespaces-btn" onclick="pollNamespaces()" disabled>
-                        🔍 Poll Namespaces from OPC-UA Server
-                    </button>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                        Automatically populate namespace fields by connecting to the OPC-UA server
-                    </p>
-                </div>
-
                 <div class="loading" id="upload-loading">
                     <div class="spinner"></div>
                     <p style="margin-top: 10px;">Uploading files...</p>
-                </div>
-
-                <div class="loading" id="poll-loading">
-                    <div class="spinner"></div>
-                    <p style="margin-top: 10px;">Polling namespaces from OPC-UA server...</p>
                 </div>
             </div>
 
@@ -853,69 +839,6 @@
         function updateGenerateButton() {
             const generateBtn = document.getElementById('generate-btn');
             generateBtn.disabled = uploadedFiles.length === 0;
-            
-            // Also update poll namespaces button
-            const pollBtn = document.getElementById('poll-namespaces-btn');
-            pollBtn.disabled = uploadedFiles.length === 0;
-        }
-
-        // Poll namespaces from OPC-UA server
-        async function pollNamespaces() {
-            if (!sessionId || uploadedFiles.length === 0) {
-                showNotification('Please upload XML files first', 'error');
-                return;
-            }
-
-            const opcuaIp = document.getElementById('opcua-ip').value;
-            if (!opcuaIp) {
-                showNotification('Please enter OPC-UA server IP address first', 'error');
-                return;
-            }
-
-            showLoading('poll-loading', true);
-
-            const requestData = {
-                session_id: sessionId,
-                opcua_ip: opcuaIp,
-                opcua_username: document.getElementById('opcua-username').value || null,
-                opcua_password: document.getElementById('opcua-password').value || null,
-                anonymous: document.getElementById('anonymous-auth').checked,
-                filenames: uploadedFiles.map(f => f.name)
-            };
-
-            try {
-                const response = await fetch('/api/opcua/poll-namespaces', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    // Update file configs with retrieved namespaces
-                    let updatedCount = 0;
-                    for (const mapping of data.mappings) {
-                        if (fileConfigs[mapping.filename]) {
-                            fileConfigs[mapping.filename].namespace = mapping.namespace;
-                            updatedCount++;
-                        }
-                    }
-
-                    // Re-render file list to show updated namespaces
-                    renderFileList();
-
-                    showNotification(`Successfully updated namespaces for ${updatedCount} file(s)!`, 'success');
-                } else {
-                    showNotification(data.message || 'Failed to poll namespaces', 'error');
-                }
-            } catch (error) {
-                showNotification('Error polling namespaces: ' + error.message, 'error');
-            } finally {
-                showLoading('poll-loading', false);
-            }
         }
 
         // Show notification

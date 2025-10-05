@@ -23,9 +23,6 @@ chrono = { version = "0.4", features = ["serde"] }
 roxmltree = "0.20.0"
 thiserror = "2.0"
 
-# OPC-UA for namespace polling
-opcua = { version = "0.12.0", features = ["client"] }
-
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
