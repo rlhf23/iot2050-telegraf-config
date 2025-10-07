@@ -5,8 +5,13 @@
 # Get hostname
 HOSTNAME=$(hostname)
 
-# Get IP address (first non-loopback IPv4) - Alpine-compatible
-IP_ADDRESS=$(ip -4 addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | head -n 1 | awk '{print $2}' | cut -d'/' -f1)
+# Get IP address from physical interface (eth0, end0, enp*, etc.) - Alpine-compatible
+# Prioritize physical interfaces over Docker bridges (docker0, br-*)
+IP_ADDRESS=$(ip -4 addr show 2>/dev/null | grep -E '^[0-9]+: (eth|end|enp)' -A 2 | grep 'inet ' | head -n 1 | awk '{print $2}' | cut -d'/' -f1)
+# Fallback to any non-loopback if no physical interface found
+if [ -z "$IP_ADDRESS" ]; then
+    IP_ADDRESS=$(ip -4 addr show 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | grep -v 'docker0' | grep -v 'br-' | head -n 1 | awk '{print $2}' | cut -d'/' -f1)
+fi
 
 # Get uptime in a readable format
 UPTIME=$(uptime 2>/dev/null | awk '{print $3 " " $4}' | sed 's/,//')

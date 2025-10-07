@@ -435,7 +435,7 @@
                         <span class="info-value" id="grafana-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/grafana" class="service-link" id="grafana-link">Open Grafana</a>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':3000', '_blank')" class="service-link" id="grafana-link">Open Grafana</a>
                 <button class="view-btn" onclick="viewContainerLogs('grafana')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
             </div>
@@ -459,7 +459,7 @@
                         <span class="info-value" id="influxdb-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/influxdb" class="service-link" id="influxdb-link">Open InfluxDB</a>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8086', '_blank')" class="service-link" id="influxdb-link">Open InfluxDB</a>
                 <button class="view-btn" onclick="viewContainerLogs('influxdb')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-influxdb" onclick="confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
             </div>
@@ -483,7 +483,7 @@
                         <span class="info-value" id="prometheus-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/prometheus" class="service-link" id="prometheus-link">Open Prometheus</a>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':9090', '_blank')" class="service-link" id="prometheus-link">Open Prometheus</a>
                 <button class="view-btn" onclick="viewContainerLogs('prometheus')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-prometheus" onclick="confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
             </div>
