@@ -14,8 +14,8 @@ on:
 
 jobs:
   build:
-    name: Build for ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    name: Build for ARM64
+    runs-on: ubuntu-latest-arm64  # Use native ARM64 runner!
     strategy:
       matrix:
         include:
@@ -37,21 +37,11 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            musl-tools \
-            gcc-aarch64-linux-gnu \
-            libssl-dev \
-            pkg-config
+          sudo apt-get install -y musl-tools libssl-dev pkg-config
           
-      - name: Install cross-compilation tools
+      - name: Add musl target
         run: |
           rustup target add aarch64-unknown-linux-musl
-          
-      - name: Set up cross-compilation environment
-        run: |
-          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -71,15 +61,12 @@ jobs:
           path: target
           key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build api-service with vendored OpenSSL
+      - name: Build api-service
         run: |
-          # Use vendored OpenSSL to avoid cross-compilation issues
+          # Native ARM64 build - no cross-compilation needed!
           cargo build --release \
             --target ${{ matrix.target }} \
-            --manifest-path docker/api-service/Cargo.toml \
-            --features vendored
-        env:
-          OPENSSL_STATIC: 1
+            --manifest-path docker/api-service/Cargo.toml
 
       - name: Strip binary
         run: |
