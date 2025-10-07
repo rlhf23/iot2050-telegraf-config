@@ -19,10 +19,7 @@ jobs:
     strategy:
       matrix:
         include:
-          # IoT2050 is typically x86_64
-          - target: x86_64-unknown-linux-musl
-            arch: amd64
-          # In case you have ARM-based IoT devices
+          # IoT2050 with sunxi64 (ARM64)
           - target: aarch64-unknown-linux-musl
             arch: arm64
 
@@ -37,10 +34,19 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Install musl tools
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
+          
+      - name: Install cross-compilation tools
+        run: |
+          rustup target add aarch64-unknown-linux-musl
+          
+      - name: Set up cross-compilation environment
+        run: |
+          echo "CC_aarch64_unknown_linux_musl=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -61,8 +67,7 @@ jobs:
           key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build api-service
-        working-directory: docker/api-service
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path docker/api-service/Cargo.toml
 
       - name: Strip binary
         run: |
