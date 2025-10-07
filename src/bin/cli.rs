@@ -430,7 +430,8 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     }
     
     // Add git branch if specified (for provision command)
-    if let Some(git_branch) = matches.get_one::<String>("git_branch") {
+    // Note: git_branch only exists on provision subcommand, so we use try_get_one
+    if let Ok(Some(git_branch)) = matches.try_get_one::<String>("git_branch") {
         config = config.with_git_branch(git_branch.clone());
     }
     
