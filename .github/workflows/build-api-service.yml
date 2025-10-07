@@ -2,7 +2,7 @@ name: Build API Service Binary
 
 on:
   # Manual trigger - run when you need to rebuild binaries
-  workflow_dispatch:
+  # workflow_dispatch:
   # Also run on push to these paths (optional, can remove if you want manual-only)
   push:
     branches: [main, webui-config-generator]
