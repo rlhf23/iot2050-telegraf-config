@@ -18,8 +18,8 @@ RUN cargo build --release
 # Final stage - minimal image
 FROM alpine:latest
 
-# Install ca-certificates for HTTPS
-RUN apk add --no-cache ca-certificates
+# Install ca-certificates for HTTPS and wget for health checks
+RUN apk add --no-cache ca-certificates wget
 
 WORKDIR /app
 
