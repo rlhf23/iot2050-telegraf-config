@@ -1,0 +1,88 @@
+name: Build API Service Binary
+
+on:
+  # Manual trigger - run when you need to rebuild binaries
+  workflow_dispatch:
+  # Also run on push to these paths
+  push:
+    branches: [main, webui-config-generator]
+    paths:
+      - 'docker/api-service/**'
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # IoT2050 is typically x86_64
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          # In case you have ARM-based IoT devices
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install musl tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-git-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build api-service
+        working-directory: docker/api-service
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Strip binary
+        run: |
+          strip target/${{ matrix.target }}/release/docker-api-service || true
+
+      - name: Rename binary
+        run: |
+          mkdir -p binaries
+          cp target/${{ matrix.target }}/release/docker-api-service binaries/docker-api-service-${{ matrix.arch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-service-${{ matrix.arch }}
+          path: binaries/docker-api-service-${{ matrix.arch }}
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: binaries/docker-api-service-${{ matrix.arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
