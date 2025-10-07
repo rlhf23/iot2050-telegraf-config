@@ -175,7 +175,7 @@ services:
     networks:
       - monitoring
     restart: unless-stopped
-    command: sh -c "chmod +x /usr/local/bin/start-nginx.sh && /usr/local/bin/start-nginx.sh"
+    command: /bin/sh /usr/local/bin/start-nginx.sh
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost/health"]
       interval: 30s

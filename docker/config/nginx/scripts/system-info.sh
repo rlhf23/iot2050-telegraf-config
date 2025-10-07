@@ -37,6 +37,9 @@ DISK_PERCENT=$(df -h / 2>/dev/null | awk 'NR==2 {print $5}')
 # Container count - not available from inside nginx container
 CONTAINER_COUNT="N/A"
 
+# Get current system time (human readable)
+SYSTEM_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+
 # Output JSON
 cat <<EOF
 {
@@ -45,6 +48,7 @@ cat <<EOF
   "uptime": "$UPTIME",
   "architecture": "$ARCH",
   "load_average": "$LOAD_AVG",
+  "system_time": "$SYSTEM_TIME",
   "memory": {
     "total_mb": $MEM_TOTAL,
     "used_mb": $MEM_USED,
