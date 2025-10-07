@@ -79,8 +79,28 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
         Some(("stop", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
+            let remove_volumes = sub_matches.get_flag("volumes");
             
-            if let Err(e) = deployer.stop() {
+            if remove_volumes {
+                println!("⚠️  WARNING: This will remove all Docker volumes and DELETE ALL DATA!");
+                println!("   This includes:");
+                println!("   - InfluxDB data (all metrics)");
+                println!("   - Grafana dashboards and settings");
+                println!("   - Prometheus data");
+                println!();
+                print!("Are you sure you want to continue? (yes/no): ");
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).unwrap();
+                
+                if input.trim().to_lowercase() != "yes" {
+                    println!("Aborted.");
+                    wrap_up(1);
+                }
+            }
+            
+            if let Err(e) = deployer.stop_with_volumes(remove_volumes) {
                 exit_with_error(format!("Stop failed: {}", e));
             }
             
@@ -486,6 +506,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("volumes").short('v').long("volumes").action(clap::ArgAction::SetTrue).help("Remove volumes (WARNING: deletes all data)"))
                 )
         )
         .subcommand(
