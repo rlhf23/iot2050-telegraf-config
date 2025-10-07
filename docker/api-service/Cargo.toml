@@ -36,3 +36,4 @@ opt-level = "z"     # Optimize for size
 lto = true          # Enable link-time optimization
 codegen-units = 1   # Better optimization
 strip = true        # Strip symbols from binary
+
