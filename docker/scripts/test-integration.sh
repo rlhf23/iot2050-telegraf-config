@@ -3,11 +3,33 @@
 
 set -e
 
+# Check for required dependencies
+if ! command -v jq &> /dev/null; then
+    echo "❌ Error: jq is required but not installed"
+    echo "Install with: sudo apt-get install jq (Ubuntu/Debian) or brew install jq (macOS)"
+    exit 1
+fi
+
+if ! command -v curl &> /dev/null; then
+    echo "❌ Error: curl is required but not installed"
+    exit 1
+fi
+
 echo "🧪 Running integration tests..."
 
-# Wait for services to be ready
+# Wait for services to be ready with retry logic
 echo "⏳ Waiting for services to start..."
-sleep 10
+for i in {1..30}; do
+  if curl -f -s http://localhost/health > /dev/null 2>&1; then
+    echo "✅ Services are ready!"
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "❌ Timeout waiting for services to start"
+    exit 1
+  fi
+  sleep 1
+done
 
 # Test 1: Health endpoint
 echo ""
@@ -76,7 +98,8 @@ NGINX_HEALTH=$(docker inspect --format='{{.State.Health.Status}}' nginx-dashboar
 if [ "$NGINX_HEALTH" = "healthy" ]; then
   echo "✅ Nginx container is healthy"
 else
-  echo "⚠️  Nginx container health: $NGINX_HEALTH"
+  echo "❌ Nginx container is not healthy: $NGINX_HEALTH"
+  exit 1
 fi
 
 # Test 7: Verify system-info.json exists
