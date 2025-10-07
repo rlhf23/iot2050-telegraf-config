@@ -36,6 +36,8 @@ services:
     container_name: telegraf
     # user: "telegraf:${HOST_DOCKER_GID}"  # Use host's docker group ID from environment
     restart: unless-stopped
+    ports:
+      - "9273:9273"  # Prometheus metrics endpoint
     deploy:
       restart_policy:
         condition: on-failure

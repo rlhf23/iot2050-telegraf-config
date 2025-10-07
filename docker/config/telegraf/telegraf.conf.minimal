@@ -20,6 +20,13 @@
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
 
+# Expose Prometheus metrics endpoint for health checks and monitoring
+[[outputs.prometheus_client]]
+  listen = ":9273"
+  path = "/metrics"
+  expiration_interval = "60s"
+  collectors_exclude = ["gocollector", "process"]
+
 # Basic system metrics
 [[inputs.cpu]]
   percpu = true
