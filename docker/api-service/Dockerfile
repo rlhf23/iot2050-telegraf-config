@@ -1,8 +1,12 @@
 # Multi-stage build for minimal final image
 FROM rust:1.84-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache musl-dev
+# Install build dependencies (including OpenSSL for ssh2 and other deps)
+RUN apk add --no-cache \
+    musl-dev \
+    openssl-dev \
+    openssl-libs-static \
+    pkgconfig
 
 WORKDIR /build
 
