@@ -3,6 +3,10 @@ name = "docker-api-service"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Vendor OpenSSL for easier cross-compilation
+vendored = ["sie_generate_config/vendored-openssl"]
+
 [dependencies]
 axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }

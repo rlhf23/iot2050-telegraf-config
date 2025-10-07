@@ -71,8 +71,15 @@ jobs:
           path: target
           key: ${{ runner.os }}-target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build api-service
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path docker/api-service/Cargo.toml
+      - name: Build api-service with vendored OpenSSL
+        run: |
+          # Use vendored OpenSSL to avoid cross-compilation issues
+          cargo build --release \
+            --target ${{ matrix.target }} \
+            --manifest-path docker/api-service/Cargo.toml \
+            --features vendored
+        env:
+          OPENSSL_STATIC: 1
 
       - name: Strip binary
         run: |

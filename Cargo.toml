@@ -33,6 +33,7 @@ path = "src/lib.rs"
 default = ["gui", "tui"]
 gui = ["eframe", "rfd"]
 tui = ["ratatui", "crossterm"]
+vendored-openssl = []  # OpenSSL is already vendored, this just exposes it as a feature
 
 [dependencies]
 # Core dependencies (always included)
