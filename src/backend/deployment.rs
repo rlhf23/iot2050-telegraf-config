@@ -395,7 +395,7 @@ impl IoTDeployer {
         let mut channel = session.channel_session()?;
         channel.exec(&command)?;
         
-        use std::io::{Read, BufReader};
+        use std::io::{Read, BufReader, Write};
         use std::time::{Duration, Instant};
         // ssh2::Channel is not used directly
         use std::thread;
@@ -421,6 +421,7 @@ impl IoTDeployer {
                 Ok(n) if n > 0 => {
                     let s = String::from_utf8_lossy(&stdout_buf[..n]);
                     print!("{}", s);
+                    std::io::stdout().flush().ok();
                 },
                 _ => {}
             }
@@ -429,6 +430,7 @@ impl IoTDeployer {
                 Ok(n) if n > 0 => {
                     let s = String::from_utf8_lossy(&stderr_buf[..n]);
                     eprint!("{}", s);
+                    std::io::stderr().flush().ok();
                 },
                 _ => {}
             }
