@@ -3486,6 +3486,7 @@ dependencies = [
  "log",
  "opcua",
  "openssl",
+ "openssl-sys",
  "ratatui",
  "rfd",
  "roxmltree",
