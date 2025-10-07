@@ -314,17 +314,39 @@ impl IoTDeployer {
 
     /// Stop the monitoring stack
     pub fn stop(&self) -> Result<(), TelegrafError> {
+        self.stop_with_volumes(false)
+    }
+
+    /// Stop the monitoring stack with optional volume removal
+    pub fn stop_with_volumes(&self, remove_volumes: bool) -> Result<(), TelegrafError> {
         println!("🛑 Stopping monitoring stack...");
         
         let session = self.create_ssh_session()?;
         
+        let stop_command = if remove_volumes {
+            "cd ~/monitoring && docker compose down -v"
+        } else {
+            "cd ~/monitoring && ./scripts/stop.sh"
+        };
+        
+        let description = if remove_volumes {
+            "Stopping monitoring stack and removing volumes"
+        } else {
+            "Stopping monitoring stack"
+        };
+        
         self.run_command(
             &session,
-            "cd ~/monitoring && ./scripts/stop.sh",
-            "Stopping monitoring stack"
+            stop_command,
+            description
         )?;
         
-        println!("✅ Monitoring stack stopped");
+        if remove_volumes {
+            println!("✅ Monitoring stack stopped and volumes removed");
+            println!("⚠️  All data has been deleted. You will need to reconfigure services on next start.");
+        } else {
+            println!("✅ Monitoring stack stopped");
+        }
         Ok(())
     }
 

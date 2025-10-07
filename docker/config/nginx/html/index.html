@@ -483,7 +483,7 @@
                         <span class="info-value" id="prometheus-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':9090', '_blank')" class="service-link" id="prometheus-link">Open Prometheus</a>
+                <a href="/prometheus" class="service-link" id="prometheus-link">Open Prometheus</a>
                 <button class="view-btn" onclick="viewContainerLogs('prometheus')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-prometheus" onclick="confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
             </div>
@@ -507,7 +507,7 @@
                         <span class="info-value" id="telegraf-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/telegraf" class="service-link" id="telegraf-link">View Metrics</a>
+                <a href="/telegraf/metrics" class="service-link" id="telegraf-link">View Metrics</a>
                 <button class="view-btn" onclick="viewContainerLogs('telegraf')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
                 <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
