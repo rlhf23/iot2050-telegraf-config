@@ -324,7 +324,7 @@ impl IoTDeployer {
         let session = self.create_ssh_session()?;
         
         let stop_command = if remove_volumes {
-            "cd ~/monitoring/docker && docker compose down -v"
+            "cd ~/monitoring && docker compose down -v"
         } else {
             "cd ~/monitoring && ./scripts/stop.sh"
         };
