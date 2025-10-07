@@ -17,7 +17,12 @@ set -a
 source .env
 set +a
 
+# Pull images first to show progress
+echo "📦 Pulling Docker images (this may take a while on first run)..."
+docker-compose -f docker-compose.yml pull
+
 # Start the stack
+echo "🔧 Starting containers..."
 docker-compose -f docker-compose.yml up -d
 
 # Wait for all running containers to be healthy or exited (timeout after 60 seconds)
