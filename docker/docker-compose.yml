@@ -139,8 +139,8 @@ services:
 
   api-service:
     build:
-      context: ..
-      dockerfile: docker/api-service/Dockerfile
+      context: .
+      dockerfile: api-service/Dockerfile.prebuilt
     container_name: api-service
     ports:
       - "8000:8000"
