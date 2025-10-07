@@ -4,15 +4,19 @@ FROM rust:1.84-alpine AS builder
 # Install build dependencies
 RUN apk add --no-cache musl-dev
 
-WORKDIR /app
+WORKDIR /build
 
-# Copy manifests
-COPY Cargo.toml ./
-
-# Copy source code
+# Copy main project files (needed for dependency)
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY build.rs ./
 
-# Build release binary
+# Copy api-service files
+COPY docker/api-service/Cargo.toml ./docker/api-service/
+COPY docker/api-service/src ./docker/api-service/src
+
+# Build api-service
+WORKDIR /build/docker/api-service
 RUN cargo build --release
 
 # Final stage - minimal image
@@ -24,7 +28,7 @@ RUN apk add --no-cache ca-certificates wget
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/docker-api-service /app/docker-api-service
+COPY --from=builder /build/docker/api-service/target/release/docker-api-service /app/docker-api-service
 
 # Expose port
 EXPOSE 8000
