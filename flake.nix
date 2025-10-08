@@ -24,7 +24,7 @@
           # };
         };
         rustVersion = pkgs.pkgsBuildHost.rust-bin.stable.latest.default.override {
-          targets = ["x86_64-pc-windows-gnu" "aarch64-unknown-linux-gnu"];
+          targets = ["x86_64-pc-windows-gnu" "aarch64-unknown-linux-gnu" "aarch64-unknown-linux-musl"];
         };
         aarch64Openssl = pkgs.pkgsCross.aarch64-multiplatform.openssl;
         libPath = with pkgs;
@@ -49,6 +49,7 @@
             nushell
             # Cross-compilation toolchain
             pkgsCross.aarch64-multiplatform.stdenv.cc
+            pkgsCross.aarch64-multiplatform.buildPackages.gcc
             # System libraries
             clang
             gtk3
