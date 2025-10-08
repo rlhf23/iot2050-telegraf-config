@@ -1,13 +1,13 @@
 # Simple Dockerfile using pre-built binary
 # No compilation needed - just copy and run!
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    wget \
-    libgcc
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
