@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegraf Configuration Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .step {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .step h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f9fa;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e9ecef;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .file-list {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            padding: 15px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            border: 1px solid #dee2e6;
+        }
+
+        .file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-size {
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .file-config {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .file-config-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .file-config-field label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 4px;
+        }
+
+        .file-config-field input {
+            padding: 6px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .file-config-field input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .file-config-field input[type="checkbox"] {
+            width: auto;
+            margin-top: 4px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 6px;
+            display: none;
+            z-index: 2000;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .notification.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .session-info {
+            background: #e7f3ff;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #004085;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6c757d;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Telegraf Configuration Generator</h1>
+            <p class="subtitle">Generate and deploy Telegraf configurations from XML files</p>
+        </div>
+
+        <div class="content">
+            <div class="session-info">
+                Session ID: <strong id="session-id">Loading...</strong>
+            </div>
+
+            <!-- Step 1: Upload Files -->
+            <div class="step">
+                <h2>Step 1: Upload XML Configuration Files</h2>
+                
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📁</div>
+                    <p><strong>Drag & drop XML files here</strong></p>
+                    <p style="color: #6c757d; font-size: 14px; margin-top: 8px;">or click to browse</p>
+                    <input type="file" id="file-input" multiple accept=".xml" style="display: none;">
+                </div>
+
+                <div class="file-list" id="file-list"></div>
+
+                <div style="margin-top: 15px;" id="poll-namespaces-section">
+                    <button class="btn btn-primary" id="poll-namespaces-btn" onclick="pollNamespaces()" disabled>
+                        Poll Namespaces from OPC-UA Server
+                    </button>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Automatically populate namespace fields by connecting to the OPC-UA server
+                    </p>
+                </div>
+
+                <div class="loading" id="upload-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Uploading files...</p>
+                </div>
+
+                <div class="loading" id="poll-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Polling namespaces from OPC-UA server...</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Configure Settings -->
+            <div class="step">
+                <h2>Step 2: Configure Settings</h2>
+                
+                <div class="form-group">
+                    <label for="output-format">Output Format</label>
+                    <select id="output-format">
+                        <option value="influxdb">InfluxDB</option>
+                        <option value="prometheus">Prometheus</option>
+                    </select>
+                </div>
+
+                <h3 style="margin-top: 25px; margin-bottom: 15px; font-size: 16px;">OPC-UA Server Settings</h3>
+
+                <div class="form-group">
+                    <label for="opcua-ip">IP Address</label>
+                    <input type="text" id="opcua-ip" placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-username">Username</label>
+                    <input type="text" id="opcua-username" placeholder="admin">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-password">Password</label>
+                    <input type="password" id="opcua-password" placeholder="password">
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="anonymous-auth">
+                        <label for="anonymous-auth" style="margin-bottom: 0;">Anonymous Authentication</label>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Step 3: Generate & Deploy -->
+            <div class="step">
+                <h2>Step 3: Generate & Deploy</h2>
+                
+                <button class="btn btn-primary" id="generate-btn" disabled>
+                    Generate Configuration
+                </button>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-success" id="deploy-btn" disabled>
+                        Deploy to Telegraf
+                    </button>
+                    <button class="btn" onclick="viewCurrentConfig()" style="background: #6c757d;">
+                        📄 View Current Config
+                    </button>
+                </div>
+
+                <div class="loading" id="generate-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Generating configuration...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Configuration Preview</h2>
+                <button class="modal-close" onclick="closePreviewModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="preview-content"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closePreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed notification toast -->
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // State
+        let sessionId = null;
+        let uploadedFiles = [];
+        let fileConfigs = {}; // Store per-file configuration
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await createSession();
+            await loadFiles();
+            setupEventListeners();
+        });
+
+        // Create session
+        async function createSession() {
+            try {
+                const response = await fetch('/api/session/create');
+                const data = await response.json();
+                
+                if (data.success) {
+                    sessionId = data.session_id;
+                    document.getElementById('session-id').textContent = sessionId;
+                } else {
+                    showNotification('Failed to create session', 'error');
+                }
+            } catch (error) {
+                showNotification('Error creating session: ' + error.message, 'error');
+            }
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+
+            // Click to upload
+            uploadArea.addEventListener('click', () => fileInput.click());
+
+            // File input change
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+
+            // Drag and drop
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+
+            // Generate button
+            document.getElementById('generate-btn').addEventListener('click', generateConfig);
+
+            // Deploy button
+            document.getElementById('deploy-btn').addEventListener('click', deployConfig);
+
+            // Anonymous auth checkbox
+            document.getElementById('anonymous-auth').addEventListener('change', (e) => {
+                const username = document.getElementById('opcua-username');
+                const password = document.getElementById('opcua-password');
+                username.disabled = e.target.checked;
+                password.disabled = e.target.checked;
+            });
+        }
+
+        // Handle file upload
+        async function handleFiles(files) {
+            if (!sessionId) {
+                showNotification('Session not initialized', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('session_id', sessionId);
+
+            let hasFiles = false;
+            for (const file of files) {
+                if (file.name.toLowerCase().endsWith('.xml')) {
+                    formData.append('files', file);
+                    hasFiles = true;
+                } else {
+                    showNotification(`Skipped non-XML file: ${file.name}`, 'error');
+                }
+            }
+
+            if (!hasFiles) {
+                return;
+            }
+
+            showLoading('upload-loading', true);
+
+            try {
+                const response = await fetch('/api/config/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    await loadFiles();
+                } else {
+                    showNotification(data.message || 'Upload failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error uploading files: ' + error.message, 'error');
+            } finally {
+                showLoading('upload-loading', false);
+                document.getElementById('file-input').value = '';
+            }
+        }
+
+        // Load files for session
+        async function loadFiles() {
+            if (!sessionId) return;
+
+            try {
+                const response = await fetch(`/api/config/files/${sessionId}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    uploadedFiles = data.files;
+                    renderFileList();
+                    updateGenerateButton();
+                }
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+
+        // Render file list
+        function renderFileList() {
+            const fileList = document.getElementById('file-list');
+            
+            if (uploadedFiles.length === 0) {
+                fileList.innerHTML = '';
+                return;
+            }
+
+            // Helper function to escape HTML
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            fileList.innerHTML = uploadedFiles.map(file => {
+                // Initialize config for this file if not exists
+                if (!fileConfigs[file.name]) {
+                    fileConfigs[file.name] = {
+                        namespace: 'default',
+                        interval_ms: 1000,
+                        use_listener: false
+                    };
+                }
+                
+                const config = fileConfigs[file.name];
+                const escapedName = escapeHtml(file.name);
+                
+                return `
+                    <div class="file-item">
+                        <div class="file-header">
+                            <div class="file-info">
+                                <span>✓</span>
+                                <span class="file-name">${escapedName}</span>
+                                <span class="file-size">(${formatFileSize(file.size)})</span>
+                            </div>
+                            <button class="btn btn-danger" onclick="deleteFile('${escapedName}')">Remove</button>
+                        </div>
+                        <div class="file-config">
+                            <div class="file-config-field">
+                                <label>Namespace</label>
+                                <input type="text" 
+                                       value="${config.namespace}" 
+                                       onchange="updateFileConfig('${file.name}', 'namespace', this.value)"
+                                       placeholder="e.g., my_namespace">
+                            </div>
+                            <div class="file-config-field">
+                                <label>Interval (ms)</label>
+                                <input type="number" 
+                                       value="${config.interval_ms}" 
+                                       onchange="updateFileConfig('${file.name}', 'interval_ms', parseInt(this.value))"
+                                       min="100"
+                                       placeholder="1000">
+                            </div>
+                            <div class="file-config-field">
+                                <label>
+                                    <input type="checkbox" 
+                                           ${config.use_listener ? 'checked' : ''}
+                                           onchange="updateFileConfig('${file.name}', 'use_listener', this.checked)">
+                                    Use Listener
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Update file configuration
+        function updateFileConfig(filename, field, value) {
+            if (!fileConfigs[filename]) {
+                fileConfigs[filename] = {
+                    namespace: 'default',
+                    interval_ms: 1000,
+                    use_listener: false
+                };
+            }
+            fileConfigs[filename][field] = value;
+            console.log('Updated config for', filename, ':', fileConfigs[filename]);
+        }
+
+        // Delete file
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+
+            try {
+                const response = await fetch(`/api/config/files/${sessionId}/${filename}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    await loadFiles();
+                } else {
+                    showNotification(data.message || 'Delete failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deleting file: ' + error.message, 'error');
+            }
+        }
+
+        // Generate configuration
+        async function generateConfig() {
+            if (!sessionId || uploadedFiles.length === 0) {
+                showNotification('Please upload XML files first', 'error');
+                return;
+            }
+
+            showLoading('generate-loading', true);
+
+            // Build file configurations array
+            const file_configs = uploadedFiles.map(file => ({
+                filename: file.name,
+                namespace: fileConfigs[file.name]?.namespace || 'default',
+                interval_ms: fileConfigs[file.name]?.interval_ms || 1000,
+                use_listener: fileConfigs[file.name]?.use_listener || false,
+                custom_ip: fileConfigs[file.name]?.custom_ip || null
+            }));
+
+            const requestData = {
+                session_id: sessionId,
+                opcua_ip: document.getElementById('opcua-ip').value || null,
+                opcua_username: document.getElementById('opcua-username').value || null,
+                opcua_password: document.getElementById('opcua-password').value || null,
+                anonymous: document.getElementById('anonymous-auth').checked,
+                // IoT credentials not needed - web UI runs locally, uses defaults
+                iot_host: null,
+                iot_username: null,
+                iot_password: null,
+                output_format: document.getElementById('output-format').value || 'influxdb',
+                file_configs: file_configs
+            };
+
+            try {
+                const response = await fetch('/api/config/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Show preview modal
+                    if (data.preview) {
+                        showPreviewModal(data.preview);
+                    }
+                    
+                    // Enable deploy button
+                    document.getElementById('deploy-btn').disabled = false;
+                    
+                    // Store config path for deployment
+                    window.generatedConfigPath = data.config_path;
+                } else {
+                    showNotification(data.message || 'Generation failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating config: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Deploy configuration
+        async function deployConfig() {
+            if (!window.generatedConfigPath) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy configuration to Telegraf? This will restart the Telegraf container.')) {
+                return;
+            }
+
+            showLoading('generate-loading', true);
+
+            const requestData = {
+                session_id: sessionId,
+                config_path: window.generatedConfigPath
+            };
+
+            try {
+                const response = await fetch('/api/config/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Show status
+                    if (data.telegraf_status) {
+                        console.log('Telegraf status:', data.telegraf_status);
+                    }
+                } else {
+                    showNotification(data.message || 'Deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying config: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Update generate button state
+        function updateGenerateButton() {
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = uploadedFiles.length === 0;
+            
+            // Also update poll namespaces button
+            const pollBtn = document.getElementById('poll-namespaces-btn');
+            pollBtn.disabled = uploadedFiles.length === 0;
+        }
+
+        // Poll namespaces from OPC-UA server
+        async function pollNamespaces() {
+            if (!sessionId || uploadedFiles.length === 0) {
+                showNotification('Please upload XML files first', 'error');
+                return;
+            }
+
+            const opcuaIp = document.getElementById('opcua-ip').value;
+            if (!opcuaIp) {
+                showNotification('Please enter OPC-UA server IP address first', 'error');
+                return;
+            }
+
+            showLoading('poll-loading', true);
+
+            const requestData = {
+                session_id: sessionId,
+                opcua_ip: opcuaIp,
+                opcua_username: document.getElementById('opcua-username').value || null,
+                opcua_password: document.getElementById('opcua-password').value || null,
+                anonymous: document.getElementById('anonymous-auth').checked,
+                filenames: uploadedFiles.map(f => f.name)
+            };
+
+            try {
+                const response = await fetch('/api/opcua/poll-namespaces', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update file configs with retrieved namespaces
+                    let updatedCount = 0;
+                    for (const mapping of data.mappings) {
+                        if (fileConfigs[mapping.filename]) {
+                            fileConfigs[mapping.filename].namespace = mapping.namespace;
+                            updatedCount++;
+                        }
+                    }
+
+                    // Re-render file list to show updated namespaces
+                    renderFileList();
+
+                    showNotification(`Successfully updated namespaces for ${updatedCount} file(s)!`, 'success');
+                } else {
+                    showNotification(data.message || 'Failed to poll namespaces', 'error');
+                }
+            } catch (error) {
+                showNotification('Error polling namespaces: ' + error.message, 'error');
+            } finally {
+                showLoading('poll-loading', false);
+            }
+        }
+
+        // Show notification
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+
+        // Show/hide loading
+        function showLoading(elementId, show) {
+            const element = document.getElementById(elementId);
+            if (show) {
+                element.classList.add('show');
+            } else {
+                element.classList.remove('show');
+            }
+        }
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // Show preview modal
+        function showPreviewModal(content) {
+            const modal = document.getElementById('preview-modal');
+            const previewContent = document.getElementById('preview-content');
+            previewContent.textContent = content;
+            modal.classList.add('show');
+        }
+
+        // Close preview modal
+        function closePreviewModal() {
+            const modal = document.getElementById('preview-modal');
+            modal.classList.remove('show');
+        }
+
+        // Close modal on background click
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('preview-modal');
+            if (e.target === modal) {
+                closePreviewModal();
+            }
+        });
+
+        // View current Telegraf config
+        async function viewCurrentConfig() {
+            try {
+                const response = await fetch('/api/config/telegraf', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    showPreviewModal(text);
+                } else {
+                    showNotification(`Error loading config: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`Error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

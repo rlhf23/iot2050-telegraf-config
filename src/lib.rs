@@ -341,7 +341,10 @@ pub fn discover_xml_files(folder: &std::path::PathBuf) -> Vec<String> {
 pub mod backend;
 pub mod error;
 pub mod worker;
+
+#[cfg(feature = "gui")]
 pub mod gui_controller;
+#[cfg(feature = "gui")]
 pub mod gui_renderer;
 
 pub use worker::{WorkerCommand, WorkerHandle, WorkerResponse};

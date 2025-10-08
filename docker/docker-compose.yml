@@ -139,13 +139,16 @@ services:
 
   api-service:
     build:
-      context: ./api-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api-service/Dockerfile.prebuilt
     container_name: api-service
     ports:
       - "8000:8000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${HOME}/telegraf:/telegraf
+    environment:
+      - TELEGRAF_CONFIG_PATH=/telegraf/telegraf.conf
     networks:
       - monitoring
     restart: unless-stopped

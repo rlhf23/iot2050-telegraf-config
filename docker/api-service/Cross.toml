@@ -1,0 +1,12 @@
+[build.env]
+passthrough = [
+    "OPENSSL_STATIC",
+    "OPENSSL_DIR",
+]
+
+[target.aarch64-unknown-linux-gnu]
+# Use vendored OpenSSL to avoid cross-compilation issues
+pre-build = [
+    "apt-get update",
+    "apt-get install -y libssl-dev pkg-config",
+]

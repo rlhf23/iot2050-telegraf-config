@@ -1,0 +1,9 @@
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-unknown-linux-gnu-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-unknown-linux-musl-gcc"
+
+[build]
+# Optional: set default target
+# target = "aarch64-unknown-linux-gnu"

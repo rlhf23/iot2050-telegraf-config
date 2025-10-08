@@ -512,6 +512,28 @@
                 <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
                 <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
             </div>
+
+            <!-- Configuration Generator -->
+            <div class="service-card">
+                <div class="service-header">
+                    <div class="service-name">Telegraf Config Generator</div>
+                    <div class="status-indicator healthy"></div>
+                </div>
+                <div class="service-description">
+                    WebUI for generating Telegraf configurations from XML files
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Features:</span>
+                        <span class="info-value">Upload, Generate, Deploy</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Type:</span>
+                        <span class="info-value">Web Interface</span>
+                    </div>
+                </div>
+                <a href="/config-upload.html" class="service-link">Open Config Generator</a>
+            </div>
         </div>
 
         <div class="info-panel">

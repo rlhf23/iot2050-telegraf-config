@@ -3,21 +3,38 @@ name = "docker-api-service"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Vendor OpenSSL for easier cross-compilation
+vendored = ["sie_generate_config/vendored-openssl"]
+
 [dependencies]
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
 tokio = { version = "1", features = ["full"] }
 bollard = "0.17"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.5", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
+# File upload and session management
+multer = "3.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+tokio-util = { version = "0.7", features = ["io"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+# Dependencies for config generation (avoiding GUI deps from main project)
+roxmltree = "0.20.0"
+thiserror = "2.0"
+
+# Main project for OpcUaPoller (without GUI/TUI dependencies)
+sie_generate_config = { path = "../..", default-features = false }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1.0"
+tempfile = "3.8"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
