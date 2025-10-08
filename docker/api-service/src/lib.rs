@@ -13,6 +13,8 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, error};
 
 mod config;
+#[cfg(test)]
+mod config_test;
 mod deploy;
 mod opcua;
 

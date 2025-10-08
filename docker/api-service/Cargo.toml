@@ -34,6 +34,7 @@ sie_generate_config = { path = "../..", default-features = false }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1.0"
+tempfile = "3.8"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
