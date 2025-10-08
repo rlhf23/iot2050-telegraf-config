@@ -59,8 +59,10 @@ jobs:
       - name: Build api-service with cross
         run: |
           cd docker/api-service
-          # Use cross tool which handles all cross-compilation automatically
-          cross build --release --target ${{ matrix.target }}
+          # Use cross tool with vendored OpenSSL feature
+          cross build --release --target ${{ matrix.target }} --features vendored
+        env:
+          OPENSSL_STATIC: 1
 
       - name: Patch binary interpreter
         run: |
