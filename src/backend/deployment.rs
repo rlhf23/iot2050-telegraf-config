@@ -196,7 +196,7 @@ impl IoTDeployer {
         // Make scripts executable
         self.run_command(
             &session,
-            "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh docker/scripts/*.sh",
+            "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh",
             "Making scripts executable"
         )?;
         
