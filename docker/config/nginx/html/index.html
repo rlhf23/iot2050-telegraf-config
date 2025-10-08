@@ -435,7 +435,7 @@
                         <span class="info-value" id="grafana-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/grafana" class="service-link" id="grafana-link">Open Grafana</a>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':3000', '_blank')" class="service-link" id="grafana-link">Open Grafana</a>
                 <button class="view-btn" onclick="viewContainerLogs('grafana')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
             </div>
@@ -459,7 +459,7 @@
                         <span class="info-value" id="influxdb-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/influxdb" class="service-link" id="influxdb-link">Open InfluxDB</a>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8086', '_blank')" class="service-link" id="influxdb-link">Open InfluxDB</a>
                 <button class="view-btn" onclick="viewContainerLogs('influxdb')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-influxdb" onclick="confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
             </div>
@@ -507,7 +507,7 @@
                         <span class="info-value" id="telegraf-status-text">Checking...</span>
                     </div>
                 </div>
-                <a href="/telegraf" class="service-link" id="telegraf-link">View Metrics</a>
+                <a href="/telegraf/metrics" class="service-link" id="telegraf-link">View Metrics</a>
                 <button class="view-btn" onclick="viewContainerLogs('telegraf')">📝 View Logs</button>
                 <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
                 <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
@@ -541,6 +541,7 @@
             <ul id="system-info-list">
                 <li><strong>Hostname:</strong> <span id="sys-hostname">Loading...</span></li>
                 <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
+                <li><strong>System Time:</strong> <span id="sys-time">Loading...</span></li>
                 <li><strong>Architecture:</strong> <span id="sys-arch">Loading...</span></li>
                 <li><strong>Uptime:</strong> <span id="sys-uptime">Loading...</span></li>
                 <li><strong>Load Average:</strong> <span id="sys-load">Loading...</span></li>
@@ -673,6 +674,7 @@
                     
                     document.getElementById('sys-hostname').textContent = data.hostname || 'N/A';
                     document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';
+                    document.getElementById('sys-time').textContent = data.system_time || 'N/A';
                     document.getElementById('sys-arch').textContent = data.architecture || 'N/A';
                     document.getElementById('sys-uptime').textContent = data.uptime || 'N/A';
                     document.getElementById('sys-load').textContent = data.load_average || 'N/A';

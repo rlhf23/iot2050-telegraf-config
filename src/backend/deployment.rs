@@ -117,42 +117,50 @@ impl IoTDeployer {
             &format!("Checking if repository branch '{}' is accessible", self.branch)
         )?;
         
-        // Update package lists
-        self.run_command(&session, "sudo apt-get update", "Updating package lists")?;
+        // Check if all required packages are already installed
+        println!("🔍 Checking for required packages...");
+        let packages_status = self.check_required_packages(&session)?;
         
-        // Install required packages
-        self.run_command(
-            &session,
-            "sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release git openssl",
-            "Installing required packages"
-        )?;
-        
-        // Check if Docker is already installed
-        let docker_installed = self.check_command(&session, "docker --version")?;
-        
-        if !docker_installed {
-            println!("🐳 Installing Docker...");
-            self.run_command(
-                &session,
-                "sudo apt-get install -y docker.io",
-                "Installing Docker"
-            )?;
+        // Only proceed with apt operations if packages are missing
+        if packages_status.needs_installation() {
+            // Warn about potential time issues before running apt
+            self.check_system_time(&session)?;
+            
+            println!("📦 Installing missing packages...");
+            
+            // Update package lists
+            self.run_command(&session, "sudo apt-get update", "Updating package lists")?;
+            
+            // Install base packages if needed
+            if packages_status.needs_base_packages {
+                self.run_command(
+                    &session,
+                    "sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release git openssl",
+                    "Installing required packages"
+                )?;
+            }
+            
+            // Install Docker if needed
+            if packages_status.needs_docker {
+                println!("🐳 Installing Docker...");
+                self.run_command(
+                    &session,
+                    "sudo apt-get install -y docker.io",
+                    "Installing Docker"
+                )?;
+            }
+            
+            // Install Docker Compose if needed
+            if packages_status.needs_compose {
+                println!("📦 Installing Docker Compose...");
+                self.run_command(
+                    &session,
+                    "sudo apt-get install -y docker-compose",
+                    "Installing Docker Compose"
+                )?;
+            }
         } else {
-            println!("✅ Docker is already installed");
-        }
-        
-        // Check if Docker Compose is installed
-        let compose_installed = self.check_command(&session, "docker-compose --version")?;
-        
-        if !compose_installed {
-            println!("📦 Installing Docker Compose...");
-            self.run_command(
-                &session,
-                "sudo apt-get install -y docker-compose",
-                "Installing Docker Compose"
-            )?;
-        } else {
-            println!("✅ Docker Compose is already installed");
+            println!("✅ All required packages are already installed");
         }
         
         // Add user to docker group
@@ -196,7 +204,7 @@ impl IoTDeployer {
         // Make scripts executable
         self.run_command(
             &session,
-            "cd ~/monitoring && chmod +x scripts/*.sh",
+            "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh",
             "Making scripts executable"
         )?;
         
@@ -314,17 +322,39 @@ impl IoTDeployer {
 
     /// Stop the monitoring stack
     pub fn stop(&self) -> Result<(), TelegrafError> {
+        self.stop_with_volumes(false)
+    }
+
+    /// Stop the monitoring stack with optional volume removal
+    pub fn stop_with_volumes(&self, remove_volumes: bool) -> Result<(), TelegrafError> {
         println!("🛑 Stopping monitoring stack...");
         
         let session = self.create_ssh_session()?;
         
+        let stop_command = if remove_volumes {
+            "cd ~/monitoring && docker compose down -v"
+        } else {
+            "cd ~/monitoring && ./scripts/stop.sh"
+        };
+        
+        let description = if remove_volumes {
+            "Stopping monitoring stack and removing volumes"
+        } else {
+            "Stopping monitoring stack"
+        };
+        
         self.run_command(
             &session,
-            "cd ~/monitoring && ./scripts/stop.sh",
-            "Stopping monitoring stack"
+            stop_command,
+            description
         )?;
         
-        println!("✅ Monitoring stack stopped");
+        if remove_volumes {
+            println!("✅ Monitoring stack stopped and volumes removed");
+            println!("⚠️  All data has been deleted. You will need to reconfigure services on next start.");
+        } else {
+            println!("✅ Monitoring stack stopped");
+        }
         Ok(())
     }
 
@@ -395,7 +425,7 @@ impl IoTDeployer {
         let mut channel = session.channel_session()?;
         channel.exec(&command)?;
         
-        use std::io::{Read, BufReader};
+        use std::io::{Read, BufReader, Write};
         use std::time::{Duration, Instant};
         // ssh2::Channel is not used directly
         use std::thread;
@@ -421,6 +451,7 @@ impl IoTDeployer {
                 Ok(n) if n > 0 => {
                     let s = String::from_utf8_lossy(&stdout_buf[..n]);
                     print!("{}", s);
+                    std::io::stdout().flush().ok();
                 },
                 _ => {}
             }
@@ -429,6 +460,7 @@ impl IoTDeployer {
                 Ok(n) if n > 0 => {
                     let s = String::from_utf8_lossy(&stderr_buf[..n]);
                     eprint!("{}", s);
+                    std::io::stderr().flush().ok();
                 },
                 _ => {}
             }
@@ -460,5 +492,103 @@ impl IoTDeployer {
         
         let exit_status = channel.exit_status()?;
         Ok(exit_status == 0)
+    }
+    
+    /// Check system time and warn if it appears incorrect
+    fn check_system_time(&self, session: &Session) -> Result<(), TelegrafError> {
+        println!("⏰ Checking system time...");
+        
+        // Get remote time with timezone
+        let mut channel = session.channel_session()?;
+        channel.exec("date '+%Y-%m-%d %H:%M:%S %Z (UTC%z)'")?;
+        
+        let mut remote_time_str = String::new();
+        channel.read_to_string(&mut remote_time_str)?;
+        channel.wait_close()?;
+        
+        println!("   Remote time: {}", remote_time_str.trim());
+        
+        // Get remote time as Unix timestamp for comparison
+        let mut channel = session.channel_session()?;
+        channel.exec("date +%s")?;
+        
+        let mut output = String::new();
+        channel.read_to_string(&mut output)?;
+        channel.wait_close()?;
+        
+        if let Ok(remote_timestamp) = output.trim().parse::<i64>() {
+            // Get local time
+            let local_timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            
+            let diff_seconds = (remote_timestamp - local_timestamp).abs();
+            let diff_hours = diff_seconds / 3600;
+            
+            // Warn if time difference is more than 3 hours (certificate validation typically fails)
+            if diff_seconds > 10800 { // 3 hours in seconds
+                println!("⚠️  WARNING: System time differs from local time by {} hours", diff_hours);
+                println!("⚠️  This will likely cause apt-get to fail due to certificate validation issues.");
+                println!("⚠️  Device may be missing CMOS battery. Set time manually before continuing:");
+                println!("⚠️  sudo timedatectl set-time \"2025-10-01 09:11\"");
+                println!("⚠️  Continuing anyway...");
+            } else if diff_seconds > 300 { // More than 5 minutes but less than 3 hours
+                println!("⚠️  WARNING: System time differs by {} seconds ({} minutes)", diff_seconds, diff_seconds / 60);
+                println!("⚠️  This may cause issues. Consider syncing time if problems occur.");
+            } else {
+                println!("✅ System time is within {} seconds of local time", diff_seconds);
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Check which packages need to be installed
+    fn check_required_packages(&self, session: &Session) -> Result<PackageStatus, TelegrafError> {
+        let mut status = PackageStatus::default();
+        
+        // Check base packages (just check a few key ones as indicators)
+        let has_curl = self.check_command(session, "which curl")?;
+        let has_git = self.check_command(session, "which git")?;
+        let has_openssl = self.check_command(session, "which openssl")?;
+        status.needs_base_packages = !(has_curl && has_git && has_openssl);
+        
+        if status.needs_base_packages {
+            println!("  ⚙️  Base packages needed (curl: {}, git: {}, openssl: {})", has_curl, has_git, has_openssl);
+        } else {
+            println!("  ✅ Base packages present");
+        }
+        
+        // Check Docker
+        status.needs_docker = !self.check_command(session, "docker --version")?;
+        if status.needs_docker {
+            println!("  🐳 Docker needs installation");
+        } else {
+            println!("  ✅ Docker present");
+        }
+        
+        // Check Docker Compose
+        status.needs_compose = !self.check_command(session, "docker-compose --version")?;
+        if status.needs_compose {
+            println!("  📦 Docker Compose needs installation");
+        } else {
+            println!("  ✅ Docker Compose present");
+        }
+        
+        Ok(status)
+    }
+}
+
+#[derive(Debug, Default)]
+struct PackageStatus {
+    needs_base_packages: bool,
+    needs_docker: bool,
+    needs_compose: bool,
+}
+
+impl PackageStatus {
+    fn needs_installation(&self) -> bool {
+        self.needs_base_packages || self.needs_docker || self.needs_compose
     }
 }

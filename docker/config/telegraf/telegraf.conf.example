@@ -17,6 +17,14 @@
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
 
+# Expose Prometheus metrics endpoint for health checks and monitoring
+# This allows the dashboard to check Telegraf health and Prometheus to scrape metrics
+[[outputs.prometheus_client]]
+  listen = ":9273"
+  path = "/metrics"
+  expiration_interval = "60s"
+  collectors_exclude = ["gocollector", "process"]
+
 # System metrics
 [[inputs.cpu]]
   percpu = true
