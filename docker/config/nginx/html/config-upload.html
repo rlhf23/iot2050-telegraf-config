@@ -457,22 +457,6 @@
                     </div>
                 </div>
 
-                <h3 style="margin-top: 25px; margin-bottom: 15px; font-size: 16px;">IoT Device Settings (for deployment)</h3>
-
-                <div class="form-group">
-                    <label for="iot-host">Device Host (hostname:port)</label>
-                    <input type="text" id="iot-host" placeholder="192.168.1.2:22">
-                </div>
-
-                <div class="form-group">
-                    <label for="iot-username">SSH Username</label>
-                    <input type="text" id="iot-username" placeholder="iotuser">
-                </div>
-
-                <div class="form-group">
-                    <label for="iot-password">SSH Password</label>
-                    <input type="password" id="iot-password" placeholder="password">
-                </div>
             </div>
 
             <!-- Step 3: Generate & Deploy -->
@@ -772,9 +756,10 @@
                 opcua_username: document.getElementById('opcua-username').value || null,
                 opcua_password: document.getElementById('opcua-password').value || null,
                 anonymous: document.getElementById('anonymous-auth').checked,
-                iot_host: document.getElementById('iot-host').value || null,
-                iot_username: document.getElementById('iot-username').value || null,
-                iot_password: document.getElementById('iot-password').value || null,
+                // IoT credentials not needed - web UI runs locally, uses defaults
+                iot_host: null,
+                iot_username: null,
+                iot_password: null,
                 output_format: document.getElementById('output-format').value || 'influxdb',
                 file_configs: file_configs
             };
