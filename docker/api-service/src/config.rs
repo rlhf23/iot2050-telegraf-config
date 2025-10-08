@@ -543,7 +543,9 @@ pub async fn generate_config(
             fc.filename.clone(),
             fc.namespace.clone(),
             fc.interval_ms,
-            Some(request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string())),
+            Some(request.opcua_ip.clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "127.0.0.1".to_string())),
         );
     }
 

@@ -224,5 +224,125 @@ mod tests {
         assert!(error_msg.contains("4 parts") || error_msg.contains("IP"), 
                 "Error should mention IP validation: {}", error_msg);
     }
+
+    #[test]
+    fn test_config_generator_with_file_configs() {
+        // Test that ConfigGenerator accepts file configs and generates successfully
+        use sie_generate_config::{TelegrafConfig, backend::ConfigGenerator};
+        use std::fs;
+
+        // Create a temp directory for the test
+        let temp_dir = std::env::temp_dir().join(format!("test_config_{}", std::process::id()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create a simple test XML file with valid OPC-UA nodes
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
+    <NamespaceUris>
+        <Uri>http://test.example.com</Uri>
+    </NamespaceUris>
+    <UAVariable NodeId="ns=2;i=1001" BrowseName="2:Temperature" DataType="Double">
+        <DisplayName>Temperature</DisplayName>
+        <Description>Test temperature variable</Description>
+    </UAVariable>
+</UANodeSet>"#;
+        fs::write(temp_dir.join("test.xml"), xml_content).unwrap();
+
+        let config = TelegrafConfig {
+            folder: temp_dir.clone(),
+            ip: "127.0.0.1:4840".to_string(),
+            username: "admin".to_string(),
+            password: "password".to_string(),
+            iot_host: "127.0.0.1:22".to_string(),
+            iot_username: "user".to_string(),
+            iot_password: "pass".to_string(),
+            listener_files: vec![],
+            output_format: Some("influxdb".to_string()),
+            include_test_inputs: false,
+            selected_opcua_nodes: vec![],
+        };
+
+        // Create ConfigGenerator
+        let mut generator = ConfigGenerator::new(config).unwrap();
+
+        // Get full path to XML file
+        let xml_path = temp_dir.join("test.xml");
+        let xml_path_str = xml_path.to_string_lossy().to_string();
+
+        // Set file config (simulating what the API does)
+        generator.set_file_config(
+            xml_path_str.clone(),
+            "2".to_string(),
+            1000,
+            None,
+        );
+
+        // Generate the config
+        let xml_files = vec![xml_path_str];
+        let listener_files: Vec<String> = vec![];
+        let result = generator.generate_config(&xml_files, &listener_files);
+        
+        // Verify it succeeded
+        assert!(result.is_ok(), "Config generation should succeed: {:?}", result.err());
+        
+        // Verify telegraf.conf was created
+        let config_path = temp_dir.join("telegraf.conf");
+        assert!(config_path.exists(), "telegraf.conf should be created");
+        
+        // Cleanup
+        fs::remove_dir_all(&temp_dir).ok();
+    }
+
+    #[test]
+    fn test_config_generator_with_null_opcua_ip() {
+        // Test that when opcua_ip is null, per-file IPs default to 127.0.0.1
+        use sie_generate_config::{TelegrafConfig, backend::ConfigGenerator};
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("test_null_ip_{}", std::process::id()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
+<UANodeSet xmlns="http://opcfoundation.org/UA/2011/03/UANodeSet.xsd">
+    <UAVariable NodeId="ns=2;i=1001" BrowseName="2:TestVar" DataType="Double">
+        <DisplayName>TestVar</DisplayName>
+    </UAVariable>
+</UANodeSet>"#;
+        fs::write(temp_dir.join("test.xml"), xml_content).unwrap();
+
+        // Use 127.0.0.1 as the default (what the API uses when opcua_ip is null)
+        let config = TelegrafConfig {
+            folder: temp_dir.clone(),
+            ip: "127.0.0.1".to_string(), // This is the default when null
+            username: "".to_string(),
+            password: "".to_string(),
+            iot_host: "127.0.0.1:22".to_string(),
+            iot_username: "user".to_string(),
+            iot_password: "pass".to_string(),
+            listener_files: vec![],
+            output_format: Some("influxdb".to_string()),
+            include_test_inputs: false,
+            selected_opcua_nodes: vec![],
+        };
+
+        let mut generator = ConfigGenerator::new(config).unwrap();
+        
+        let xml_path = temp_dir.join("test.xml");
+        let xml_path_str = xml_path.to_string_lossy().to_string();
+
+        // Set file config with 127.0.0.1 as custom IP (the default)
+        generator.set_file_config(
+            xml_path_str.clone(),
+            "2".to_string(),
+            1000,
+            Some("127.0.0.1".to_string()), // This should NOT be "localhost"
+        );
+
+        let result = generator.generate_config(&[xml_path_str], &[]);
+        
+        fs::remove_dir_all(&temp_dir).ok();
+        
+        assert!(result.is_ok(), "Config generation with 127.0.0.1 default should succeed: {:?}", result.err());
+    }
 }
 
