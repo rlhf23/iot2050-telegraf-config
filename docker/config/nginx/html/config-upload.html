@@ -668,6 +668,13 @@
                 return;
             }
 
+            // Helper function to escape HTML
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
             fileList.innerHTML = uploadedFiles.map(file => {
                 // Initialize config for this file if not exists
                 if (!fileConfigs[file.name]) {
@@ -679,16 +686,17 @@
                 }
                 
                 const config = fileConfigs[file.name];
+                const escapedName = escapeHtml(file.name);
                 
                 return `
                     <div class="file-item">
                         <div class="file-header">
                             <div class="file-info">
                                 <span>✓</span>
-                                <span class="file-name">${file.name}</span>
+                                <span class="file-name">${escapedName}</span>
                                 <span class="file-size">(${formatFileSize(file.size)})</span>
                             </div>
-                            <button class="btn btn-danger" onclick="deleteFile('${file.name}')">Remove</button>
+                            <button class="btn btn-danger" onclick="deleteFile('${escapedName}')">Remove</button>
                         </div>
                         <div class="file-config">
                             <div class="file-config-field">
