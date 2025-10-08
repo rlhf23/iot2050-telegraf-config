@@ -496,9 +496,9 @@ pub async fn generate_config(
         ip: request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
         username: username.clone(),
         password: password.clone(),
-        iot_host: String::new(), // Not needed for generation
-        iot_username: String::new(),
-        iot_password: String::new(),
+        iot_host: "localhost:22".to_string(), // Dummy value - not used for generation
+        iot_username: "dummy".to_string(),
+        iot_password: "dummy".to_string(),
         listener_files: request.file_configs.iter()
             .filter(|fc| fc.use_listener)
             .map(|fc| fc.filename.clone())
