@@ -169,5 +169,60 @@ mod tests {
         let result = ConfigGenerator::new(config);
         assert!(result.is_ok(), "ConfigGenerator should accept localhost:22 as valid iot_host");
     }
+
+    #[test]
+    fn test_config_generator_with_ip_defaults() {
+        // Test that the defaults used by the API pass validation
+        use sie_generate_config::{TelegrafConfig, backend::ConfigGenerator};
+        use std::path::PathBuf;
+
+        let config = TelegrafConfig {
+            folder: PathBuf::from("/tmp"),
+            ip: "127.0.0.1".to_string(), // Default OPC-UA IP
+            username: "".to_string(),
+            password: "".to_string(),
+            iot_host: "127.0.0.1:22".to_string(), // Default IoT host
+            iot_username: "user".to_string(),
+            iot_password: "pass".to_string(),
+            listener_files: vec![],
+            output_format: Some("influxdb".to_string()),
+            include_test_inputs: false,
+            selected_opcua_nodes: vec![],
+        };
+
+        // This should pass - verifies our defaults are valid
+        let result = ConfigGenerator::new(config);
+        assert!(result.is_ok(), "ConfigGenerator should accept default IP addresses: {}", 
+                result.err().map(|e| e.to_string()).unwrap_or_default());
+    }
+
+    #[test]
+    fn test_config_generator_rejects_invalid_opcua_ip() {
+        // Test that invalid OPC-UA IPs are rejected
+        use sie_generate_config::{TelegrafConfig, backend::ConfigGenerator};
+        use std::path::PathBuf;
+
+        let config = TelegrafConfig {
+            folder: PathBuf::from("/tmp"),
+            ip: "localhost".to_string(), // Invalid - not an IP address
+            username: "admin".to_string(),
+            password: "password".to_string(),
+            iot_host: "127.0.0.1:22".to_string(),
+            iot_username: "user".to_string(),
+            iot_password: "pass".to_string(),
+            listener_files: vec![],
+            output_format: Some("influxdb".to_string()),
+            include_test_inputs: false,
+            selected_opcua_nodes: vec![],
+        };
+
+        // This should FAIL - localhost is not a valid IP format
+        let result = ConfigGenerator::new(config);
+        assert!(result.is_err(), "ConfigGenerator should reject 'localhost' as OPC-UA IP");
+        
+        let error_msg = result.err().unwrap().to_string();
+        assert!(error_msg.contains("4 parts") || error_msg.contains("IP"), 
+                "Error should mention IP validation: {}", error_msg);
+    }
 }
 

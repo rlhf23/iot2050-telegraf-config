@@ -494,14 +494,23 @@ pub async fn generate_config(
     };
 
     // Create TelegrafConfig for ConfigGenerator
+    // Use sensible defaults for web UI (local deployment, no SSH needed)
     let telegraf_config = TelegrafConfig {
         folder: session_dir.clone(),
-        ip: request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
+        ip: request.opcua_ip.clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "127.0.0.1".to_string()),
         username: username.clone(),
         password: password.clone(),
-        iot_host: request.iot_host.clone().unwrap_or_else(|| "localhost:22".to_string()),
-        iot_username: request.iot_username.clone().unwrap_or_else(|| "user".to_string()),
-        iot_password: request.iot_password.clone().unwrap_or_else(|| "pass".to_string()),
+        iot_host: request.iot_host.clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "127.0.0.1:22".to_string()),
+        iot_username: request.iot_username.clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "user".to_string()),
+        iot_password: request.iot_password.clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "pass".to_string()),
         listener_files: request.file_configs.iter()
             .filter(|fc| fc.use_listener)
             .map(|fc| fc.filename.clone())
