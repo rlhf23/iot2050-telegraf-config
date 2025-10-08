@@ -74,35 +74,24 @@ jobs:
           # Binary is already stripped by cargo profile
           ls -lh docker/api-service/target/${{ matrix.target }}/release/docker-api-service
 
-      - name: Copy to expected location
+      - name: Prepare binary for upload
         run: |
+          mkdir -p artifacts
           cp docker/api-service/target/${{ matrix.target }}/release/docker-api-service \
-             docker/api-service/docker-api-service
-          chmod +x docker/api-service/docker-api-service
-
-      - name: Commit binary to repo
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add docker/api-service/docker-api-service
-          git diff --staged --quiet || git commit -m "chore: Update aarch64 binary [skip ci]"
-      
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }}
+             artifacts/docker-api-service
+          chmod +x artifacts/docker-api-service
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: api-service-${{ matrix.arch }}
-          path: docker/api-service/docker-api-service
+          path: artifacts/docker-api-service
+          retention-days: 90
 
       - name: Create Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: docker/api-service/docker-api-service
+          files: artifacts/docker-api-service
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
