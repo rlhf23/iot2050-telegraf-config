@@ -58,10 +58,11 @@ pub async fn deploy_config(
         }
     };
 
-    // Define the target path in the host system where Telegraf reads config
-    // This assumes the docker-compose setup mounts ~/telegraf/telegraf.conf
+    // Define the target path where Telegraf reads config
+    // This should be set via TELEGRAF_CONFIG_PATH env var in docker-compose
+    // which mounts ${HOME}/telegraf to /telegraf in the container
     let target_path = std::env::var("TELEGRAF_CONFIG_PATH")
-        .unwrap_or_else(|_| "/home/iotuser/telegraf/telegraf.conf".to_string());
+        .unwrap_or_else(|_| "/telegraf/telegraf.conf".to_string());
 
     // Write the config to the target location
     match fs::write(&target_path, &config_content).await {
