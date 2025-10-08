@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Copy pre-built binary
 # This binary should be built by GitHub Actions or locally
-COPY docker-api-service /app/docker-api-service
+COPY api-service/docker-api-service /app/docker-api-service
 
 # Make it executable
 RUN chmod +x /app/docker-api-service
