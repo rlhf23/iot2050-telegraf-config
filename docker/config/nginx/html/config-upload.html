@@ -426,16 +426,6 @@
                 <h2>Step 2: Configure Settings</h2>
                 
                 <div class="form-group">
-                    <label for="namespace">Namespace</label>
-                    <input type="text" id="namespace" placeholder="my_namespace" value="default">
-                </div>
-
-                <div class="form-group">
-                    <label for="interval">Interval (ms)</label>
-                    <input type="number" id="interval" placeholder="1000" value="1000" min="100">
-                </div>
-
-                <div class="form-group">
                     <label for="output-format">Output Format</label>
                     <select id="output-format">
                         <option value="influxdb">InfluxDB</option>
@@ -465,6 +455,23 @@
                         <input type="checkbox" id="anonymous-auth">
                         <label for="anonymous-auth" style="margin-bottom: 0;">Anonymous Authentication</label>
                     </div>
+                </div>
+
+                <h3 style="margin-top: 25px; margin-bottom: 15px; font-size: 16px;">IoT Device Settings (for deployment)</h3>
+
+                <div class="form-group">
+                    <label for="iot-host">Device Host (hostname:port)</label>
+                    <input type="text" id="iot-host" placeholder="192.168.1.2:22">
+                </div>
+
+                <div class="form-group">
+                    <label for="iot-username">SSH Username</label>
+                    <input type="text" id="iot-username" placeholder="iotuser">
+                </div>
+
+                <div class="form-group">
+                    <label for="iot-password">SSH Password</label>
+                    <input type="password" id="iot-password" placeholder="password">
                 </div>
             </div>
 
@@ -765,6 +772,9 @@
                 opcua_username: document.getElementById('opcua-username').value || null,
                 opcua_password: document.getElementById('opcua-password').value || null,
                 anonymous: document.getElementById('anonymous-auth').checked,
+                iot_host: document.getElementById('iot-host').value || null,
+                iot_username: document.getElementById('iot-username').value || null,
+                iot_password: document.getElementById('iot-password').value || null,
                 output_format: document.getElementById('output-format').value || 'influxdb',
                 file_configs: file_configs
             };

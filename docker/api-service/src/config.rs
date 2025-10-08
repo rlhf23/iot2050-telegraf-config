@@ -69,6 +69,9 @@ pub struct GenerateConfigRequest {
     pub opcua_username: Option<String>,
     pub opcua_password: Option<String>,
     pub anonymous: bool,
+    pub iot_host: Option<String>,
+    pub iot_username: Option<String>,
+    pub iot_password: Option<String>,
     pub output_format: String,
     pub file_configs: Vec<FileConfig>,
 }
@@ -496,9 +499,9 @@ pub async fn generate_config(
         ip: request.opcua_ip.clone().unwrap_or_else(|| "localhost".to_string()),
         username: username.clone(),
         password: password.clone(),
-        iot_host: "localhost:22".to_string(), // Dummy value - not used for generation
-        iot_username: "dummy".to_string(),
-        iot_password: "dummy".to_string(),
+        iot_host: request.iot_host.clone().unwrap_or_else(|| "localhost:22".to_string()),
+        iot_username: request.iot_username.clone().unwrap_or_else(|| "user".to_string()),
+        iot_password: request.iot_password.clone().unwrap_or_else(|| "pass".to_string()),
         listener_files: request.file_configs.iter()
             .filter(|fc| fc.use_listener)
             .map(|fc| fc.filename.clone())
