@@ -15,12 +15,12 @@ on:
 jobs:
   build:
     name: Build for ARM64
-    runs-on: ubuntu-latest-arm64  # Use native ARM64 runner!
+    runs-on: ubuntu-latest  # Use x86_64 runner with cross-compilation
     strategy:
       matrix:
         include:
-          # IoT2050 with sunxi64 (ARM64)
-          - target: aarch64-unknown-linux-musl
+          # IoT2050 (ARM64) - use gnu instead of musl for compatibility
+          - target: aarch64-unknown-linux-gnu
             arch: arm64
 
     steps:
@@ -28,20 +28,27 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          targets: ${{ matrix.target }}
 
-      - name: Install build dependencies
+      - name: Install cross-compilation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools libssl-dev pkg-config
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libssl-dev \
+            pkg-config \
+            patchelf
           
-      - name: Add musl target
+      - name: Set up cross-compilation environment
         run: |
-          rustup target add aarch64-unknown-linux-musl
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -63,30 +70,47 @@ jobs:
 
       - name: Build api-service
         run: |
-          # Native ARM64 build - no cross-compilation needed!
-          cargo build --release \
-            --target ${{ matrix.target }} \
-            --manifest-path docker/api-service/Cargo.toml
+          cd docker/api-service
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Patch binary interpreter
+        run: |
+          patchelf --set-interpreter /lib/ld-linux-aarch64.so.1 \
+            docker/api-service/target/${{ matrix.target }}/release/docker-api-service
 
       - name: Strip binary
         run: |
-          strip target/${{ matrix.target }}/release/docker-api-service || true
+          aarch64-linux-gnu-strip docker/api-service/target/${{ matrix.target }}/release/docker-api-service || true
 
-      - name: Rename binary
+      - name: Copy to expected location
         run: |
-          mkdir -p binaries
-          cp target/${{ matrix.target }}/release/docker-api-service binaries/docker-api-service-${{ matrix.arch }}
+          cp docker/api-service/target/${{ matrix.target }}/release/docker-api-service \
+             docker/api-service/docker-api-service
+          chmod +x docker/api-service/docker-api-service
+
+      - name: Commit binary to repo
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docker/api-service/docker-api-service
+          git diff --staged --quiet || git commit -m "chore: Update aarch64 binary [skip ci]"
+      
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: api-service-${{ matrix.arch }}
-          path: binaries/docker-api-service-${{ matrix.arch }}
+          path: docker/api-service/docker-api-service
 
       - name: Create Release (on tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: binaries/docker-api-service-${{ matrix.arch }}
+          files: docker/api-service/docker-api-service
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
