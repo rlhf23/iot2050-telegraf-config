@@ -1660,6 +1660,7 @@ dependencies = [
  "log",
  "opcua",
  "openssl",
+ "openssl-sys",
  "roxmltree",
  "ssh2",
  "thiserror 2.0.17",
