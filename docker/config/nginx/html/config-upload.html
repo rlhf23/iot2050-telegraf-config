@@ -204,10 +204,27 @@
         }
 
         .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
             padding: 15px 20px;
             border-radius: 6px;
-            margin-bottom: 20px;
             display: none;
+            z-index: 2000;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         .notification.success {
@@ -383,7 +400,6 @@
         </div>
 
         <div class="content">
-            <div id="notification" class="notification"></div>
             <div class="session-info">
                 Session ID: <strong id="session-id">Loading...</strong>
             </div>
@@ -499,6 +515,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Fixed notification toast -->
+    <div id="notification" class="notification"></div>
 
     <script>
         // State
