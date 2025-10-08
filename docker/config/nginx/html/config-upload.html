@@ -467,9 +467,12 @@
                     Generate Configuration
                 </button>
 
-                <div style="margin-top: 20px;">
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
                     <button class="btn btn-success" id="deploy-btn" disabled>
                         Deploy to Telegraf
+                    </button>
+                    <button class="btn" onclick="viewCurrentConfig()" style="background: #6c757d;">
+                        📄 View Current Config
                     </button>
                 </div>
 
@@ -963,6 +966,24 @@
                 closePreviewModal();
             }
         });
+
+        // View current Telegraf config
+        async function viewCurrentConfig() {
+            try {
+                const response = await fetch('/api/config/telegraf', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    showPreviewModal(text);
+                } else {
+                    showNotification(`Error loading config: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`Error: ${error.message}`, 'error');
+            }
+        }
     </script>
 </body>
 </html>

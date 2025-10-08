@@ -613,10 +613,13 @@ pub async fn generate_config(
 
             info!("Successfully generated config for session: {}", request.session_id);
             
-            // Limit preview to first 2000 characters
-            let preview = if config_content.len() > 2000 {
-                format!("{}...\n\n[Preview truncated - {} total characters]", 
-                    &config_content[..2000], config_content.len())
+            // Limit preview to first 100 lines
+            let lines: Vec<&str> = config_content.lines().collect();
+            let total_lines = lines.len();
+            let preview = if total_lines > 100 {
+                let preview_lines = lines[..100].join("\n");
+                format!("{}...\n\n[Preview truncated - showing 100 of {} total lines]", 
+                    preview_lines, total_lines)
             } else {
                 config_content
             };
