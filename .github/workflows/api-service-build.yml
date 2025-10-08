@@ -36,6 +36,11 @@ jobs:
         run: |
           # Enable arm64 architecture first
           sudo dpkg --add-architecture arm64
+          
+          # Fix sources for arm64 (use ports.ubuntu.com for arm64)
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          
           sudo apt-get update
           
           # Install cross-compilation toolchain
