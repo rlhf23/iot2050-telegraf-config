@@ -37,9 +37,13 @@ jobs:
           # Enable arm64 architecture first
           sudo dpkg --add-architecture arm64
           
-          # Fix sources for arm64 (use ports.ubuntu.com for arm64)
+          # Modify sources to use [arch=amd64] for existing repos and add arm64 repos
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          
+          # Add arm64 sources from ports.ubuntu.com
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
           
           sudo apt-get update
           
