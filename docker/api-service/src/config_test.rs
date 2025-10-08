@@ -35,6 +35,7 @@ mod tests {
             namespace: "2".to_string(),
             interval_ms: 1000,
             use_listener: false,
+            custom_ip: None,
         };
 
         assert_eq!(config.filename, "test.xml");
@@ -117,6 +118,7 @@ mod tests {
             namespace: "3".to_string(),
             interval_ms: 500,
             use_listener: true,
+            custom_ip: None,
         };
 
         assert_eq!(config.use_listener, true);
@@ -131,12 +133,14 @@ mod tests {
                 namespace: "1".to_string(),
                 interval_ms: 1000,
                 use_listener: false,
+                custom_ip: None,
             },
             FileConfig {
                 filename: "file2.xml".to_string(),
                 namespace: "2".to_string(),
                 interval_ms: 500,
                 use_listener: true,
+                custom_ip: Some("192.168.1.55".to_string()),
             },
         ];
 

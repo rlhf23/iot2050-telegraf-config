@@ -60,6 +60,7 @@ pub struct FileConfig {
     pub namespace: String,
     pub interval_ms: u64,
     pub use_listener: bool,
+    pub custom_ip: Option<String>, // Per-file custom OPC-UA server IP
 }
 
 #[derive(Deserialize)]
@@ -539,13 +540,20 @@ pub async fn generate_config(
 
     // Set file configurations
     for fc in &request.file_configs {
+        // Use per-file custom IP if provided, otherwise use main OPC-UA IP, fallback to 127.0.0.1
+        let file_ip = fc.custom_ip.clone()
+            .filter(|s| !s.is_empty())
+            .or_else(|| request.opcua_ip.clone().filter(|s| !s.is_empty()))
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        
+        // Build full path to the file
+        let file_path = session_dir.join(&fc.filename).to_string_lossy().to_string();
+        
         generator.set_file_config(
-            fc.filename.clone(),
+            file_path,
             fc.namespace.clone(),
             fc.interval_ms,
-            Some(request.opcua_ip.clone()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "127.0.0.1".to_string())),
+            Some(file_ip),
         );
     }
 
@@ -574,15 +582,15 @@ pub async fn generate_config(
         ));
     }
 
-    // Collect XML filenames
+    // Collect XML file paths (need full paths, not just filenames)
     let xml_files: Vec<String> = request.file_configs.iter()
-        .map(|fc| fc.filename.clone())
+        .map(|fc| session_dir.join(&fc.filename).to_string_lossy().to_string())
         .collect();
 
-    // Collect listener files
+    // Collect listener file paths
     let listener_files: Vec<String> = request.file_configs.iter()
         .filter(|fc| fc.use_listener)
-        .map(|fc| fc.filename.clone())
+        .map(|fc| session_dir.join(&fc.filename).to_string_lossy().to_string())
         .collect();
 
     // Generate configuration

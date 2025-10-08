@@ -747,7 +747,8 @@
                 filename: file.name,
                 namespace: fileConfigs[file.name]?.namespace || 'default',
                 interval_ms: fileConfigs[file.name]?.interval_ms || 1000,
-                use_listener: fileConfigs[file.name]?.use_listener || false
+                use_listener: fileConfigs[file.name]?.use_listener || false,
+                custom_ip: fileConfigs[file.name]?.custom_ip || null
             }));
 
             const requestData = {
