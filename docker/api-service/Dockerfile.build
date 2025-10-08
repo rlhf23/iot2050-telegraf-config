@@ -1,7 +1,7 @@
 # Dockerfile for building from source (CI/local development)
 # Builds for the host architecture (x86_64 in CI, any arch locally)
 
-FROM rust:1.75 as builder
+FROM rust:1.83 as builder
 
 WORKDIR /build
 
