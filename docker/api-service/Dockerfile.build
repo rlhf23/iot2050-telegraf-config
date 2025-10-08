@@ -1,0 +1,38 @@
+# Dockerfile for building from source (CI/local development)
+# Builds for the host architecture (x86_64 in CI, any arch locally)
+
+FROM rust:1.75 as builder
+
+WORKDIR /build
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY src/ ./src/
+COPY docker/api-service/ ./docker/api-service/
+
+# Build the api-service binary
+WORKDIR /build/docker/api-service
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy built binary from builder
+COPY --from=builder /build/docker/api-service/target/release/docker-api-service /app/docker-api-service
+
+# Make it executable
+RUN chmod +x /app/docker-api-service
+
+# Expose port
+EXPOSE 8000
+
+# Run the binary
+CMD ["/app/docker-api-service"]

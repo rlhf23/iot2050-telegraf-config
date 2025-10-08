@@ -1,0 +1,9 @@
+# Override for CI/CD environments
+# Use this with: docker compose -f docker-compose.yml -f docker-compose.ci.yml up
+
+services:
+  # Build api-service from source in CI (x86_64)
+  api-service:
+    build:
+      context: .
+      dockerfile: api-service/Dockerfile.build
