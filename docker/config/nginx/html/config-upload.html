@@ -842,8 +842,11 @@
 
         // Generate configuration
         async function generateConfig() {
-            if (!sessionId || uploadedFiles.length === 0) {
-                showNotification('Please upload XML files first', 'error');
+            const hasFiles = uploadedFiles.length > 0;
+            const hasNodes = selectedNodesForConfig.length > 0;
+            
+            if (!sessionId || (!hasFiles && !hasNodes)) {
+                showNotification('Please upload XML files or select nodes from browser', 'error');
                 return;
             }
 
@@ -869,7 +872,8 @@
                 iot_username: null,
                 iot_password: null,
                 output_format: document.getElementById('output-format').value || 'influxdb',
-                file_configs: file_configs
+                file_configs: file_configs,
+                selected_nodes: selectedNodesForConfig.length > 0 ? selectedNodesForConfig : null
             };
 
             try {

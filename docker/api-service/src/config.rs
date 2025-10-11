@@ -5,13 +5,17 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::str::FromStr;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-// Import from main project
+// Import from main project  
 use sie_generate_config::{TelegrafConfig, backend::{ConfigGenerator, OutputFormat}};
+
+// We need NodeId from opcua crate (it's a transitive dependency through sie_generate_config)
+use opcua::types::NodeId;
 
 const UPLOAD_DIR: &str = "/tmp/config-uploads";
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
@@ -75,6 +79,17 @@ pub struct GenerateConfigRequest {
     pub iot_password: Option<String>,
     pub output_format: String,
     pub file_configs: Vec<FileConfig>,
+    pub selected_nodes: Option<Vec<SelectedNodeRequest>>,
+}
+
+#[derive(Deserialize)]
+pub struct SelectedNodeRequest {
+    pub node_id: String,
+    pub namespace: u16,
+    pub browse_name: String,
+    pub display_name: String,
+    pub measurement_name: String,
+    pub interval_ms: u32,
 }
 
 #[derive(Serialize)]
@@ -455,13 +470,16 @@ pub async fn generate_config(
         ));
     }
 
-    // Validate file configs
-    if request.file_configs.is_empty() {
+    // Validate that we have either file configs or selected nodes
+    let has_files = !request.file_configs.is_empty();
+    let has_nodes = request.selected_nodes.as_ref().map_or(false, |nodes| !nodes.is_empty());
+    
+    if !has_files && !has_nodes {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(GenerateConfigResponse {
                 success: false,
-                message: "No file configurations provided".to_string(),
+                message: "No file configurations or selected nodes provided".to_string(),
                 config_path: None,
                 preview: None,
             }),
@@ -518,7 +536,26 @@ pub async fn generate_config(
             .collect(),
         output_format: Some(request.output_format.clone()),
         include_test_inputs: false,
-        selected_opcua_nodes: vec![],
+        selected_opcua_nodes: request.selected_nodes
+            .as_ref()
+            .map(|nodes| {
+                nodes.iter().map(|node| {
+                    // Parse the node_id string back to NodeId
+                    let node_id = NodeId::from_str(&node.node_id)
+                        .unwrap_or_else(|_| NodeId::null());
+                    
+                    sie_generate_config::SelectedOpcUaNode {
+                        node_id,
+                        namespace: node.namespace,
+                        browse_name: node.browse_name.clone(),
+                        display_name: node.display_name.clone(),
+                        measurement_name: node.measurement_name.clone(),
+                        interval_ms: node.interval_ms,
+                        folder_name: None, // WebUI doesn't support folders yet
+                    }
+                }).collect()
+            })
+            .unwrap_or_default(),
     };
 
     // Create ConfigGenerator
