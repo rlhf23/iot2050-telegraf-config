@@ -436,8 +436,8 @@
                     </div>
                 </div>
                 <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':3000', '_blank')" class="service-link" id="grafana-link">Open Grafana</a>
-                <button class="view-btn" onclick="viewContainerLogs('grafana')">📝 View Logs</button>
-                <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
+                <button class="view-btn" onclick="window.dashboard.viewContainerLogs('grafana')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-grafana" onclick="window.dashboard.confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
             </div>
 
             <!-- InfluxDB -->
@@ -460,8 +460,8 @@
                     </div>
                 </div>
                 <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8086', '_blank')" class="service-link" id="influxdb-link">Open InfluxDB</a>
-                <button class="view-btn" onclick="viewContainerLogs('influxdb')">📝 View Logs</button>
-                <button class="restart-btn" id="restart-influxdb" onclick="confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
+                <button class="view-btn" onclick="window.dashboard.viewContainerLogs('influxdb')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-influxdb" onclick="window.dashboard.confirmRestart('influxdb', 'InfluxDB')">🔄 Restart</button>
             </div>
 
             <!-- Prometheus -->
@@ -484,8 +484,8 @@
                     </div>
                 </div>
                 <a href="/prometheus" class="service-link" id="prometheus-link">Open Prometheus</a>
-                <button class="view-btn" onclick="viewContainerLogs('prometheus')">📝 View Logs</button>
-                <button class="restart-btn" id="restart-prometheus" onclick="confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
+                <button class="view-btn" onclick="window.dashboard.viewContainerLogs('prometheus')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-prometheus" onclick="window.dashboard.confirmRestart('prometheus', 'Prometheus')">🔄 Restart</button>
             </div>
 
             <!-- Telegraf -->
@@ -508,9 +508,9 @@
                     </div>
                 </div>
                 <a href="/telegraf/metrics" class="service-link" id="telegraf-link">View Metrics</a>
-                <button class="view-btn" onclick="viewContainerLogs('telegraf')">📝 View Logs</button>
-                <button class="restart-btn" id="restart-telegraf" onclick="confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
-                <button class="view-btn" onclick="viewTelegrafConfig()">📄 View Config</button>
+                <button class="view-btn" onclick="window.dashboard.viewContainerLogs('telegraf')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-telegraf" onclick="window.dashboard.confirmRestart('telegraf', 'Telegraf')">🔄 Restart</button>
+                <button class="view-btn" onclick="window.dashboard.viewTelegrafConfig()">📄 View Config</button>
             </div>
 
             <!-- Configuration Generator -->
@@ -550,7 +550,7 @@
                 <li><strong>Running Containers:</strong> <span id="sys-containers">Loading...</span></li>
                 <li><strong>Auto-refresh:</strong> Every 10 seconds</li>
             </ul>
-            <button class="view-btn" onclick="viewDockerLogs()" style="margin-top: 15px;">📝 View Docker Logs</button>
+            <button class="view-btn" onclick="window.dashboard.viewDockerLogs()" style="margin-top: 15px;">📝 View Docker Logs</button>
         </div>
 
         <div class="refresh-info">
@@ -563,7 +563,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Telegraf Configuration</h2>
-                <span class="close" onclick="closeConfigModal()">&times;</span>
+                <span class="close" onclick="window.dashboard.closeConfigModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <pre id="config-content">Loading...</pre>
@@ -576,12 +576,12 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Docker Container Logs</h2>
-                <span class="close" onclick="closeLogsModal()">&times;</span>
+                <span class="close" onclick="window.dashboard.closeLogsModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="log-selector">
                     <label for="container-select"><strong>Select Container:</strong></label>
-                    <select id="container-select" onchange="loadContainerLogs()">
+                    <select id="container-select" onchange="window.dashboard.loadContainerLogs()">
                         <option value="influxdb">InfluxDB</option>
                         <option value="telegraf">Telegraf</option>
                         <option value="grafana">Grafana</option>
@@ -599,284 +599,19 @@
         <div class="confirm-modal-content">
             <div class="modal-header">
                 <h2>⚠️ Restart Service?</h2>
-                <span class="close" onclick="closeRestartModal()">&times;</span>
+                <span class="close" onclick="window.dashboard.closeRestartModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to restart <strong id="restart-service-name"></strong>?</p>
                 <p style="color: #666; font-size: 0.9em; margin-top: 10px;">This will cause a brief service interruption.</p>
                 <div class="confirm-buttons">
-                    <button class="btn-cancel" onclick="closeRestartModal()">Cancel</button>
-                    <button class="btn-confirm" onclick="executeRestart()">Yes, Restart</button>
+                    <button class="btn-cancel" onclick="window.dashboard.closeRestartModal()">Cancel</button>
+                    <button class="btn-confirm" onclick="window.dashboard.executeRestart()">Yes, Restart</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Service configuration
-        const services = {
-            grafana: {
-                healthUrl: '/grafana/api/health',
-                port: 3000
-            },
-            influxdb: {
-                healthUrl: '/influxdb/health',
-                port: 8086
-            },
-            prometheus: {
-                healthUrl: '/prometheus/-/healthy',
-                port: 9090
-            },
-            telegraf: {
-                healthUrl: '/telegraf/metrics',
-                port: 9273
-            }
-        };
-
-        // Check service health
-        async function checkServiceHealth(serviceName, config) {
-            const statusIndicator = document.getElementById(`${serviceName}-status`);
-            const statusText = document.getElementById(`${serviceName}-status-text`);
-            const serviceLink = document.getElementById(`${serviceName}-link`);
-
-            try {
-                const response = await fetch(config.healthUrl, {
-                    method: 'GET',
-                    cache: 'no-cache'
-                });
-
-                if (response.ok) {
-                    statusIndicator.className = 'status-indicator healthy';
-                    statusText.textContent = 'Healthy';
-                    serviceLink.classList.remove('disabled');
-                } else {
-                    statusIndicator.className = 'status-indicator unhealthy';
-                    statusText.textContent = `Error (${response.status})`;
-                    serviceLink.classList.add('disabled');
-                }
-            } catch (error) {
-                // If fetch fails, service is likely down
-                statusIndicator.className = 'status-indicator unhealthy';
-                statusText.textContent = 'Unavailable';
-                serviceLink.classList.add('disabled');
-            }
-        }
-
-        // Fetch and display system information
-        async function updateSystemInfo() {
-            try {
-                const response = await fetch('/api/system-info', {
-                    cache: 'no-cache'
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    document.getElementById('sys-hostname').textContent = data.hostname || 'N/A';
-                    document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';
-                    document.getElementById('sys-time').textContent = data.system_time || 'N/A';
-                    document.getElementById('sys-arch').textContent = data.architecture || 'N/A';
-                    document.getElementById('sys-uptime').textContent = data.uptime || 'N/A';
-                    document.getElementById('sys-load').textContent = data.load_average || 'N/A';
-                    
-                    // Format memory info
-                    if (data.memory) {
-                        const memText = `${data.memory.used_mb} MB / ${data.memory.total_mb} MB (${data.memory.percent}%)`;
-                        document.getElementById('sys-memory').textContent = memText;
-                    }
-                    
-                    // Format disk info
-                    if (data.disk) {
-                        const diskText = `${data.disk.used} / ${data.disk.total} (${data.disk.percent})`;
-                        document.getElementById('sys-disk').textContent = diskText;
-                    }
-                    
-                    document.getElementById('sys-containers').textContent = data.containers_running || 'N/A';
-                } else {
-                    console.error('Failed to fetch system info:', response.status);
-                }
-            } catch (error) {
-                console.error('Error fetching system info:', error);
-            }
-        }
-
-        // Check all services
-        async function checkAllServices() {
-            for (const [serviceName, config] of Object.entries(services)) {
-                await checkServiceHealth(serviceName, config);
-            }
-            
-            // Update last refresh time
-            const now = new Date();
-            document.getElementById('last-update').textContent = now.toLocaleTimeString();
-        }
-
-        // View Telegraf Config
-        async function viewTelegrafConfig() {
-            const modal = document.getElementById('configModal');
-            const content = document.getElementById('config-content');
-            
-            modal.style.display = 'block';
-            content.textContent = 'Loading...';
-            
-            try {
-                const response = await fetch('/api/config/telegraf', {
-                    cache: 'no-cache'
-                });
-                
-                if (response.ok) {
-                    const text = await response.text();
-                    content.textContent = text;
-                } else {
-                    content.textContent = `Error loading config: ${response.status} ${response.statusText}`;
-                }
-            } catch (error) {
-                content.textContent = `Error: ${error.message}`;
-            }
-        }
-
-        // Close Config Modal
-        function closeConfigModal() {
-            document.getElementById('configModal').style.display = 'none';
-        }
-
-        // View Docker Logs (from System Info panel)
-        function viewDockerLogs() {
-            const modal = document.getElementById('logsModal');
-            modal.style.display = 'block';
-            loadContainerLogs();
-        }
-
-        // View logs for a specific container (from service card)
-        function viewContainerLogs(container) {
-            const modal = document.getElementById('logsModal');
-            const select = document.getElementById('container-select');
-            
-            // Set the dropdown to the selected container
-            select.value = container;
-            
-            // Open modal and load logs
-            modal.style.display = 'block';
-            loadContainerLogs();
-        }
-
-        // Load logs for selected container
-        async function loadContainerLogs() {
-            const select = document.getElementById('container-select');
-            const content = document.getElementById('logs-content');
-            const container = select.value;
-            
-            content.textContent = 'Loading logs...';
-            
-            try {
-                const response = await fetch(`/api/containers/${container}/logs`, {
-                    cache: 'no-cache'
-                });
-                
-                if (response.ok) {
-                    const text = await response.text();
-                    content.textContent = text || 'No logs available';
-                } else {
-                    content.textContent = `Error loading logs: ${response.status} ${response.statusText}`;
-                }
-            } catch (error) {
-                content.textContent = `Error: ${error.message}`;
-            }
-        }
-
-        // Close Logs Modal
-        function closeLogsModal() {
-            document.getElementById('logsModal').style.display = 'none';
-        }
-
-        // Restart service functionality
-        let pendingRestart = null;
-
-        function confirmRestart(container, displayName) {
-            pendingRestart = container;
-            document.getElementById('restart-service-name').textContent = displayName;
-            document.getElementById('restartModal').style.display = 'block';
-        }
-
-        function closeRestartModal() {
-            document.getElementById('restartModal').style.display = 'none';
-            pendingRestart = null;
-        }
-
-        async function executeRestart() {
-            if (!pendingRestart) return;
-            
-            const container = pendingRestart;
-            const button = document.getElementById(`restart-${container}`);
-            
-            // Close modal
-            closeRestartModal();
-            
-            // Disable button and show restarting state
-            button.disabled = true;
-            button.textContent = '⏳ Restarting...';
-            
-            try {
-                const response = await fetch(`/api/containers/${container}/restart`, {
-                    method: 'POST',
-                    cache: 'no-cache'
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok && result.success) {
-                    showNotification(`✅ ${container} restarted successfully`, 'success');
-                    // Refresh service status after 2 seconds
-                    setTimeout(() => checkAllServices(), 2000);
-                } else {
-                    showNotification(`❌ Failed to restart ${container}: ${result.message}`, 'error');
-                }
-            } catch (error) {
-                showNotification(`❌ Error: ${error.message}`, 'error');
-            } finally {
-                // Re-enable button
-                button.disabled = false;
-                button.textContent = '🔄 Restart';
-            }
-        }
-
-        function showNotification(message, type) {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.textContent = message;
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.remove();
-            }, 5000);
-        }
-
-        // Close modals when clicking outside
-        window.onclick = function(event) {
-            const configModal = document.getElementById('configModal');
-            const logsModal = document.getElementById('logsModal');
-            const restartModal = document.getElementById('restartModal');
-            
-            if (event.target == configModal) {
-                closeConfigModal();
-            }
-            if (event.target == logsModal) {
-                closeLogsModal();
-            }
-            if (event.target == restartModal) {
-                closeRestartModal();
-            }
-        }
-
-        // Initial checks
-        checkAllServices();
-        updateSystemInfo();
-
-        // Refresh every 10 seconds
-        setInterval(() => {
-            checkAllServices();
-            updateSystemInfo();
-        }, 10000);
-    </script>
+    <script type="module" src="/js/dashboard-main.js"></script>
 </body>
 </html>
