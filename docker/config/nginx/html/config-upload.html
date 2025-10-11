@@ -426,6 +426,15 @@
                     </p>
                 </div>
 
+                <div style="margin-top: 15px;">
+                    <button class="btn btn-secondary" onclick="openOpcUaBrowser()">
+                        🔍 Browse OPC-UA Nodes
+                    </button>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Interactively browse and select nodes from the OPC-UA server
+                    </p>
+                </div>
+
                 <div class="loading" id="upload-loading">
                     <div class="spinner"></div>
                     <p style="margin-top: 10px;">Uploading files...</p>
@@ -512,6 +521,45 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-primary" onclick="closePreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPC-UA Browser Modal -->
+    <div id="opcua-browser-modal" class="modal">
+        <div class="modal-content" style="max-width: 1000px; max-height: 90vh;">
+            <div class="modal-header">
+                <h2>🔍 OPC-UA Browser</h2>
+                <button class="modal-close" onclick="closeOpcUaBrowser()">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <!-- Connection Status -->
+                <div id="browser-connection-status" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 6px; display: none;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="spinner" style="width: 20px; height: 20px; border-width: 2px;"></div>
+                        <span id="browser-status-text">Connecting to OPC-UA server...</span>
+                    </div>
+                </div>
+
+                <!-- Tree Container -->
+                <div id="opcua-tree" style="min-height: 400px;">
+                    <p style="text-align: center; color: #6c757d; padding: 40px;">
+                        Click "Connect" to browse OPC-UA nodes
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <span id="selected-count" style="color: #6c757d; font-size: 14px;">0 nodes selected</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" id="browser-connect-btn" onclick="connectOpcUaBrowser()">
+                        Connect
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeOpcUaBrowser()">
+                        Close
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1011,6 +1059,235 @@
                 showNotification(`Error: ${error.message}`, 'error');
             }
         }
+
+        // ============================================================================
+        // OPC-UA Browser Functions
+        // ============================================================================
+
+        let opcuaBrowserSessionId = null;
+        let selectedNodes = new Set();
+
+        function openOpcUaBrowser() {
+            const modal = document.getElementById('opcua-browser-modal');
+            modal.classList.add('show');
+        }
+
+        function closeOpcUaBrowser() {
+            const modal = document.getElementById('opcua-browser-modal');
+            modal.classList.remove('show');
+        }
+
+        async function connectOpcUaBrowser() {
+            const opcuaIp = document.getElementById('opcua-ip').value;
+            if (!opcuaIp) {
+                showNotification('Please enter OPC-UA server IP address first', 'error');
+                return;
+            }
+
+            const statusDiv = document.getElementById('browser-connection-status');
+            const statusText = document.getElementById('browser-status-text');
+            const connectBtn = document.getElementById('browser-connect-btn');
+            
+            statusDiv.style.display = 'block';
+            statusText.textContent = 'Connecting to OPC-UA server...';
+            connectBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/opcua/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        opcua_ip: opcuaIp,
+                        opcua_username: document.getElementById('opcua-username').value || null,
+                        opcua_password: document.getElementById('opcua-password').value || null,
+                        anonymous: document.getElementById('anonymous-auth').checked
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    opcuaBrowserSessionId = data.session_id;
+                    statusText.textContent = `✅ Connected! Found ${data.node_count} root nodes`;
+                    setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+                    
+                    // Load root nodes
+                    await loadRootNodes();
+                } else {
+                    statusText.textContent = `❌ ${data.message}`;
+                    connectBtn.disabled = false;
+                }
+            } catch (error) {
+                statusText.textContent = `❌ Error: ${error.message}`;
+                connectBtn.disabled = false;
+            }
+        }
+
+        async function loadRootNodes() {
+            try {
+                const response = await fetch('/api/opcua/get-nodes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: opcuaBrowserSessionId,
+                        node_id: null
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    renderTree(data.nodes, document.getElementById('opcua-tree'));
+                } else {
+                    showNotification('Failed to load nodes', 'error');
+                }
+            } catch (error) {
+                showNotification(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        function renderTree(nodes, container) {
+            container.innerHTML = '';
+            
+            nodes.forEach(node => {
+                const nodeEl = createNodeElement(node);
+                container.appendChild(nodeEl);
+            });
+        }
+
+        function createNodeElement(node) {
+            const div = document.createElement('div');
+            div.style.marginLeft = '20px';
+            div.style.marginBottom = '5px';
+            
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.alignItems = 'center';
+            header.style.gap = '8px';
+            header.style.padding = '4px';
+            header.style.cursor = 'pointer';
+            header.style.borderRadius = '4px';
+            
+            header.addEventListener('mouseenter', () => {
+                header.style.background = '#f0f0f0';
+            });
+            header.addEventListener('mouseleave', () => {
+                header.style.background = 'transparent';
+            });
+
+            // Expand/collapse icon (only for folders)
+            const isFolder = node.node_class === 'Object' || node.node_class === 'ObjectType';
+            if (isFolder) {
+                const icon = document.createElement('span');
+                icon.textContent = '▶';
+                icon.style.display = 'inline-block';
+                icon.style.width = '16px';
+                icon.style.fontSize = '12px';
+                icon.style.transition = 'transform 0.2s';
+                header.appendChild(icon);
+
+                icon.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const childContainer = div.querySelector('.node-children');
+                    if (childContainer.style.display === 'none') {
+                        // Load children if not loaded
+                        if (!node.children_loaded) {
+                            await loadNodeChildren(node, childContainer);
+                        }
+                        childContainer.style.display = 'block';
+                        icon.style.transform = 'rotate(90deg)';
+                    } else {
+                        childContainer.style.display = 'none';
+                        icon.style.transform = 'rotate(0deg)';
+                    }
+                });
+            } else {
+                const spacer = document.createElement('span');
+                spacer.style.width = '16px';
+                spacer.style.display = 'inline-block';
+                header.appendChild(spacer);
+            }
+
+            // Checkbox (only for variables)
+            if (node.node_class === 'Variable') {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = selectedNodes.has(node.node_id);
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        selectedNodes.add(node.node_id);
+                    } else {
+                        selectedNodes.delete(node.node_id);
+                    }
+                    updateSelectedCount();
+                });
+                header.appendChild(checkbox);
+            }
+
+            // Node label
+            const label = document.createElement('span');
+            label.textContent = `${node.display_name} (${node.node_class})`;
+            label.style.fontSize = '14px';
+            if (node.data_type) {
+                label.textContent += ` [${node.data_type}]`;
+                label.style.color = '#0066cc';
+            }
+            header.appendChild(label);
+
+            div.appendChild(header);
+
+            // Children container
+            if (isFolder) {
+                const childContainer = document.createElement('div');
+                childContainer.className = 'node-children';
+                childContainer.style.display = 'none';
+                div.appendChild(childContainer);
+            }
+
+            return div;
+        }
+
+        async function loadNodeChildren(node, container) {
+            container.innerHTML = '<div style="padding: 10px; color: #6c757d;">Loading...</div>';
+            
+            try {
+                const response = await fetch('/api/opcua/get-nodes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: opcuaBrowserSessionId,
+                        node_id: node.node_id
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    container.innerHTML = '';
+                    data.nodes.forEach(childNode => {
+                        const childEl = createNodeElement(childNode);
+                        container.appendChild(childEl);
+                    });
+                    node.children_loaded = true;
+                } else {
+                    container.innerHTML = '<div style="padding: 10px; color: #dc3545;">Failed to load children</div>';
+                }
+            } catch (error) {
+                container.innerHTML = `<div style="padding: 10px; color: #dc3545;">Error: ${error.message}</div>`;
+            }
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selected-count').textContent = `${selectedNodes.size} nodes selected`;
+        }
+
+        // Close modal on background click
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('opcua-browser-modal');
+            if (e.target === modal) {
+                closeOpcUaBrowser();
+            }
+        });
     </script>
 </body>
 </html>
