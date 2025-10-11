@@ -404,9 +404,12 @@
                 Session ID: <strong id="session-id">Loading...</strong>
             </div>
 
-            <!-- Step 1: Upload Files -->
+            <!-- Section A: XML Files (Namespace-based) -->
             <div class="step">
-                <h2>Step 1: Upload XML Configuration Files</h2>
+                <h2>Section A: XML Configuration Files (Optional)</h2>
+                <p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">
+                    Upload XML files to configure nodes by namespace number. Telegraf will poll all nodes in the specified namespace.
+                </p>
                 
                 <div class="upload-area" id="upload-area">
                     <div class="upload-icon">📁</div>
@@ -426,15 +429,6 @@
                     </p>
                 </div>
 
-                <div style="margin-top: 15px;">
-                    <button class="btn btn-secondary" onclick="openOpcUaBrowser()">
-                        🔍 Browse OPC-UA Nodes
-                    </button>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
-                        Interactively browse and select nodes from the OPC-UA server
-                    </p>
-                </div>
-
                 <div class="loading" id="upload-loading">
                     <div class="spinner"></div>
                     <p style="margin-top: 10px;">Uploading files...</p>
@@ -446,9 +440,41 @@
                 </div>
             </div>
 
-            <!-- Step 2: Configure Settings -->
+            <!-- Section B: OPC-UA Browser (Node-based) -->
             <div class="step">
-                <h2>Step 2: Configure Settings</h2>
+                <h2>Section B: Browse & Select Nodes (Optional)</h2>
+                <p style="color: #6c757d; font-size: 14px; margin-bottom: 15px;">
+                    Browse the OPC-UA server and select specific nodes by their string/numeric identifiers. Selected nodes will appear below.
+                </p>
+
+                <button class="btn btn-secondary" onclick="openOpcUaBrowser()">
+                    🔍 Browse OPC-UA Nodes
+                </button>
+
+                <!-- Selected Nodes Table -->
+                <div id="selected-nodes-section" style="margin-top: 20px; display: none;">
+                    <h3 style="font-size: 16px; margin-bottom: 10px;">Selected Nodes</h3>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                                    <th style="padding: 10px; text-align: left;">Node Name</th>
+                                    <th style="padding: 10px; text-align: left;">Namespace</th>
+                                    <th style="padding: 10px; text-align: left;">Measurement Name</th>
+                                    <th style="padding: 10px; text-align: left;">Interval (ms)</th>
+                                    <th style="padding: 10px; text-align: left;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="selected-nodes-tbody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section C: Server Settings -->
+            <div class="step">
+                <h2>Section C: Server Settings</h2>
                 
                 <div class="form-group">
                     <label for="output-format">Output Format</label>
@@ -484,9 +510,9 @@
 
             </div>
 
-            <!-- Step 3: Generate & Deploy -->
+            <!-- Section D: Generate & Deploy -->
             <div class="step">
-                <h2>Step 3: Generate & Deploy</h2>
+                <h2>Section D: Generate & Deploy</h2>
                 
                 <button class="btn btn-primary" id="generate-btn" disabled>
                     Generate Configuration
@@ -555,6 +581,9 @@
                 <div style="display: flex; gap: 10px;">
                     <button class="btn btn-primary" id="browser-connect-btn" onclick="connectOpcUaBrowser()">
                         Connect
+                    </button>
+                    <button class="btn btn-success" id="use-selected-btn" onclick="useSelectedNodes()" disabled>
+                        Use Selected Nodes
                     </button>
                     <button class="btn btn-secondary" onclick="closeOpcUaBrowser()">
                         Close
@@ -925,10 +954,13 @@
 
         // Update generate button state
         function updateGenerateButton() {
-            const generateBtn = document.getElementById('generate-btn');
-            generateBtn.disabled = uploadedFiles.length === 0;
+            const hasXmlFiles = uploadedFiles.length > 0;
+            const hasSelectedNodes = selectedNodesForConfig.length > 0;
             
-            // Also update poll namespaces button
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = !(hasXmlFiles || hasSelectedNodes);
+            
+            // Update poll namespaces button
             const pollBtn = document.getElementById('poll-namespaces-btn');
             pollBtn.disabled = uploadedFiles.length === 0;
         }
@@ -1065,7 +1097,8 @@
         // ============================================================================
 
         let opcuaBrowserSessionId = null;
-        let selectedNodes = new Set();
+        let selectedNodes = new Map(); // Map of node_id -> full node object
+        let selectedNodesForConfig = []; // Array of nodes with editable fields
 
         function openOpcUaBrowser() {
             const modal = document.getElementById('opcua-browser-modal');
@@ -1215,7 +1248,7 @@
                 checkbox.checked = selectedNodes.has(node.node_id);
                 checkbox.addEventListener('change', () => {
                     if (checkbox.checked) {
-                        selectedNodes.add(node.node_id);
+                        selectedNodes.set(node.node_id, node);
                     } else {
                         selectedNodes.delete(node.node_id);
                     }
@@ -1278,7 +1311,135 @@
         }
 
         function updateSelectedCount() {
-            document.getElementById('selected-count').textContent = `${selectedNodes.size} nodes selected`;
+            const count = selectedNodes.size;
+            document.getElementById('selected-count').textContent = `${count} nodes selected`;
+            document.getElementById('use-selected-btn').disabled = count === 0;
+        }
+
+        function useSelectedNodes() {
+            if (selectedNodes.size === 0) {
+                showNotification('No nodes selected', 'error');
+                return;
+            }
+
+            // Convert selected nodes to config format
+            selectedNodesForConfig = [];
+            selectedNodes.forEach((node, nodeId) => {
+                // Extract namespace from node_id (format: ns=X;...)
+                const nsMatch = nodeId.match(/ns=(\d+)/);
+                const namespace = nsMatch ? parseInt(nsMatch[1]) : 0;
+
+                selectedNodesForConfig.push({
+                    node_id: nodeId,
+                    namespace: namespace,
+                    browse_name: node.browse_name,
+                    display_name: node.display_name,
+                    measurement_name: node.display_name.replace(/[^a-zA-Z0-9_]/g, '_'),
+                    interval_ms: 1000,
+                    data_type: node.data_type || 'Unknown'
+                });
+            });
+
+            // Render the selected nodes table
+            renderSelectedNodesTable();
+
+            // Show the selected nodes section
+            document.getElementById('selected-nodes-section').style.display = 'block';
+
+            // Close the browser modal
+            closeOpcUaBrowser();
+
+            showNotification(`Added ${selectedNodesForConfig.length} nodes to configuration`, 'success');
+        }
+
+        function renderSelectedNodesTable() {
+            const tbody = document.getElementById('selected-nodes-tbody');
+            tbody.innerHTML = '';
+
+            selectedNodesForConfig.forEach((node, index) => {
+                const row = document.createElement('tr');
+                row.style.borderBottom = '1px solid #dee2e6';
+
+                // Node Name
+                const nameCell = document.createElement('td');
+                nameCell.style.padding = '10px';
+                nameCell.textContent = node.display_name;
+                row.appendChild(nameCell);
+
+                // Namespace
+                const nsCell = document.createElement('td');
+                nsCell.style.padding = '10px';
+                nsCell.textContent = node.namespace;
+                row.appendChild(nsCell);
+
+                // Measurement Name (editable)
+                const measurementCell = document.createElement('td');
+                measurementCell.style.padding = '10px';
+                const measurementInput = document.createElement('input');
+                measurementInput.type = 'text';
+                measurementInput.value = node.measurement_name;
+                measurementInput.style.width = '100%';
+                measurementInput.style.padding = '4px 8px';
+                measurementInput.style.border = '1px solid #ced4da';
+                measurementInput.style.borderRadius = '4px';
+                measurementInput.addEventListener('change', (e) => {
+                    selectedNodesForConfig[index].measurement_name = e.target.value;
+                });
+                measurementCell.appendChild(measurementInput);
+                row.appendChild(measurementCell);
+
+                // Interval (editable)
+                const intervalCell = document.createElement('td');
+                intervalCell.style.padding = '10px';
+                const intervalInput = document.createElement('input');
+                intervalInput.type = 'number';
+                intervalInput.value = node.interval_ms;
+                intervalInput.style.width = '100px';
+                intervalInput.style.padding = '4px 8px';
+                intervalInput.style.border = '1px solid #ced4da';
+                intervalInput.style.borderRadius = '4px';
+                intervalInput.addEventListener('change', (e) => {
+                    selectedNodesForConfig[index].interval_ms = parseInt(e.target.value) || 1000;
+                });
+                intervalCell.appendChild(intervalInput);
+                row.appendChild(intervalCell);
+
+                // Actions
+                const actionsCell = document.createElement('td');
+                actionsCell.style.padding = '10px';
+                const removeBtn = document.createElement('button');
+                removeBtn.textContent = 'Remove';
+                removeBtn.className = 'btn';
+                removeBtn.style.background = '#dc3545';
+                removeBtn.style.color = 'white';
+                removeBtn.style.padding = '4px 12px';
+                removeBtn.style.fontSize = '12px';
+                removeBtn.addEventListener('click', () => {
+                    removeSelectedNode(index);
+                });
+                actionsCell.appendChild(removeBtn);
+                row.appendChild(actionsCell);
+
+                tbody.appendChild(row);
+            });
+
+            // Update generate button state
+            updateGenerateButtonState();
+        }
+
+        function removeSelectedNode(index) {
+            const node = selectedNodesForConfig[index];
+            selectedNodesForConfig.splice(index, 1);
+            selectedNodes.delete(node.node_id);
+            
+            renderSelectedNodesTable();
+            
+            if (selectedNodesForConfig.length === 0) {
+                document.getElementById('selected-nodes-section').style.display = 'none';
+            }
+            
+            // Update generate button state
+            updateGenerateButton();
         }
 
         // Close modal on background click
