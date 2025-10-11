@@ -96,24 +96,35 @@
 - `lazy_static = "1.4"` in `docker/api-service/Cargo.toml`
 - `serde = { version = "1.0", features = ["derive"] }` in main `Cargo.toml`
 
-## 🚧 TODO (Phase 2)
+## ✅ Completed (Phase 2)
 
-### API Endpoints
-- [ ] `POST /api/opcua/select-nodes` - Mark nodes as selected
+### Frontend Integration
+- **Selected nodes table** - Editable measurement names and intervals
+- **"Use Selected Nodes" button** - Transfers selections from browser to config
+- **Section-based UI** - Clear separation of XML vs Browser approaches
+- **Config generation** - Sends selected_nodes to API
+
+### Backend Integration
+- **SelectedNodeRequest struct** - Receives nodes from frontend
+- **NodeId parsing** - Converts string node_id back to opcua::types::NodeId
+- **Config generation** - Passes selected nodes to ConfigGenerator
+- **Validation** - Accepts either XML files OR selected nodes (or both)
+
+## 🚧 TODO (Phase 3)
+
+### Enhancements
 - [ ] `POST /api/opcua/disconnect` - Clean up session
 - [ ] Background task for session cleanup (remove sessions older than 30 min)
-
-### Frontend
-- [ ] Connection modal with form
-- [ ] Tree component with lazy loading
-- [ ] Checkbox selection
-- [ ] Integration with config generation
+- [ ] Search/filter nodes in browser
+- [ ] Folder grouping support in WebUI
+- [ ] Keyboard navigation in tree
 
 ### Testing
 - [ ] Test with real Siemens OPC-UA server
 - [ ] Test lazy loading with large trees
-- [ ] Test session expiration
+- [ ] Test mixed XML + browser nodes config
 - [ ] Test error handling (connection failures, timeouts)
+- [ ] Test with different identifier types (string, numeric, guid, bytestring)
 
 ## 📝 Testing
 
