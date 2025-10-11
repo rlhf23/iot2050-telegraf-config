@@ -1,303 +1,182 @@
-# IoT2050 Monitoring Stack
+# Open-Source Industrial SCADA Stack
 
-## Introduction
+**Get PLC data into Grafana with minimal clicking.**
 
-The IoT2050 Monitoring Stack is a comprehensive Docker-based monitoring solution designed for industrial IoT devices, particularly the SIEMENS SIMATIC IOT2050. It provides automated deployment of a complete monitoring infrastructure including time-series data collection, storage, and visualization.
+A comprehensive FOSS toolkit for industrial monitoring that transforms XML exports from TIA Portal into live Grafana dashboards. Built with Rust, deployable anywhere Docker runs—from Raspberry Pis to industrial edge devices.
 
-The stack streamlines the process of setting up industrial monitoring by automating the deployment of InfluxDB, Telegraf, Grafana, and Prometheus in a containerized environment. It features an integrated OPC-UA browser for easy tag selection and configuration generation.
+![GUI screenshot](./telegraf-config-gui.png)
 
-![Monitoring Stack Architecture](./telegraf-config-gui.png)
+## The Problem We Solve
 
-## Key Features
+Traditional industrial monitoring requires expensive proprietary SCADA systems and tedious manual configuration. This project provides a complete open-source alternative: drop your TIA Portal XML exports, and watch your PLC data appear in Grafana—automatically.
 
-### 🐳 **Docker-Based Monitoring Stack**
-- **Complete monitoring solution** with InfluxDB, Telegraf, Grafana, and Prometheus
-- **Multi-architecture support** (x86_64 for development, ARM64 for production)
-- **Automated deployment** with device provisioning and stack setup
-- **Persistent data storage** with Docker volumes
+**Core workflow:** TIA Portal XML → Our Tools → Telegraf Config → InfluxDB → Grafana Dashboard
 
-### 🖥️ **Interactive OPC-UA Browser**
-- **Real-time node exploration** with hierarchical tree navigation
-- **Lazy loading** for efficient browsing of large node trees
-- **Visual tag selection** with checkbox interface
-- **Configuration integration** directly into monitoring stack
+## Four Ways to Work
 
-### 💻 **Terminal User Interface (TUI)**
-- **Cross-platform terminal interface** for headless environments and SSH sessions
-- **Arrow key navigation** with visual selection highlighting
-- **Per-file configuration editing** (namespace, IP, interval settings)
-- **OPC-UA namespace polling** with timeout and error feedback
-- **Anonymous authentication support** for OPC-UA servers
-- **Four-tab interface**: Files, OPC-UA Config, IoT Config, Actions
+Choose your interface based on your environment and workflow:
 
-### 🚀 **Automated Deployment**
-- **One-command device provisioning** with Docker installation
-- **Cross-platform image building** and deployment
-- **SSH-based automation** for remote device management
-- **Environment configuration** with secure credential generation
+### 🖥️ **GUI** - Most Feature-Rich (Native Desktop)
+The full-featured desktop application with OPC-UA browser, real-time node exploration, and visual configuration management.
+```bash
+./sie_generate_config_gui
+```
+**Best for:** Initial setup, browsing OPC-UA servers, detailed configuration
 
-### 📊 **Monitoring & Visualization**
-- **Pre-configured Grafana dashboards** for system and custom metrics
-- **InfluxDB integration** for time-series data storage
-- **Prometheus metrics** for additional monitoring capabilities
-- **Multi-source data collection** from OPC-UA, system metrics, and Docker
+### 💻 **TUI** - Terminal Interface (SSH/Headless)
+Full-featured terminal UI with arrow key navigation. Perfect for SSH sessions or when GUI isn't available.
+```bash
+./sie_generate_config_tui
+```
+**Best for:** Remote servers, Windows VMs, headless environments
 
-### 🔧 **Legacy Configuration Generation**
-- **XML-based templates** for traditional Telegraf configuration
-- **Multiple output formats** (InfluxDB v2, Prometheus)
-- **Namespace management** for multi-source deployments
+### ⌨️ **CLI** - Automation & Scripting
+Command-line interface for deployment automation and basic config generation.
+```bash
+./sie_generate_config deploy setup 192.168.1.100
+```
+**Best for:** Device provisioning, CI/CD, scripting
+
+### 🌐 **Web UI** - The Future (Browser-Based)
+Drop XML files in your browser, generate configs without installing anything. Just navigate to your device's IP.
+```
+http://192.168.1.100/
+```
+**Best for:** Zero-install workflow, remote access, mobile devices
+
+## What's Inside
+
+### Core Rust Application
+- **OPC-UA client** with hierarchical browsing and lazy loading
+- **XML parser** for TIA Portal exports
+- **Telegraf config generator** supporting multiple output formats
+- **SSH deployment automation** for remote device management
+- **Multi-interface architecture** (GUI/TUI/CLI/Web)
+
+### Docker Monitoring Stack
+- **InfluxDB 2.x** - Time-series database
+- **Telegraf** - Metrics collection with OPC-UA support
+- **Grafana** - Visualization with pre-configured dashboards
+- **Prometheus** - Additional metrics and alerting
+- **Nginx** - Reverse proxy and web dashboard landing page
+- **API Service** - Lightweight Rust HTTP API for container management
+
+### Deployment Options
+- **Linux-native collectors** - Direct Telegraf deployment
+- **Dockerized stack** - Complete monitoring infrastructure
+- **Multi-architecture** - x86_64, ARM64 (Raspberry Pi, industrial edge)
+- **One-command provisioning** - Automated Docker installation and setup
 
 ## Quick Start
 
-### 1. Provision Your IoT Device
-
-First, provision your target device with Docker and required dependencies:
+### Deploy the Complete Stack (2 Commands)
 
 ```bash
-cd docker
-./scripts/init.sh 192.168.1.100
-```
+# 1. Provision device with Docker
+cd docker && ./scripts/init.sh 192.168.1.100
 
-**What this does:**
-- Installs Docker and Docker Compose on the device
-- Sets up user permissions and system requirements
-- Prepares the device for monitoring stack deployment
-
-### 2. Deploy the Monitoring Stack
-
-Build and deploy the complete stack to your provisioned device:
-
-```bash
+# 2. Deploy monitoring stack
 ./scripts/deploy.sh 192.168.1.100
 ```
 
-**What this does:**
-- Builds Docker images locally with ARM64 support
-- Transfers images and configuration to the device
-- Deploys and starts the monitoring stack
-- Reports service URLs and credentials
-
-### 3. Access Your Services
-
-After deployment, access your monitoring services:
-
+Access your services:
+- **Dashboard**: http://192.168.1.100 (Nginx landing page)
 - **Grafana**: http://192.168.1.100:3000
 - **InfluxDB**: http://192.168.1.100:8086
-- **Prometheus**: http://192.168.1.100:9090
+- **Prometheus**: http://192.168.1.100/prometheus
 
-Default credentials are automatically generated and displayed after deployment.
+### Configure OPC-UA Data Collection
 
-### 4. Configure OPC-UA Data Collection (Optional)
-
-Use the GUI to browse and configure OPC-UA data sources:
-
+**Option 1: GUI (Recommended)**
 ```bash
 ./sie_generate_config_gui
 ```
+Browse OPC-UA servers, select tags, generate config.
 
-## Advanced Usage
+**Option 2: Drop XML Files**
+Export XML from TIA Portal, drop into GUI or Web UI, done.
 
-### Local Development and Testing
+**Option 3: Manual OPC-UA Browsing**
+Use the built-in OPC-UA browser to click individual fields.
 
-Test the monitoring stack locally before deployment:
+## Technology Stack
 
-```bash
-cd docker
-./scripts/setup.sh      # Generate environment configuration
-./scripts/start.sh      # Start the stack locally
-```
+### Backend (Rust)
+- **`opcua`** - OPC-UA client implementation
+- **`eframe/egui`** - Native GUI framework
+- **`ratatui`** - Terminal UI framework
+- **`clap`** - CLI argument parsing
+- **`roxmltree`** - XML parsing for TIA exports
+- **`ssh2`** - Remote deployment automation
+- **`tokio`** - Async runtime
+- **`axum`** - Web framework (API service)
 
-Services will be available at localhost with the same ports.
+### Monitoring Stack (Docker)
+- **InfluxDB 2.x** - Time-series database
+- **Telegraf** - Metrics collection (OPC-UA, system, Docker)
+- **Grafana** - Visualization and dashboards
+- **Prometheus** - Metrics and alerting
+- **Nginx** - Reverse proxy and web dashboard
+- **Rust API Service** - Container management HTTP API
 
-### Terminal User Interface (TUI)
+### Infrastructure
+- **Docker Compose** - Multi-service orchestration
+- **GitHub Actions** - CI/CD pipelines
+- **Multi-arch builds** - x86_64 and ARM64 support
+- **Nix** - Reproducible development environment
 
-For headless environments, SSH sessions, or when you prefer terminal-based interfaces:
-
-```bash
-# Launch the TUI
-./sie_generate_config_tui
-```
-
-**TUI Navigation:**
-- **Tab/1-4**: Switch between tabs (Files, OPC-UA Config, IoT Config, Actions)
-- **↑/↓**: Navigate fields in config tabs
-- **Enter**: Edit selected field or toggle boolean values
-- **Space**: Toggle file selections in Files tab
-- **Esc**: Cancel editing or exit
-- **h/F1**: Show help
-
-**Legacy hotkeys still supported:**
-- **i/u/p/a/t**: Edit IP/username/password/anonymous/test inputs in OPC-UA tab
-- **h/u/p**: Edit host/username/password in IoT tab
-
-### CLI Deployment Management
-
-Use the CLI for advanced deployment operations:
+## CLI Reference
 
 ```bash
-# Provision a device
-./sie_generate_config deploy provision 192.168.1.100 -u admin -p password
+# Deployment
+./sie_generate_config deploy provision <ip>    # Install Docker on device
+./sie_generate_config deploy setup <ip>        # Deploy monitoring stack
+./sie_generate_config deploy status <ip>       # Check service status
+./sie_generate_config deploy start|stop <ip>   # Control services
 
-# Deploy monitoring stack
-./sie_generate_config deploy setup 192.168.1.100 --build-local
+# Configuration Generation
+./sie_generate_config config -f <xml-folder>   # Generate from XML files
+./sie_generate_config_gui                      # Launch GUI
+./sie_generate_config_tui                      # Launch TUI
 
-# Check deployment status
-./sie_generate_config deploy status 192.168.1.100
-
-# Start/stop services
-./sie_generate_config deploy start 192.168.1.100
-./sie_generate_config deploy stop 192.168.1.100
+# Testing
+./opcua_test_server                            # Start test OPC-UA server
+./opcua_client_test                            # Test OPC-UA connection
 ```
-
-### Custom Configuration
-
-Customize the monitoring stack by editing configuration files in `docker/config/`:
-
-- **Telegraf**: `docker/config/telegraf/telegraf.conf.example`
-- **Grafana**: `docker/config/grafana/provisioning/`
-- **Prometheus**: `docker/config/prometheus/prometheus.yml`
-
-### Environment Variables
-
-Configure deployment settings using environment variables:
-
-```bash
-# Example .env configuration
-INFLUXDB_USER=admin
-INFLUXDB_PASSWORD=secure_password
-INFLUXDB_ORG=your_org
-INFLUXDB_BUCKET=telegraf
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=secure_password
-```
-
-## Legacy Features
-
-### Configuration Generation (Traditional Mode)
-
-For traditional Telegraf configuration generation without Docker:
-
-```bash
-# Generate configuration from XML files
-./sie_generate_config config -f /path/to/xml/folder
-
-# Use GUI for interactive configuration
-./sie_generate_config_gui
-```
-
-### Test Tools
-
-```bash
-# Start OPC-UA test server
-./opcua_test_server
-
-# Test OPC-UA client connection
-./opcua_client_test
-```
-
-## Architecture
-
-### Monitoring Services
-
-- **InfluxDB 2.x**: Time-series database with built-in web UI
-- **Telegraf**: Metrics collection agent with OPC-UA, system, and Docker inputs
-- **Grafana**: Visualization platform with pre-configured dashboards
-- **Prometheus**: Metrics collection and alerting (optional)
-
-### Deployment Automation
-
-- **init.sh**: Device provisioning and Docker installation
-- **deploy.sh**: Complete stack deployment with image building
-- **setup.sh**: Environment configuration and credential generation
-- **start.sh/stop.sh**: Service lifecycle management
-
-### Data Flow
-
-1. **OPC-UA servers** → Telegraf (OPC-UA input plugin)
-2. **System metrics** → Telegraf (system input plugins)
-3. **Docker metrics** → Telegraf (Docker input plugin)
-4. **Telegraf** → InfluxDB (time-series storage)
-5. **InfluxDB** → Grafana (visualization)
-6. **Prometheus** → Grafana (alternative metrics path)
 
 ## Building from Source
 
-### Development Requirements
-
-- Rust 1.70+
-- Docker and Docker Compose
-- Cross-compilation support for ARM64 (optional)
-
-### Build Steps
-
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd iot2050-telegraf-config
-
-# Build the application
+# Standard build
 cargo build --release
 
-# Test the Docker stack locally
-cd docker
-./scripts/setup.sh
-./scripts/start.sh
+# With Nix dev environment
+nix develop  # Provides Rust toolchain and dependencies
+
+# Test locally
+cd docker && ./scripts/setup.sh && ./scripts/start.sh
 ```
 
-### Cross-Platform Building
+## Project Vision
 
-Enable ARM64 emulation for testing:
+This project is building toward a complete **open-source SCADA alternative** using modern FOSS tools:
 
-```bash
-docker run --privileged --rm tonistiigi/binfmt --install all
-```
+- **No proprietary software** - Everything from OPC-UA client to visualization is open source
+- **Minimal manual work** - XML exports become live dashboards automatically
+- **Multiple interfaces** - Work however you want: GUI, TUI, CLI, or Web
+- **Deploy anywhere** - Raspberry Pi, industrial PCs, cloud VMs, edge devices
+- **Production-ready** - Multi-architecture, automated testing, comprehensive monitoring
 
-## Troubleshooting
+The goal: Make industrial monitoring as fluid and accessible as modern web development.
 
-### Common Issues
+## Documentation
 
-**Deployment fails on device provisioning:**
-- Verify SSH connectivity and credentials
-- Ensure device has sufficient disk space (minimum 4GB)
-- Check internet connectivity for Docker installation
-
-**Docker services fail to start:**
-- Check logs: `docker-compose logs -f`
-- Verify port availability (3000, 8086, 9090)
-- Ensure sufficient system resources
-
-**OPC-UA connection issues:**
-- Verify OPC-UA server accessibility
-- Check certificates and authentication
-- Test with `./opcua_client_test`
-
-### Getting Help
-
-- Check service logs: `./scripts/stop.sh && ./scripts/start.sh`
-- View deployment status: `docker-compose ps`
-- Reset everything: `docker-compose down -v && ./scripts/setup.sh`
-
-## Migration from Legacy Deployments
-
-If you're upgrading from manual Telegraf deployments:
-
-1. **Backup existing data** before migration
-2. **Use the Docker stack** for all new deployments
-3. **Migrate configurations** to the new format
-4. **Update monitoring endpoints** to use new service URLs
-
-Manual device deployments are **no longer supported**. Please migrate to the Docker-based stack for better reliability and maintenance.
-
-## Support
-
-- **Issues**: Submit issues on our GitHub repository
-- **Documentation**: See `docs/` directory for detailed guides
-- **Docker Stack**: See `docker/README.md` for container-specific documentation
+- **`PROJECT_OVERVIEW.md`** - Architecture and code organization
+- **`docs/CONTAINER_SETUP.md`** - Docker deployment guide
+- **`docs/WEBUI_CONFIG_GENERATOR.md`** - Web UI documentation
+- **`docker/README.md`** - Docker stack details
+- **`docker/TESTING.md`** - Testing procedures
 
 ## License
 
-This project is licensed under the terms of the included LICENSE file.
-
----
-
-**Note**: This project focuses exclusively on Docker-based deployments. Manual device deployments are deprecated and not recommended for new installations.
+See LICENSE file for details.
