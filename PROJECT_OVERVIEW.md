@@ -26,20 +26,50 @@ iot2050-telegraf-config/
 │   └── *_test.rs             # Library unit tests
 ├── docker/                   # Docker monitoring stack
 │   ├── docker-compose.yml    # Multi-service monitoring stack definition
+│   ├── docker-compose.ci.yml # CI-specific Docker Compose configuration
+│   ├── api-service/          # HTTP API for container management
+│   │   ├── src/              # API service source code
+│   │   ├── Dockerfile        # Standard Docker build
+│   │   ├── Dockerfile.build  # Cross-compilation build
+│   │   ├── Dockerfile.prebuilt  # Prebuilt binary deployment
+│   │   ├── Cargo.toml        # API service dependencies
+│   │   ├── Makefile          # Build automation
+│   │   └── README.md         # API service documentation
 │   ├── config/               # Service configurations
 │   │   ├── telegraf/         # Telegraf configuration templates
 │   │   ├── grafana/          # Grafana dashboards and datasources
-│   │   └── prometheus/       # Prometheus configuration
+│   │   ├── prometheus/       # Prometheus configuration
+│   │   └── nginx/            # Nginx reverse proxy and dashboard
+│   │       ├── nginx.conf    # Nginx configuration
+│   │       ├── html/         # Dashboard landing page
+│   │       └── scripts/      # System info and startup scripts
 │   ├── scripts/              # Deployment and management scripts
-│   │   ├── init.sh           # Device provisioning script
-│   │   ├── deploy.sh         # Stack deployment script
+│   │   ├── init.sh           # Device provisioning script (local)
+│   │   ├── init_remote.sh    # Device provisioning script (remote)
+│   │   ├── deploy.sh         # Stack deployment script (local)
+│   │   ├── deploy_remote.sh  # Stack deployment script (remote)
 │   │   ├── setup.sh          # Environment setup script
 │   │   ├── start.sh          # Start monitoring stack
-│   │   └── stop.sh           # Stop monitoring stack
-│   └── README.md             # Docker stack documentation
+│   │   ├── stop.sh           # Stop monitoring stack
+│   │   ├── test.sh           # Monitoring stack test runner
+│   │   ├── test-integration.sh  # Integration tests
+│   │   └── test-scripts.sh   # Script validation tests
+│   ├── README.md             # Docker stack documentation
+│   └── TESTING.md            # Testing documentation
 ├── docs/                     # Documentation
-│   └── CONTAINER_SETUP.md    # Container deployment guide
-├── .github/                  # GitHub Actions workflows and templates
+│   ├── CONTAINER_SETUP.md    # Container deployment guide
+│   ├── CLI_REFACTOR_SUMMARY.md  # CLI refactoring notes
+│   └── WEBUI_CONFIG_GENERATOR.md  # Web UI configuration guide
+├── .github/                  # GitHub Actions CI/CD
+│   ├── workflows/            # GitHub Actions workflows
+│   │   ├── linux-ci.yml      # Linux CI pipeline
+│   │   ├── windows-build.yml # Windows build pipeline
+│   │   ├── coverage.yml      # Code coverage reporting
+│   │   ├── monitoring-stack-test.yml  # Docker stack testing
+│   │   ├── api-service-build.yml  # API service build
+│   │   ├── binary-release.yml  # Binary release automation
+│   │   └── manual-build.yml  # Manual build trigger
+│   └── pull_request_template.md  # PR template
 ├── tests/                    # Integration tests and test data
 │   └── *.xml                 # Test XML files
 ├── build.rs                  # Build script for environment variables
@@ -131,18 +161,38 @@ iot2050-telegraf-config/
    - **Telegraf**: Metrics collection agent with OPC UA support
    - **Grafana**: Visualization and dashboarding
    - **Prometheus**: Alternative metrics collection and storage
+   - **API Service**: HTTP API for container management (restart, start, stop)
+   - **Nginx**: Reverse proxy and dashboard landing page with system info
 
-2. **Deployment Scripts**
-   - **init.sh**: Provisions IoT devices with Docker requirements
-   - **deploy.sh**: Builds and deploys the complete stack
+2. **API Service (docker/api-service/)**
+   - Lightweight Rust-based HTTP API (~15-20MB container)
+   - Container management endpoints (list, restart, start, stop)
+   - Whitelist-based security for allowed containers
+   - CORS-enabled for web dashboard integration
+   - Health check endpoint for monitoring
+   - Multiple build options: standard, cross-compilation, prebuilt binary
+
+3. **Nginx Dashboard**
+   - Reverse proxy for all services (Grafana, Prometheus, InfluxDB, API)
+   - Landing page with system information and service links
+   - Dynamic system info generation (CPU, memory, uptime)
+   - Unified access point on port 80
+
+4. **Deployment Scripts**
+   - **init.sh/init_remote.sh**: Provisions IoT devices with Docker requirements
+   - **deploy.sh/deploy_remote.sh**: Builds and deploys the complete stack
    - **setup.sh**: Configures environment and credentials
    - **start.sh/stop.sh**: Service lifecycle management
+   - **test.sh**: Comprehensive stack testing with colored output
+   - **test-integration.sh**: Integration testing suite
+   - **test-scripts.sh**: Script validation
 
-3. **Configuration Management**
+5. **Configuration Management**
    - Environment-based configuration with .env files
    - Provisioned dashboards and datasources
    - Persistent storage with Docker volumes
    - Multi-architecture support (x86_64/ARM64)
+   - Nginx reverse proxy configuration with sub-paths
 
 ## Key Data Flows
 
@@ -240,6 +290,23 @@ Build-time variables can be customized using a `.env` file and are integrated vi
 4. Add error handling and validation
 5. Update documentation and examples
 
+### Extending the API Service
+
+1. Add new endpoints in `docker/api-service/src/main.rs`
+2. Update container whitelist if needed
+3. Add corresponding API documentation in README
+4. Update health checks and error handling
+5. Rebuild and test with `make` in `docker/api-service/`
+6. Update Nginx configuration if new routes are needed
+
+### Modifying Nginx Dashboard
+
+1. Update `docker/config/nginx/nginx.conf` for routing changes
+2. Modify HTML/CSS in `docker/config/nginx/html/` for UI changes
+3. Update system info script in `docker/config/nginx/scripts/system-info.sh`
+4. Test reverse proxy configuration with all services
+5. Update health check endpoints if needed
+
 ### Extending OPC UA Browser
 
 1. Modify `OpcUaPoller` in `backend/opcua_poller.rs`
@@ -326,10 +393,17 @@ The project supports multiple build and deployment methods:
 - Run tests: `nix flake check`
 
 ### CI/CD
-- GitHub Actions workflows in `.github/workflows/`
+- **GitHub Actions workflows** in `.github/workflows/`:
+  - **linux-ci.yml**: Linux build and test pipeline
+  - **windows-build.yml**: Windows cross-compilation
+  - **coverage.yml**: Code coverage with Codecov integration
+  - **monitoring-stack-test.yml**: Comprehensive Docker stack testing
+  - **api-service-build.yml**: API service build and test
+  - **binary-release.yml**: Automated binary releases
+  - **manual-build.yml**: Manual build triggers
 - Automated testing on push/pull requests
-- Code coverage reporting to Codecov
-- Multi-architecture Docker builds
+- Multi-architecture Docker builds (x86_64/ARM64)
+- Pull request templates for consistent contributions
 
 ## Dependencies
 
