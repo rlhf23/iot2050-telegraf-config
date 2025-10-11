@@ -13,12 +13,42 @@ use opcua::{
         UserTokenPolicy, Variant,
     },
 };
+use serde::{Serialize, Serializer};
 
-#[derive(Debug, Clone)]
+// Custom serializer for NodeId
+fn serialize_node_id<S>(node_id: &NodeId, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&node_id.to_string())
+}
+
+// Custom serializer for NodeClass
+fn serialize_node_class<S>(node_class: &NodeClass, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str(&format!("{:?}", node_class))
+}
+
+// Custom serializer for ByteString
+fn serialize_bytestring<S>(bs: &Option<ByteString>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match bs {
+        Some(_) => serializer.serialize_bool(true),
+        None => serializer.serialize_none(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct OpcUaNode {
+    #[serde(serialize_with = "serialize_node_id")]
     pub node_id: NodeId,
     pub browse_name: String,
     pub display_name: String,
+    #[serde(serialize_with = "serialize_node_class")]
     pub node_class: NodeClass,
     pub data_type: Option<String>,
     pub description: Option<String>,
@@ -26,6 +56,7 @@ pub struct OpcUaNode {
     pub selected: bool,
     pub children_loaded: bool,   // Whether children have been loaded
     pub has_more_children: bool, // Whether there are more children via continuation points
+    #[serde(serialize_with = "serialize_bytestring")]
     pub continuation_point: Option<ByteString>, // Store continuation point for lazy loading
 }
 

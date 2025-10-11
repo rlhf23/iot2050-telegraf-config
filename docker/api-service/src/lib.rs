@@ -85,6 +85,8 @@ pub fn create_app() -> Router {
         .route("/api/config/deploy", post(deploy::deploy_config))
         // OPC-UA endpoints
         .route("/api/opcua/poll-namespaces", post(opcua::poll_namespaces))
+        .route("/api/opcua/connect", post(opcua::connect_opcua))
+        .route("/api/opcua/get-nodes", post(opcua::get_nodes))
         .layer(cors)
         .with_state(state)
 }
