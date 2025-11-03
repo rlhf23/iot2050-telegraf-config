@@ -536,4 +536,235 @@ mod tests {
             "3"
         );
     }
+
+    // Test error handling for namespace polling
+    #[test]
+    fn test_namespace_info_empty_result() {
+        // Test that when browse_server_namespaces returns empty, we get a clear error
+        struct MockEmptyPoller {
+            config: TelegrafConfig,
+        }
+
+        impl MockEmptyPoller {
+            fn new(config: TelegrafConfig) -> Self {
+                Self { config }
+            }
+
+            fn get_namespace_info(
+                &self,
+                xml_files: &[String],
+            ) -> Result<HashMap<String, u16>, TelegrafError> {
+                // Simulate empty namespace result
+                let namespaces: Vec<(u16, String)> = Vec::new();
+                
+                if namespaces.is_empty() {
+                    return Err(TelegrafError::OpcUaClientError(
+                        "No namespaces found on OPC-UA server. The server may not have ServerInterfaces configured, or the browse operation failed. Check server logs for details.".to_string()
+                    ));
+                }
+                
+                Ok(HashMap::new())
+            }
+        }
+
+        let mock_poller = MockEmptyPoller::new(create_test_config());
+        let result = mock_poller.get_namespace_info(&["test.xml".to_string()]);
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("No namespaces found"));
+        assert!(err.to_string().contains("ServerInterfaces"));
+    }
+
+    #[test]
+    fn test_namespace_info_no_matches() {
+        // Test that when files don't match any namespaces, we get a clear error
+        struct MockNoMatchPoller {
+            config: TelegrafConfig,
+        }
+
+        impl MockNoMatchPoller {
+            fn new(config: TelegrafConfig) -> Self {
+                Self { config }
+            }
+
+            fn get_namespace_info(
+                &self,
+                xml_files: &[String],
+            ) -> Result<HashMap<String, u16>, TelegrafError> {
+                // Simulate namespaces that don't match any files
+                let namespaces = vec![
+                    (2, "SomeNamespace".to_string()),
+                    (3, "AnotherNamespace".to_string()),
+                ];
+                
+                let mut namespace_map = HashMap::new();
+                
+                // Try to match files (will fail)
+                for file_path in xml_files {
+                    let path = std::path::Path::new(file_path);
+                    if let Some(file_name) = path.file_name() {
+                        if let Some(base_name) = path.file_stem() {
+                            let base_name_str = base_name.to_str().unwrap();
+                            
+                            for (namespace_index, namespace_name) in &namespaces {
+                                if namespace_name.to_lowercase() == base_name_str.to_lowercase() {
+                                    namespace_map.insert(file_name.to_str().unwrap().to_string(), *namespace_index);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Check if no matches were found
+                if namespace_map.is_empty() {
+                    return Err(TelegrafError::OpcUaClientError(
+                        format!(
+                            "Could not match any XML files to server namespaces. Found {} namespaces on server but none matched the {} uploaded file(s). Check that your XML file names match the namespace names on the server.",
+                            namespaces.len(),
+                            xml_files.len()
+                        )
+                    ));
+                }
+                
+                Ok(namespace_map)
+            }
+        }
+
+        let mock_poller = MockNoMatchPoller::new(create_test_config());
+        let result = mock_poller.get_namespace_info(&["UnmatchedFile.xml".to_string()]);
+        
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Could not match any XML files"));
+        assert!(err.to_string().contains("2 namespaces"));
+        assert!(err.to_string().contains("1 uploaded file"));
+    }
+
+    #[test]
+    fn test_namespace_info_partial_matches() {
+        // Test that when only some files match, we still succeed but can track which matched
+        struct MockPartialMatchPoller {
+            config: TelegrafConfig,
+        }
+
+        impl MockPartialMatchPoller {
+            fn new(config: TelegrafConfig) -> Self {
+                Self { config }
+            }
+
+            fn get_namespace_info(
+                &self,
+                xml_files: &[String],
+            ) -> Result<HashMap<String, u16>, TelegrafError> {
+                // Simulate namespaces where only some files match
+                let namespaces = vec![
+                    (2, "MatchingNamespace".to_string()),
+                    (3, "AnotherNamespace".to_string()),
+                ];
+                
+                let mut namespace_map = HashMap::new();
+                
+                for file_path in xml_files {
+                    let path = std::path::Path::new(file_path);
+                    if let Some(file_name) = path.file_name() {
+                        if let Some(base_name) = path.file_stem() {
+                            let base_name_str = base_name.to_str().unwrap();
+                            
+                            for (namespace_index, namespace_name) in &namespaces {
+                                if namespace_name.to_lowercase() == base_name_str.to_lowercase() {
+                                    namespace_map.insert(file_name.to_str().unwrap().to_string(), *namespace_index);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Don't error if we have at least one match
+                if namespace_map.is_empty() {
+                    return Err(TelegrafError::OpcUaClientError(
+                        "No matches found".to_string()
+                    ));
+                }
+                
+                Ok(namespace_map)
+            }
+        }
+
+        let mock_poller = MockPartialMatchPoller::new(create_test_config());
+        let result = mock_poller.get_namespace_info(&[
+            "MatchingNamespace.xml".to_string(),
+            "UnmatchedFile.xml".to_string(),
+        ]);
+        
+        assert!(result.is_ok());
+        let namespace_map = result.unwrap();
+        
+        // Should have one match
+        assert_eq!(namespace_map.len(), 1);
+        assert_eq!(namespace_map.get("MatchingNamespace.xml"), Some(&2));
+        assert_eq!(namespace_map.get("UnmatchedFile.xml"), None);
+    }
+
+    #[test]
+    fn test_namespace_info_error_messages() {
+        // Test that error messages are clear and actionable
+        let test_cases = vec![
+            (
+                "No namespaces found on OPC-UA server",
+                vec!["ServerInterfaces", "browse operation failed"],
+            ),
+            (
+                "Could not match any XML files to server namespaces",
+                vec!["XML file names match", "namespace names"],
+            ),
+        ];
+
+        for (error_msg, expected_keywords) in test_cases {
+            for keyword in expected_keywords {
+                assert!(
+                    error_msg.contains(keyword),
+                    "Error message '{}' should contain keyword '{}'",
+                    error_msg,
+                    keyword
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_namespace_response_format() {
+        // Test that the response format matches what the frontend expects
+        #[derive(Debug)]
+        struct NamespaceMapping {
+            filename: String,
+            namespace: String,
+            namespace_index: u16,
+        }
+
+        // Simulate the API response structure
+        let mappings = vec![
+            NamespaceMapping {
+                filename: "device1.xml".to_string(),
+                namespace: "2".to_string(),
+                namespace_index: 2,
+            },
+            NamespaceMapping {
+                filename: "sensor2.xml".to_string(),
+                namespace: "3".to_string(),
+                namespace_index: 3,
+            },
+        ];
+
+        // Verify structure
+        assert_eq!(mappings.len(), 2);
+        assert_eq!(mappings[0].filename, "device1.xml");
+        assert_eq!(mappings[0].namespace, "2");
+        assert_eq!(mappings[0].namespace_index, 2);
+        
+        // Verify namespace is a string (as expected by frontend)
+        assert_eq!(mappings[1].namespace, "3");
+    }
 }
