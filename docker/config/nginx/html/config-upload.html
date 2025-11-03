@@ -918,7 +918,40 @@
                     body: JSON.stringify(requestData)
                 });
 
-                const data = await response.json();
+                // Check if response is OK before trying to parse
+                if (!response.ok) {
+                    // Try to get error message from response
+                    let errorMessage = `Server returned ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.message) {
+                            errorMessage = errorData.message;
+                        }
+                    } catch (parseError) {
+                        // If JSON parse fails, try to get text
+                        try {
+                            const errorText = await response.text();
+                            console.error('Non-JSON error response:', errorText);
+                            errorMessage = `Server error: ${errorText.substring(0, 200)}`;
+                        } catch (textError) {
+                            console.error('Could not read error response');
+                        }
+                    }
+                    showNotification(errorMessage, 'error');
+                    return;
+                }
+
+                // Parse successful response
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    const responseText = await response.text();
+                    console.error('Response text:', responseText);
+                    showNotification(`Failed to parse server response. Check console for details.`, 'error');
+                    return;
+                }
 
                 if (data.success) {
                     // Update file configs with retrieved namespaces
@@ -938,6 +971,7 @@
                     showNotification(data.message || 'Failed to poll namespaces', 'error');
                 }
             } catch (error) {
+                console.error('Error polling namespaces:', error);
                 showNotification('Error polling namespaces: ' + error.message, 'error');
             } finally {
                 showLoading('poll-loading', false);
