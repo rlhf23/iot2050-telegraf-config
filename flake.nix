@@ -33,6 +33,23 @@
             libxkbcommon
           ];
       in {
+        # Minimal shell (fast, ~300MB)
+        devShells.minimal = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            cargo
+            rustc
+            rust-analyzer
+            pkg-config
+            openssl
+            cargo-tarpaulin
+            cargo-insta
+          ];
+          shellHook = ''
+            echo "Minimal dev environment (native builds only)"
+          '';
+        };
+        
+        # Full shell with cross-compilation (slow, 4.5GB)
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             rustVersion
