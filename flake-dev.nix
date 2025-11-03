@@ -11,7 +11,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
       in {
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Rust toolchain (native only, ~200MB)
             cargo
