@@ -97,6 +97,11 @@ impl IoTDeployer {
 
     /// Provision the IoT device with Docker and requirements
     pub fn provision(&self) -> Result<(), TelegrafError> {
+        self.provision_with_transfer_mode(false)
+    }
+
+    /// Provision with option to download locally first (offline-capable)
+    pub fn provision_with_transfer_mode(&self, local_transfer: bool) -> Result<(), TelegrafError> {
         println!("🚀 Starting device provisioning...");
         
         let session = self.create_ssh_session()?;
@@ -187,19 +192,24 @@ impl IoTDeployer {
         // Create monitoring directory
         self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
         
-        // Download and extract docker folder from the repository
-        println!("📥 Downloading docker configuration from branch '{}'...", self.branch);
-        
-        let download_cmd = format!(
-            "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-            self.repo_url, self.branch
-        );
-        
-        self.run_command(
-            &session,
-            &download_cmd,
-            "Downloading docker configuration"
-        )?;
+        // Download docker folder - either directly on device or via local transfer
+        if local_transfer {
+            println!("📥 Downloading docker configuration locally from branch '{}'...", self.branch);
+            self.download_and_transfer_monitoring_folder(&session)?;
+        } else {
+            println!("📥 Downloading docker configuration directly on device from branch '{}'...", self.branch);
+            
+            let download_cmd = format!(
+                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+                self.repo_url, self.branch
+            );
+            
+            self.run_command(
+                &session,
+                &download_cmd,
+                "Downloading docker configuration"
+            )?;
+        }
         
         // Make scripts executable
         self.run_command(
@@ -371,6 +381,158 @@ impl IoTDeployer {
         )?;
         
         println!("✅ Monitoring stack started");
+        Ok(())
+    }
+
+    /// Download monitoring folder locally and transfer to device
+    fn download_and_transfer_monitoring_folder(&self, _session: &Session) -> Result<(), TelegrafError> {
+        use std::fs;
+        use std::process::Command;
+        
+        let temp_dir = std::env::temp_dir().join("iot2050-monitoring-transfer");
+        let tar_file = temp_dir.join("monitoring.tar.gz");
+        let extract_dir = temp_dir.join("extracted");
+        
+        // Clean up any existing temp directory
+        if temp_dir.exists() {
+            println!("🧹 Cleaning up temporary directory...");
+            fs::remove_dir_all(&temp_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to clean temp directory: {}", e))
+            })?;
+        }
+        
+        // Create temp directories
+        fs::create_dir_all(&extract_dir).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create temp directory: {}", e))
+        })?;
+        
+        // Download tarball locally
+        println!("📥 Downloading tarball from {}...", self.repo_url);
+        let output = Command::new("curl")
+            .args(&["-L", &self.repo_url, "-o", tar_file.to_str().unwrap()])
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to run curl: {}", e)))?;
+        
+        if !output.status.success() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to download tarball: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        
+        // Extract tarball locally
+        println!("📦 Extracting tarball locally...");
+        let output = Command::new("tar")
+            .args(&[
+                "-xzf",
+                tar_file.to_str().unwrap(),
+                "-C",
+                extract_dir.to_str().unwrap(),
+                "--strip-components=2",
+                &format!("iot2050-telegraf-config-{}/docker", self.branch),
+            ])
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to run tar: {}", e)))?;
+        
+        if !output.status.success() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to extract tarball: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        
+        // Transfer extracted folder to device using SCP
+        println!("📤 Transferring files to device...");
+        self.transfer_directory(&extract_dir, "~/monitoring")?;
+        
+        // Clean up temp directory
+        println!("🧹 Cleaning up local temporary files...");
+        fs::remove_dir_all(&temp_dir).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to clean up temp directory: {}", e))
+        })?;
+        
+        println!("✅ Files transferred successfully");
+        Ok(())
+    }
+    
+    /// Transfer a local directory to remote device using SCP
+    fn transfer_directory(&self, local_path: &std::path::Path, remote_path: &str) -> Result<(), TelegrafError> {
+        use std::process::Command;
+        
+        // Build SCP command
+        let mut scp_cmd = Command::new("scp");
+        scp_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
+        
+        // Add port if not default
+        if self.config.port != 22 {
+            scp_cmd.args(&["-P", &self.config.port.to_string()]);
+        }
+        
+        // Add source (local directory contents)
+        let source = format!("{}/*", local_path.display());
+        scp_cmd.arg(&source);
+        
+        // Add destination
+        let destination = format!("{}@{}:{}", self.config.user, self.config.host, remote_path);
+        scp_cmd.arg(&destination);
+        
+        // Set password via environment if using password auth
+        if let Some(password) = &self.config.password {
+            // Use sshpass if available for password authentication
+            let output = Command::new("which")
+                .arg("sshpass")
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to check for sshpass: {}", e)))?;
+            
+            if output.status.success() {
+                // Use sshpass for password authentication
+                let mut sshpass_cmd = Command::new("sshpass");
+                sshpass_cmd.args(&["-p", password]);
+                sshpass_cmd.arg("scp");
+                sshpass_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
+                
+                if self.config.port != 22 {
+                    sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
+                }
+                
+                sshpass_cmd.arg(&source);
+                sshpass_cmd.arg(&destination);
+                
+                let output = sshpass_cmd.output()
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run sshpass: {}", e)))?;
+                
+                if !output.status.success() {
+                    return Err(TelegrafError::ConfigError(format!(
+                        "SCP transfer failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    )));
+                }
+            } else {
+                return Err(TelegrafError::ConfigError(
+                    "Password authentication requires 'sshpass' to be installed. Install it with: sudo apt-get install sshpass".to_string()
+                ));
+            }
+        } else if self.config.key_file.is_some() {
+            // Key-based authentication
+            if let Some(key_file) = &self.config.key_file {
+                scp_cmd.args(&["-i", key_file]);
+            }
+            
+            let output = scp_cmd.output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run scp: {}", e)))?;
+            
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP transfer failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+        } else {
+            return Err(TelegrafError::ConfigError(
+                "No authentication method available for SCP".to_string()
+            ));
+        }
+        
         Ok(())
     }
 

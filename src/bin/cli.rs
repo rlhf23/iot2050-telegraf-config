@@ -30,12 +30,13 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
+            let local_transfer = sub_matches.get_flag("local_transfer");
             
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
             
-            if let Err(e) = deployer.provision() {
+            if let Err(e) = deployer.provision_with_transfer_mode(local_transfer) {
                 exit_with_error(format!("Provisioning failed: {}", e));
             }
             
@@ -474,6 +475,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
+                        .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
                 )
                 .subcommand(
                     Command::new("setup")
