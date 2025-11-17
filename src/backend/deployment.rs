@@ -384,6 +384,250 @@ impl IoTDeployer {
         Ok(())
     }
 
+    /// Backup all monitoring data (InfluxDB, Grafana, Prometheus) to local directory
+    pub fn backup(&self, output_dir: Option<String>) -> Result<String, TelegrafError> {
+        use chrono::Utc;
+        use std::fs;
+        use std::process::Command;
+        
+        println!("💾 Starting comprehensive backup...");
+        
+        let session = self.create_ssh_session()?;
+        
+        // Create timestamped backup directory
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let backup_name = format!("monitoring_backup_{}", timestamp);
+        let local_backup_dir = output_dir.unwrap_or_else(|| format!("./{}", backup_name));
+        
+        fs::create_dir_all(&local_backup_dir).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create backup directory: {}", e))
+        })?;
+        
+        println!("📂 Backup directory: {}", local_backup_dir);
+        
+        // 1. Backup InfluxDB data
+        println!("\n📊 Backing up InfluxDB data...");
+        let influx_backup_remote = format!("/tmp/influx_backup_{}", timestamp);
+        
+        // Get InfluxDB token from .env file
+        let token_cmd = "cd ~/monitoring && grep INFLUXDB_TOKEN= .env | cut -d'=' -f2";
+        let mut channel = session.channel_session()?;
+        channel.exec(token_cmd)?;
+        let mut token = String::new();
+        channel.read_to_string(&mut token)?;
+        channel.wait_close()?;
+        let token = token.trim();
+        
+        // Run influx backup inside container
+        let backup_cmd = format!(
+            "docker exec influxdb influx backup -t {} {}",
+            token, influx_backup_remote
+        );
+        self.run_command(&session, &backup_cmd, "Creating InfluxDB backup")?;
+        
+        // Copy backup from container to host
+        let copy_cmd = format!(
+            "docker cp influxdb:{} /tmp/",
+            influx_backup_remote
+        );
+        self.run_command(&session, &copy_cmd, "Copying backup from container")?;
+        
+        // Download backup to local machine
+        let influx_local = format!("{}/influxdb", local_backup_dir);
+        fs::create_dir_all(&influx_local)?;
+        self.download_directory(&session, &influx_backup_remote, &influx_local)?;
+        
+        // Cleanup remote backup
+        self.run_command(&session, &format!("rm -rf {}", influx_backup_remote), "Cleaning up remote backup")?;
+        
+        // 2. Backup Grafana data (dashboards, datasources, settings)
+        println!("\n📈 Backing up Grafana data...");
+        let grafana_local = format!("{}/grafana", local_backup_dir);
+        fs::create_dir_all(&grafana_local)?;
+        
+        // Export Grafana volume
+        let grafana_tar = format!("/tmp/grafana_data_{}.tar.gz", timestamp);
+        let export_cmd = format!(
+            "docker run --rm -v grafana_data:/data -v /tmp:/backup alpine tar czf /backup/grafana_data_{}.tar.gz -C /data .",
+            timestamp
+        );
+        self.run_command(&session, &export_cmd, "Exporting Grafana volume")?;
+        
+        // Download Grafana backup
+        self.download_file(&session, &grafana_tar, &format!("{}/grafana_data.tar.gz", grafana_local))?;
+        
+        // Cleanup
+        self.run_command(&session, &format!("rm {}", grafana_tar), "Cleaning up Grafana backup")?;
+        
+        // 3. Backup Prometheus data
+        println!("\n📉 Backing up Prometheus data...");
+        let prometheus_local = format!("{}/prometheus", local_backup_dir);
+        fs::create_dir_all(&prometheus_local)?;
+        
+        let prometheus_tar = format!("/tmp/prometheus_data_{}.tar.gz", timestamp);
+        let export_cmd = format!(
+            "docker run --rm -v prometheus_data:/data -v /tmp:/backup alpine tar czf /backup/prometheus_data_{}.tar.gz -C /data .",
+            timestamp
+        );
+        self.run_command(&session, &export_cmd, "Exporting Prometheus volume")?;
+        
+        // Download Prometheus backup
+        self.download_file(&session, &prometheus_tar, &format!("{}/prometheus_data.tar.gz", prometheus_local))?;
+        
+        // Cleanup
+        self.run_command(&session, &format!("rm {}", prometheus_tar), "Cleaning up Prometheus backup")?;
+        
+        // 4. Backup configuration files
+        println!("\n⚙️  Backing up configuration files...");
+        let config_local = format!("{}/config", local_backup_dir);
+        fs::create_dir_all(&config_local)?;
+        
+        // Copy .env file
+        self.download_file(&session, "~/monitoring/.env", &format!("{}/env_backup", config_local))?;
+        
+        // 5. Create backup metadata
+        let metadata = format!(
+            "Backup created: {}\nHost: {}\nUser: {}\n",
+            Utc::now().to_rfc3339(),
+            self.config.host,
+            self.config.user
+        );
+        fs::write(format!("{}/backup_info.txt", local_backup_dir), metadata)?;
+        
+        // 6. Create compressed archive
+        println!("\n📦 Creating compressed archive...");
+        let archive_name = format!("{}.tar.gz", backup_name);
+        let output = Command::new("tar")
+            .args(&["-czf", &archive_name, "-C", ".", &backup_name])
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to create archive: {}", e)))?;
+        
+        if !output.status.success() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to create archive: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        
+        println!("\n✅ Backup completed successfully!");
+        println!("📦 Archive: {}", archive_name);
+        println!("📂 Extracted backup: {}", local_backup_dir);
+        println!("\n💡 To restore this backup:");
+        println!("   cargo run --bin sie_generate_config deploy restore --archive {}", archive_name);
+        
+        Ok(format!("Backup saved to: {}", archive_name))
+    }
+
+    /// Restore monitoring data from backup archive
+    pub fn restore(&self, archive_path: String) -> Result<(), TelegrafError> {
+        use std::process::Command;
+        
+        println!("♻️  Starting restore from backup...");
+        println!("📦 Archive: {}", archive_path);
+        
+        // Verify archive exists
+        if !std::path::Path::new(&archive_path).exists() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Backup archive not found: {}",
+                archive_path
+            )));
+        }
+        
+        let session = self.create_ssh_session()?;
+        
+        // Extract archive locally
+        println!("📦 Extracting archive...");
+        let output = Command::new("tar")
+            .args(&["-xzf", &archive_path])
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract archive: {}", e)))?;
+        
+        if !output.status.success() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to extract archive: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        
+        // Find extracted directory
+        let backup_dir = archive_path.trim_end_matches(".tar.gz");
+        
+        // Stop monitoring stack if running
+        println!("\n🛑 Stopping monitoring stack...");
+        let _ = self.run_command(&session, "cd ~/monitoring && docker-compose down", "Stopping stack");
+        
+        // 1. Restore InfluxDB data
+        println!("\n📊 Restoring InfluxDB data...");
+        let influx_backup = format!("{}/influxdb", backup_dir);
+        
+        if std::path::Path::new(&influx_backup).exists() {
+            // Upload backup to device
+            let remote_backup = "/tmp/influx_restore";
+            self.upload_directory(&influx_backup, remote_backup)?;
+            
+            // Copy into container and restore
+            let restore_cmd = format!(
+                "docker exec influxdb influx restore {}",
+                remote_backup
+            );
+            self.run_command(&session, &restore_cmd, "Restoring InfluxDB data")?;
+            
+            // Cleanup
+            self.run_command(&session, &format!("rm -rf {}", remote_backup), "Cleaning up")?;
+        }
+        
+        // 2. Restore Grafana data
+        println!("\n📈 Restoring Grafana data...");
+        let grafana_tar = format!("{}/grafana/grafana_data.tar.gz", backup_dir);
+        
+        if std::path::Path::new(&grafana_tar).exists() {
+            // Upload tar to device
+            self.upload_file(&grafana_tar, "/tmp/grafana_restore.tar.gz")?;
+            
+            // Restore volume
+            let restore_cmd = "docker run --rm -v grafana_data:/data -v /tmp:/backup alpine sh -c 'cd /data && tar xzf /backup/grafana_restore.tar.gz'";
+            self.run_command(&session, restore_cmd, "Restoring Grafana volume")?;
+            
+            // Cleanup
+            self.run_command(&session, "rm /tmp/grafana_restore.tar.gz", "Cleaning up")?;
+        }
+        
+        // 3. Restore Prometheus data
+        println!("\n📉 Restoring Prometheus data...");
+        let prometheus_tar = format!("{}/prometheus/prometheus_data.tar.gz", backup_dir);
+        
+        if std::path::Path::new(&prometheus_tar).exists() {
+            // Upload tar to device
+            self.upload_file(&prometheus_tar, "/tmp/prometheus_restore.tar.gz")?;
+            
+            // Restore volume
+            let restore_cmd = "docker run --rm -v prometheus_data:/data -v /tmp:/backup alpine sh -c 'cd /data && tar xzf /backup/prometheus_restore.tar.gz'";
+            self.run_command(&session, restore_cmd, "Restoring Prometheus volume")?;
+            
+            // Cleanup
+            self.run_command(&session, "rm /tmp/prometheus_restore.tar.gz", "Cleaning up")?;
+        }
+        
+        // 4. Restore configuration
+        println!("\n⚙️  Restoring configuration...");
+        let env_backup = format!("{}/config/env_backup", backup_dir);
+        
+        if std::path::Path::new(&env_backup).exists() {
+            self.upload_file(&env_backup, "~/monitoring/.env")?;
+        }
+        
+        // Start monitoring stack
+        println!("\n🚀 Starting monitoring stack...");
+        self.start()?;
+        
+        println!("\n✅ Restore completed successfully!");
+        println!("🔗 Access your services at:");
+        println!("   - Grafana: http://{}:3000", self.config.host);
+        println!("   - InfluxDB: http://{}:8086", self.config.host);
+        
+        Ok(())
+    }
+
     /// Download monitoring folder locally and transfer to device
     fn download_and_transfer_monitoring_folder(&self, _session: &Session) -> Result<(), TelegrafError> {
         use std::fs;
@@ -640,6 +884,145 @@ impl IoTDeployer {
                 exit_status, command
             )));
         }
+        Ok(())
+    }
+
+    /// Download a file from remote device to local machine
+    fn download_file(&self, session: &Session, remote_path: &str, local_path: &str) -> Result<(), TelegrafError> {
+        use std::fs::File;
+        
+        let (mut remote_file, _stat) = session.scp_recv(std::path::Path::new(remote_path))?;
+        let mut local_file = File::create(local_path)?;
+        std::io::copy(&mut remote_file, &mut local_file)?;
+        
+        Ok(())
+    }
+    
+    /// Download a directory from remote device to local machine
+    fn download_directory(&self, session: &Session, remote_path: &str, local_path: &str) -> Result<(), TelegrafError> {
+        use std::fs::File;
+        
+        // List files in remote directory
+        let mut channel = session.channel_session()?;
+        channel.exec(&format!("ls {}", remote_path))?;
+        let mut file_list = String::new();
+        channel.read_to_string(&mut file_list)?;
+        channel.wait_close()?;
+        
+        // Download each file
+        for file_name in file_list.lines() {
+            let remote_file = format!("{}/{}", remote_path, file_name);
+            let local_file = format!("{}/{}", local_path, file_name);
+            
+            let (mut remote, _stat) = session.scp_recv(std::path::Path::new(&remote_file))?;
+            let mut local = File::create(local_file)?;
+            std::io::copy(&mut remote, &mut local)?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Upload a file from local machine to remote device
+    fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<(), TelegrafError> {
+        use std::process::Command;
+        
+        let mut scp_cmd = Command::new("scp");
+        scp_cmd.args(&["-o", "StrictHostKeyChecking=no"]);
+        
+        if self.config.port != 22 {
+            scp_cmd.args(&["-P", &self.config.port.to_string()]);
+        }
+        
+        if let Some(key_file) = &self.config.key_file {
+            scp_cmd.args(&["-i", key_file]);
+        }
+        
+        scp_cmd.arg(local_path);
+        scp_cmd.arg(format!("{}@{}:{}", self.config.user, self.config.host, remote_path));
+        
+        if let Some(password) = &self.config.password {
+            // Use sshpass for password auth
+            let mut sshpass_cmd = Command::new("sshpass");
+            sshpass_cmd.args(&["-p", password, "scp", "-o", "StrictHostKeyChecking=no"]);
+            
+            if self.config.port != 22 {
+                sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
+            }
+            
+            sshpass_cmd.arg(local_path);
+            sshpass_cmd.arg(format!("{}@{}:{}", self.config.user, self.config.host, remote_path));
+            
+            let output = sshpass_cmd.output()?;
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP upload failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+        } else {
+            let output = scp_cmd.output()?;
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP upload failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+        }
+        
+        Ok(())
+    }
+    
+    /// Upload a directory from local machine to remote device
+    fn upload_directory(&self, local_path: &str, remote_path: &str) -> Result<(), TelegrafError> {
+        use std::process::Command;
+        
+        // Create remote directory first
+        let session = self.create_ssh_session()?;
+        self.run_command(&session, &format!("mkdir -p {}", remote_path), "Creating remote directory")?;
+        
+        let mut scp_cmd = Command::new("scp");
+        scp_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
+        
+        if self.config.port != 22 {
+            scp_cmd.args(&["-P", &self.config.port.to_string()]);
+        }
+        
+        if let Some(key_file) = &self.config.key_file {
+            scp_cmd.args(&["-i", key_file]);
+        }
+        
+        scp_cmd.arg(format!("{}/*", local_path));
+        scp_cmd.arg(format!("{}@{}:{}", self.config.user, self.config.host, remote_path));
+        
+        if let Some(password) = &self.config.password {
+            // Use sshpass for password auth
+            let mut sshpass_cmd = Command::new("sshpass");
+            sshpass_cmd.args(&["-p", password, "scp", "-r", "-o", "StrictHostKeyChecking=no"]);
+            
+            if self.config.port != 22 {
+                sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
+            }
+            
+            sshpass_cmd.arg(format!("{}/*", local_path));
+            sshpass_cmd.arg(format!("{}@{}:{}", self.config.user, self.config.host, remote_path));
+            
+            let output = sshpass_cmd.output()?;
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP upload failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+        } else {
+            let output = scp_cmd.output()?;
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP upload failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )));
+            }
+        }
+        
         Ok(())
     }
 

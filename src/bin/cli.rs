@@ -107,6 +107,28 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
             
             wrap_up(0);
         }
+        Some(("backup", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let output_dir = sub_matches.get_one::<String>("output").map(|s| s.clone());
+            
+            if let Err(e) = deployer.backup(output_dir) {
+                exit_with_error(format!("Backup failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("restore", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let archive = sub_matches.get_one::<String>("archive").unwrap().clone();
+            
+            if let Err(e) = deployer.restore(archive) {
+                exit_with_error(format!("Restore failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
         _ => {
             eprintln!("No deployment action specified");
             wrap_up(1);
@@ -510,6 +532,24 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("volumes").short('v').long("volumes").action(clap::ArgAction::SetTrue).help("Remove volumes (WARNING: deletes all data)"))
+                )
+                .subcommand(
+                    Command::new("backup")
+                        .about("Backup all monitoring data (InfluxDB, Grafana, Prometheus)")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("output").short('o').long("output").help("Output directory for backup (default: ./monitoring_backup_<timestamp>)"))
+                )
+                .subcommand(
+                    Command::new("restore")
+                        .about("Restore monitoring data from backup archive")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("archive").short('a').long("archive").required(true).help("Path to backup archive (.tar.gz file)"))
                 )
         )
         .subcommand(
