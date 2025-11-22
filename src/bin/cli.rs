@@ -1,4 +1,4 @@
-use clap::{Command, ArgAction};
+use clap::Command;
 use sie_generate_config::{
     backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig,
@@ -44,14 +44,13 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            let build_local = sub_matches.get_flag("build_local");
             
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
             
-            if let Err(e) = deployer.deploy(build_local) {
-                exit_with_error(format!("Deployment failed: {}", e));
+            if let Err(e) = deployer.setup() {
+                exit_with_error(format!("Setup failed: {}", e));
             }
             
             wrap_up(0);
@@ -477,12 +476,11 @@ fn main() {
                 )
                 .subcommand(
                     Command::new("setup")
-                        .about("Deploy monitoring stack to provisioned device")
+                        .about("Run setup on provisioned device (creates .env, pulls images)")
                         .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(clap::Arg::new("build_local").long("build-local").action(ArgAction::SetTrue).help("Build images locally instead of on device"))
                 )
                 .subcommand(
                     Command::new("status")

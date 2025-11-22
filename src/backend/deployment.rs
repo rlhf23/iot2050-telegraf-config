@@ -212,30 +212,14 @@ impl IoTDeployer {
         Ok(())
     }
 
-    /// Deploy the monitoring stack to the device
-    pub fn deploy(&self, build_locally: bool) -> Result<(), TelegrafError> {
+    /// Run setup on the device (assumes provisioning is already done)
+    pub fn setup(&self) -> Result<(), TelegrafError> {
         println!("🚀 Starting setup...");
         
         let session = self.create_ssh_session()?;
         
-        if build_locally {
-            println!("🏗️  Building images locally and transferring...");
-            // This would involve building locally and transferring
-            // For now, we'll implement the remote build approach
-            self.deploy_remote_build(&session)?;
-        } else {
-            println!("🏗️  Building on remote device...");
-            self.deploy_remote_build(&session)?;
-        }
-        
-        println!("✅ Setup completed successfully!");
-        Ok(())
-    }
-
-    /// Deploy using remote build approach (assumes provisioning is already done)
-    fn deploy_remote_build(&self, session: &Session) -> Result<(), TelegrafError> {
         // Verify monitoring directory exists
-        let dir_exists = self.check_command(session, "test -d ~/monitoring")?;
+        let dir_exists = self.check_command(&session, "test -d ~/monitoring")?;
         if !dir_exists {
             return Err(TelegrafError::ConfigError(
                 "Monitoring directory not found. Please run 'provision' first.".to_string()
@@ -245,32 +229,12 @@ impl IoTDeployer {
         // Run setup script
         println!("⚙️  Running setup script...");
         self.run_command(
-            session,
+            &session,
             "cd ~/monitoring && ./scripts/setup.sh",
             "Running setup"
         )?;
         
-        //TODO:skipped auto-start
-        // Start the monitoring stack
-        // println!("🚀 Starting monitoring stack...");
-        // self.run_command(
-        //     session,
-        //     "cd ~/monitoring && ./scripts/start.sh",
-        //     "Starting monitoring stack"
-        // )?;
-        
-        // Get service status
-        // println!("📊 Checking service status...");
-        // let mut channel = session.channel_session()?;
-        // channel.exec("cd ~/monitoring && docker-compose ps")?;
-        
-        // let mut output = String::new();
-        // channel.read_to_string(&mut output)?;
-        // channel.wait_close()?;
-        
-        // println!("Service Status:");
-        // println!("{}", output);
-        
+        println!("✅ Setup completed successfully!");
         Ok(())
     }
 
