@@ -30,6 +30,9 @@ thiserror = "2.0"
 # Main project for OpcUaPoller (without GUI/TUI dependencies)
 sie_generate_config = { path = "../..", default-features = false }
 
+# PLC communication
+s7-comm = "0.2"
+
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

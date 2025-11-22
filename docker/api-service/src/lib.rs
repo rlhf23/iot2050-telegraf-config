@@ -17,10 +17,12 @@ mod config;
 mod config_test;
 mod deploy;
 mod opcua;
+mod plc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub docker: Arc<Docker>,
+    pub plc: Option<Arc<plc::PlcService>>,
 }
 
 #[derive(Serialize)]
@@ -60,7 +62,34 @@ pub fn create_app() -> Router {
         }
     };
 
-    let state = AppState { docker };
+    // Initialize PLC service if configured
+    let plc_service = if let Ok(plc_ip) = std::env::var("PLC_IP") {
+        let config = plc::PlcConfig {
+            ip: plc_ip,
+            rack: std::env::var("PLC_RACK")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
+            slot: std::env::var("PLC_SLOT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1),
+            db_number: std::env::var("PLC_DB")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100),
+        };
+        info!("PLC service configured: {}:DB{}", config.ip, config.db_number);
+        Some(Arc::new(plc::PlcService::new(config)))
+    } else {
+        info!("PLC service not configured (set PLC_IP to enable)");
+        None
+    };
+
+    let state = AppState { 
+        docker,
+        plc: plc_service,
+    };
 
     // Configure CORS
     let cors = CorsLayer::new()
@@ -85,6 +114,9 @@ pub fn create_app() -> Router {
         .route("/api/config/deploy", post(deploy::deploy_config))
         // OPC-UA endpoints
         .route("/api/opcua/poll-namespaces", post(opcua::poll_namespaces))
+        // PLC endpoints
+        .route("/api/plc/command", post(plc::handle_command))
+        .route("/api/plc/status", get(plc::handle_status))
         .layer(cors)
         .with_state(state)
 }
