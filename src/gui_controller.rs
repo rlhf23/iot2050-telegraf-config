@@ -514,6 +514,18 @@ impl GuiController {
             "Restarting Telegraf service..."
         );
     }
+
+    /// Sync system time to the remote device
+    pub fn sync_time(&mut self) {
+        let host = self.config.iot_host.clone();
+        let username = self.config.iot_username.clone();
+        let password = self.config.iot_password.clone();
+        
+        self.send_worker_command(
+            WorkerCommand::SyncTime { host, username, password },
+            "Syncing system time to device..."
+        );
+    }
 }
 
 impl Default for GuiController {

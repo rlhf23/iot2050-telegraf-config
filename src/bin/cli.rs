@@ -1,4 +1,4 @@
-use clap::{ArgAction, Command};
+use clap::Command;
 use sie_generate_config::{
     backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig,
@@ -25,7 +25,7 @@ fn exit_with_error(error: impl std::fmt::Display) -> ! {
     wrap_up(1)
 }
 
-fn handle_deploy_command(matches: &clap::ArgMatches) {
+fn handle_device_command(matches: &clap::ArgMatches) {
     match matches.subcommand() {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
@@ -86,6 +86,20 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
             
             if let Err(e) = deployer.start() {
                 exit_with_error(format!("Start failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("time", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            
+            if let Err(e) = deployer.test_connection() {
+                exit_with_error(format!("Connection failed: {}", e));
+            }
+            
+            if let Err(e) = deployer.sync_time() {
+                exit_with_error(format!("Time sync failed: {}", e));
             }
             
             wrap_up(0);
@@ -476,8 +490,8 @@ fn main() {
                 .arg(clap::Arg::new("iot_password").long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("IoT device password"))
         )
         .subcommand(
-            Command::new("deploy")
-                .about("Deploy monitoring stack to IoT devices")
+            Command::new("device")
+                .about("Manage IoT device deployment and configuration")
                 .subcommand_required(true)
                 .arg_required_else_help(true)
                 .subcommand(
@@ -508,14 +522,6 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
                 .subcommand(
-                    Command::new("status")
-                        .about("Check deployment status")
-                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
-                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                )
-                .subcommand(
                     Command::new("start")
                         .about("Start monitoring stack")
                         .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
@@ -531,6 +537,22 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("volumes").short('v').long("volumes").action(clap::ArgAction::SetTrue).help("Remove volumes (WARNING: deletes all data)"))
+                )
+                .subcommand(
+                    Command::new("status")
+                        .about("Check deployment status")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("time")
+                        .about("Sync system time from your machine to the device")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
         )
         .subcommand(
@@ -589,8 +611,8 @@ fn main() {
                 exit_with_error(e);
             }
         }
-        Some(("deploy", sub_matches)) => {
-            handle_deploy_command(sub_matches);
+        Some(("device", sub_matches)) => {
+            handle_device_command(sub_matches);
         }
         Some(("check", sub_matches)) => {
             if let Err(e) = handle_check_command(sub_matches) {

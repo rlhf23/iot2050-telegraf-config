@@ -342,6 +342,40 @@ impl IoTDeployer {
         Ok(())
     }
 
+    /// Sync system time from local machine to device
+    pub fn sync_time(&self) -> Result<(), TelegrafError> {
+        println!("🕐 Syncing time to device...");
+        
+        let session = self.create_ssh_session()?;
+        
+        // Get local time in format suitable for `date` command
+        let local_time = chrono::Local::now();
+        let time_str = local_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        
+        println!("📅 Local time: {}", time_str);
+        
+        // Set time on device (requires sudo)
+        let set_time_cmd = format!("sudo date -s '{}'", time_str);
+        
+        self.run_command(
+            &session,
+            &set_time_cmd,
+            "Setting device time"
+        )?;
+        
+        // Verify the time was set
+        let mut channel = session.channel_session()?;
+        channel.exec("date")?;
+        
+        let mut device_time = String::new();
+        channel.read_to_string(&mut device_time)?;
+        channel.wait_close()?;
+        
+        println!("✅ Device time updated: {}", device_time.trim());
+        
+        Ok(())
+    }
+
     /// Get deployment status
     pub fn status(&self) -> Result<(), TelegrafError> {
         println!("📊 Checking deployment status...");
