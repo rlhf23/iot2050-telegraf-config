@@ -153,7 +153,7 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8000' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

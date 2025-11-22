@@ -61,8 +61,10 @@ impl OpcUaPoller {
         // Validate the IP address in the config
         config.validate_ip()?;
 
-        // Initialize logging
-        opcua::console_logging::init();
+        // Note: We don't initialize logging here anymore.
+        // When used as a library (e.g., in api-service), the parent application
+        // should handle logging initialization. For standalone binaries (CLI/TUI),
+        // logging is initialized in their main() functions.
 
         // Create a Tokio runtime for async operations
         Ok(Self { config })

@@ -212,65 +212,133 @@ impl IoTDeployer {
         Ok(())
     }
 
-    /// Deploy the monitoring stack to the device
-    pub fn deploy(&self, build_locally: bool) -> Result<(), TelegrafError> {
+    /// Update monitoring configuration on the device (download fresh copy from git)
+    pub fn update(&self, use_local: bool) -> Result<(), TelegrafError> {
+        println!("🔄 Updating monitoring configuration...");
+        
+        let session = self.create_ssh_session()?;
+        
+        // Remove existing monitoring directory
+        self.run_command(
+            &session,
+            "rm -rf ~/monitoring",
+            "Removing old monitoring directory"
+        )?;
+        
+        // Create monitoring directory
+        self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
+        
+        if use_local {
+            // Download locally and transfer via SFTP
+            println!("📥 Downloading docker configuration locally from branch '{}'...", self.branch);
+            
+            // Create temp directory
+            let temp_dir = std::env::temp_dir().join(format!("monitoring-{}", self.branch));
+            std::fs::create_dir_all(&temp_dir)?;
+            
+            // Download tarball locally
+            let tarball_path = temp_dir.join("docker.tar.gz");
+            let output = std::process::Command::new("curl")
+                .arg("-L")
+                .arg(&self.repo_url)
+                .arg("-o")
+                .arg(&tarball_path)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to download: {}", e)))?;
+            
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError("Failed to download tarball".to_string()));
+            }
+            
+            // Extract locally
+            let extract_dir = temp_dir.join("extracted");
+            std::fs::create_dir_all(&extract_dir)?;
+            let extract_output = std::process::Command::new("tar")
+                .arg("-xzf")
+                .arg(&tarball_path)
+                .arg("-C")
+                .arg(&extract_dir)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
+            
+            if !extract_output.status.success() {
+                return Err(TelegrafError::ConfigError("Failed to extract tarball".to_string()));
+            }
+            
+            // Find the docker folder
+            let docker_path = extract_dir.join(format!("iot2050-telegraf-config-{}", self.branch)).join("docker");
+            
+            println!("📤 Transferring files to device via SFTP...");
+            
+            // Use SFTP through the existing SSH session
+            let sftp = session.sftp()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e)))?;
+            
+            // Recursively upload the docker folder
+            self.upload_directory(&sftp, &docker_path, Path::new("/home").join(self.user()).join("monitoring"))?;
+            
+            // Cleanup temp directory
+            let _ = std::fs::remove_dir_all(&temp_dir);
+        } else {
+            // Download directly on the device (requires internet)
+            println!("📥 Downloading docker configuration on device from branch '{}'...", self.branch);
+            
+            // Check if device has internet connectivity
+            println!("🌐 Checking device internet connectivity...");
+            let has_internet = self.check_command(&session, "ping -c 1 www.google.com > /dev/null 2>&1")?;
+            
+            if !has_internet {
+                return Err(TelegrafError::ConfigError(
+                    "Device has no internet connectivity. Use --local flag to download and transfer from your machine instead.".to_string()
+                ));
+            }
+            
+            let download_cmd = format!(
+                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+                self.repo_url, self.branch
+            );
+            
+            self.run_command(
+                &session,
+                &download_cmd,
+                "Downloading docker configuration"
+            )?;
+        }
+        
+        // Make scripts executable
+        self.run_command(
+            &session,
+            "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh",
+            "Making scripts executable"
+        )?;
+        
+        println!("✅ Monitoring configuration updated successfully!");
+        Ok(())
+    }
+
+    /// Run setup on the device (assumes provisioning is already done)
+    pub fn setup(&self) -> Result<(), TelegrafError> {
         println!("🚀 Starting setup...");
         
         let session = self.create_ssh_session()?;
         
-        if build_locally {
-            println!("🏗️  Building images locally and transferring...");
-            // This would involve building locally and transferring
-            // For now, we'll implement the remote build approach
-            self.deploy_remote_build(&session)?;
-        } else {
-            println!("🏗️  Building on remote device...");
-            self.deploy_remote_build(&session)?;
-        }
-        
-        println!("✅ Setup completed successfully!");
-        Ok(())
-    }
-
-    /// Deploy using remote build approach (assumes provisioning is already done)
-    fn deploy_remote_build(&self, session: &Session) -> Result<(), TelegrafError> {
         // Verify monitoring directory exists
-        let dir_exists = self.check_command(session, "test -d ~/monitoring")?;
+        let dir_exists = self.check_command(&session, "test -d ~/monitoring")?;
         if !dir_exists {
             return Err(TelegrafError::ConfigError(
-                "Monitoring directory not found. Please run 'provision' first.".to_string()
+                "Monitoring directory not found. Please run 'provision' or 'update' first.".to_string()
             ));
         }
         
         // Run setup script
         println!("⚙️  Running setup script...");
         self.run_command(
-            session,
+            &session,
             "cd ~/monitoring && ./scripts/setup.sh",
             "Running setup"
         )?;
         
-        //TODO:skipped auto-start
-        // Start the monitoring stack
-        // println!("🚀 Starting monitoring stack...");
-        // self.run_command(
-        //     session,
-        //     "cd ~/monitoring && ./scripts/start.sh",
-        //     "Starting monitoring stack"
-        // )?;
-        
-        // Get service status
-        // println!("📊 Checking service status...");
-        // let mut channel = session.channel_session()?;
-        // channel.exec("cd ~/monitoring && docker-compose ps")?;
-        
-        // let mut output = String::new();
-        // channel.read_to_string(&mut output)?;
-        // channel.wait_close()?;
-        
-        // println!("Service Status:");
-        // println!("{}", output);
-        
+        println!("✅ Setup completed successfully!");
         Ok(())
     }
 
@@ -590,5 +658,45 @@ struct PackageStatus {
 impl PackageStatus {
     fn needs_installation(&self) -> bool {
         self.needs_base_packages || self.needs_docker || self.needs_compose
+    }
+}
+
+impl IoTDeployer {
+    /// Recursively upload a directory via SFTP
+    fn upload_directory(&self, sftp: &ssh2::Sftp, local_path: &Path, remote_path: std::path::PathBuf) -> Result<(), TelegrafError> {
+        use std::fs;
+        
+        // Try to create directory (ignore error if it exists)
+        let _ = sftp.mkdir(&remote_path, 0o755);
+        
+        // Iterate through local directory
+        for entry in fs::read_dir(local_path)
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to read directory: {}", e)))? 
+        {
+            let entry = entry.map_err(|e| TelegrafError::ConfigError(format!("Failed to read entry: {}", e)))?;
+            let local_file_path = entry.path();
+            let file_name = entry.file_name();
+            let remote_file_path = remote_path.join(&file_name);
+            
+            if local_file_path.is_dir() {
+                // Recursively upload subdirectory
+                self.upload_directory(sftp, &local_file_path, remote_file_path)?;
+            } else {
+                // Upload file
+                let remote_file_str = remote_file_path.to_str()
+                    .ok_or_else(|| TelegrafError::ConfigError("Invalid remote file path".to_string()))?;
+                
+                let mut local_file = fs::File::open(&local_file_path)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to open local file: {}", e)))?;
+                
+                let mut remote_file = sftp.create(&remote_file_path)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to create remote file {}: {}", remote_file_str, e)))?;
+                
+                std::io::copy(&mut local_file, &mut remote_file)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to upload file: {}", e)))?;
+            }
+        }
+        
+        Ok(())
     }
 }
