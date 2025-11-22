@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 // rust7 S7 client
-use s7_comm::{Client, ClientOptions};
+use rust7::client::S7Client;
 
 /// PLC connection configuration
 #[derive(Clone)]
@@ -33,7 +33,7 @@ impl Default for PlcConfig {
 /// Shared PLC service state
 pub struct PlcService {
     config: PlcConfig,
-    client: Arc<Mutex<Option<Client>>>,
+    client: Arc<Mutex<Option<S7Client>>>,
 }
 
 impl PlcService {
@@ -51,21 +51,18 @@ impl PlcService {
         if client_guard.is_none() {
             info!("Connecting to PLC at {}...", self.config.ip);
             
-            let options = ClientOptions {
-                rack: self.config.rack,
-                slot: self.config.slot,
-                ..Default::default()
-            };
+            let mut client = S7Client::new();
             
-            match Client::connect(&self.config.ip, options) {
-                Ok(client) => {
+            // Connect to PLC (S7-1200/1500 protocol)
+            match client.connect_s71200_1500(&self.config.ip) {
+                Ok(_) => {
                     info!("✓ Connected to PLC");
                     *client_guard = Some(client);
                     Ok(())
                 }
                 Err(e) => {
-                    error!("Failed to connect to PLC: {:?}", e);
-                    Err(format!("PLC connection failed: {:?}", e))
+                    error!("Failed to connect to PLC: {}", e);
+                    Err(format!("PLC connection failed: {}", e))
                 }
             }
         } else {
@@ -87,8 +84,8 @@ impl PlcService {
         // Read current 2-byte command word
         let mut buffer = vec![0u8; 2];
         client
-            .db_read(self.config.db_number, 0, &mut buffer)
-            .map_err(|e| format!("Failed to read DB: {:?}", e))?;
+            .read_db(self.config.db_number, 0, &mut buffer)
+            .map_err(|e| format!("Failed to read DB: {}", e))?;
 
         // Modify the bit
         let byte_index = (bit_index / 8) as usize;
@@ -102,8 +99,8 @@ impl PlcService {
 
         // Write back
         client
-            .db_write(self.config.db_number, 0, &buffer)
-            .map_err(|e| format!("Failed to write DB: {:?}", e))?;
+            .write_db(self.config.db_number, 0, &buffer)
+            .map_err(|e| format!("Failed to write DB: {}", e))?;
 
         info!("Wrote bit {} = {} to DB{}", bit_index, value, self.config.db_number);
         Ok(())
@@ -127,8 +124,8 @@ impl PlcService {
         // Read 2 bytes starting at offset 2
         let mut buffer = vec![0u8; 2];
         client
-            .db_read(self.config.db_number, 2, &mut buffer)
-            .map_err(|e| format!("Failed to read status: {:?}", e))?;
+            .read_db(self.config.db_number, 2, &mut buffer)
+            .map_err(|e| format!("Failed to read status: {}", e))?;
 
         // Convert to bool array
         let mut bits = Vec::with_capacity(16);

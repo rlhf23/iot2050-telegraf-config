@@ -31,7 +31,7 @@ thiserror = "2.0"
 sie_generate_config = { path = "../..", default-features = false }
 
 # PLC communication
-s7-comm = "0.2"
+rust7 = "0.1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
