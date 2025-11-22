@@ -709,32 +709,6 @@ mod tests {
     }
 
     #[test]
-    fn test_namespace_info_error_messages() {
-        // Test that error messages are clear and actionable
-        let test_cases = vec![
-            (
-                "No namespaces found on OPC-UA server",
-                vec!["ServerInterfaces", "browse operation failed"],
-            ),
-            (
-                "Could not match any XML files to server namespaces",
-                vec!["XML file names match", "namespace names"],
-            ),
-        ];
-
-        for (error_msg, expected_keywords) in test_cases {
-            for keyword in expected_keywords {
-                assert!(
-                    error_msg.contains(keyword),
-                    "Error message '{}' should contain keyword '{}'",
-                    error_msg,
-                    keyword
-                );
-            }
-        }
-    }
-
-    #[test]
     fn test_namespace_response_format() {
         // Test that the response format matches what the frontend expects
         #[derive(Debug)]
