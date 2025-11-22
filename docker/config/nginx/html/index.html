@@ -230,6 +230,38 @@
             cursor: not-allowed;
         }
 
+        .plc-btn {
+            flex: 1;
+            min-width: 100px;
+            padding: 10px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .plc-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .plc-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+        }
+
+        .plc-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         .confirm-modal-content {
             background-color: white;
             margin: 15% auto;
@@ -533,6 +565,41 @@
                     </div>
                 </div>
                 <a href="/config-upload.html" class="service-link">Open Config Generator</a>
+            </div>
+
+            <!-- PLC Controls -->
+            <div class="service-card" id="plc-card">
+                <div class="service-header">
+                    <div class="service-name">PLC Controls (test)</div>
+                    <div class="status-indicator checking" id="plc-status"></div>
+                </div>
+                <div class="service-description">
+                    Direct control interface for PLC operations
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="plc-status-text">Checking...</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Active Bits:</span>
+                        <span class="info-value" id="plc-active-bits">-</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;">
+                    <button class="plc-btn" onclick="sendPlcCommand(0)" id="plc-btn-0">
+                        ▶️ Start
+                    </button>
+                    <button class="plc-btn" onclick="sendPlcCommand(1)" id="plc-btn-1">
+                        ⏹️ Stop
+                    </button>
+                    <button class="plc-btn" onclick="sendPlcCommand(2)" id="plc-btn-2">
+                        🔄 Reset
+                    </button>
+                    <button class="plc-btn" onclick="sendPlcCommand(3)" id="plc-btn-3">
+                        ⚡ Action
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -868,14 +935,77 @@
             }
         }
 
+        // PLC Control Functions
+        async function sendPlcCommand(bit) {
+            const button = document.getElementById(`plc-btn-${bit}`);
+            button.disabled = true;
+            
+            try {
+                const response = await fetch('/api/plc/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        bit: bit, 
+                        pulse: true,
+                        pulse_duration_ms: 100 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`✅ ${button.textContent.trim()} command sent`, 'success');
+                    // Refresh PLC status
+                    checkPlcStatus();
+                } else {
+                    showNotification(`❌ ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`❌ Failed to send command: ${error.message}`, 'error');
+            } finally {
+                setTimeout(() => { button.disabled = false; }, 500);
+            }
+        }
+
+        async function checkPlcStatus() {
+            try {
+                const response = await fetch('/api/plc/status');
+                const data = await response.json();
+                
+                const statusIndicator = document.getElementById('plc-status');
+                const statusText = document.getElementById('plc-status-text');
+                const activeBits = document.getElementById('plc-active-bits');
+                
+                if (data.success) {
+                    statusIndicator.className = 'status-indicator healthy';
+                    statusText.textContent = 'Connected';
+                    
+                    // Count active status bits
+                    const active = data.bits.filter(b => b).length;
+                    activeBits.textContent = `${active} / ${data.bits.length}`;
+                } else {
+                    statusIndicator.className = 'status-indicator unhealthy';
+                    statusText.textContent = 'Not configured';
+                    activeBits.textContent = '-';
+                }
+            } catch (error) {
+                const statusIndicator = document.getElementById('plc-status');
+                const statusText = document.getElementById('plc-status-text');
+                statusIndicator.className = 'status-indicator unhealthy';
+                statusText.textContent = 'Unavailable';
+            }
+        }
+
         // Initial checks
         checkAllServices();
         updateSystemInfo();
+        checkPlcStatus();
 
         // Refresh every 10 seconds
         setInterval(() => {
             checkAllServices();
             updateSystemInfo();
+            checkPlcStatus();
         }, 10000);
     </script>
 </body>
