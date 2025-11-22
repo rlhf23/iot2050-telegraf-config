@@ -1158,3 +1158,46 @@ fn check_containerized_telegraf_status(session: &Session) -> Result<(bool, Strin
         "Telegraf"
     )
 }
+
+/// Sync system time from local machine to remote device
+pub fn sync_time_over_ssh(
+    remote_host: &str,
+    username: &str,
+    password: &str,
+) -> Result<String, TelegrafError> {
+    // Connect to SSH
+    let config = SshConfig {
+        connect_timeout: 3,
+        operation_timeout: 30,
+        stream_timeout: 15,
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
+    
+    // Get local time
+    let local_time = chrono::Local::now();
+    let time_str = local_time.format("%Y-%m-%d %H:%M:%S").to_string();
+    
+    // Set time on device (requires sudo)
+    let set_time_cmd = format!("echo '{}' | sudo -S date -s '{}'", password, time_str);
+    
+    let mut channel = session.channel_session()?;
+    channel.exec(&set_time_cmd)?;
+    
+    let mut output = String::new();
+    channel.read_to_string(&mut output)
+        .map_err(|e| TelegrafError::IoError(e))?;
+    
+    channel.wait_close()?;
+    
+    // Verify the time was set
+    let mut verify_channel = session.channel_session()?;
+    verify_channel.exec("date")?;
+    
+    let mut device_time = String::new();
+    verify_channel.read_to_string(&mut device_time)
+        .map_err(|e| TelegrafError::IoError(e))?;
+    
+    verify_channel.wait_close()?;
+    
+    Ok(format!("Local time: {}\nDevice time: {}", time_str, device_time.trim()))
+}

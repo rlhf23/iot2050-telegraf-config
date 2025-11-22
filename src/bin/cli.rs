@@ -1,4 +1,4 @@
-use clap::{ArgAction, Command};
+use clap::Command;
 use sie_generate_config::{
     backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig,
@@ -522,24 +522,8 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
                 .subcommand(
-                    Command::new("status")
-                        .about("Check deployment status")
-                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
-                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                )
-                .subcommand(
                     Command::new("start")
                         .about("Start monitoring stack")
-                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
-                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
-                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
-                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                )
-                .subcommand(
-                    Command::new("time")
-                        .about("Sync system time from your machine to the device")
                         .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
@@ -553,6 +537,22 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("volumes").short('v').long("volumes").action(clap::ArgAction::SetTrue).help("Remove volumes (WARNING: deletes all data)"))
+                )
+                .subcommand(
+                    Command::new("status")
+                        .about("Check deployment status")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("time")
+                        .about("Sync system time from your machine to the device")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                 )
         )
         .subcommand(

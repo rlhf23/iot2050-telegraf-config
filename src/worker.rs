@@ -60,6 +60,11 @@ pub enum WorkerCommand {
         username: String,
         password: String,
     },
+    SyncTime {
+        host: String,
+        username: String,
+        password: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -362,6 +367,18 @@ impl WorkerHandle {
                                 .map(|output| WorkerResponse::SshCommandOutput(format!("Telegraf restarted successfully: {}", output)))
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!("Failed to restart Telegraf: {}", e))
+                                });
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::SyncTime { host, username, password } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let result = ssh_utils::sync_time_over_ssh(&host, &username, &password)
+                                .map(|output| WorkerResponse::SshCommandOutput(format!("Time synced successfully: {}", output)))
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Failed to sync time: {}", e))
                                 });
                             let _ = response_sender.send(result);
                         });
