@@ -169,6 +169,7 @@ services:
       - ./config/nginx/html:/usr/share/nginx/html
       - ./config/nginx/scripts/system-info.sh:/usr/local/bin/system-info.sh:ro
       - ./config/nginx/scripts/start-nginx.sh:/usr/local/bin/start-nginx.sh:ro
+      - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro 
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
     depends_on:

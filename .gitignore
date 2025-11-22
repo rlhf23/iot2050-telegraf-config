@@ -16,3 +16,6 @@ telegraf.conf
 cobertura.xml
 tarpaulin-report.html
 .env
+
+# direnv cache
+.direnv

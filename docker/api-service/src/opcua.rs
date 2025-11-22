@@ -37,6 +37,7 @@ pub async fn poll_namespaces(
     Json(request): Json<PollNamespacesRequest>,
 ) -> Result<Json<PollNamespacesResponse>, (StatusCode, Json<PollNamespacesResponse>)> {
     info!("Polling OPC-UA server for namespaces: {}", request.opcua_ip);
+    info!("Request details: {} file(s), anonymous={}", request.filenames.len(), request.anonymous);
 
     // Create TelegrafConfig for OpcUaPoller
     let config = TelegrafConfig {
@@ -95,20 +96,34 @@ pub async fn poll_namespaces(
 
     // Convert to response format
     let mut mappings = Vec::new();
+    let mut matched_count = 0;
+    
     for filename in &request.filenames {
         let namespace_index = namespace_map.get(filename).copied().unwrap_or(0);
+        if namespace_index > 0 {
+            matched_count += 1;
+        }
         mappings.push(NamespaceMapping {
             filename: filename.clone(),
             namespace: namespace_index.to_string(),
             namespace_index,
         });
+        info!("  File '{}' -> namespace {}", filename, namespace_index);
     }
 
-    info!("Successfully mapped {} file(s) to namespaces", mappings.len());
+    info!("Successfully mapped {} out of {} file(s) to namespaces", matched_count, mappings.len());
+
+    let message = if matched_count == 0 {
+        format!("Warning: No files were matched to server namespaces. All files defaulted to namespace 0.")
+    } else if matched_count < mappings.len() {
+        format!("Partially successful: {} out of {} files matched to server namespaces", matched_count, mappings.len())
+    } else {
+        format!("Successfully retrieved namespaces for all {} file(s)", mappings.len())
+    };
 
     Ok(Json(PollNamespacesResponse {
         success: true,
-        message: format!("Successfully retrieved namespaces from OPC-UA server"),
+        message,
         mappings,
     }))
 }
