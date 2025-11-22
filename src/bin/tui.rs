@@ -88,6 +88,7 @@ enum ActionsField {
     RestartTelegraf,
     ServiceStatus,
     BackupGrafana,
+    SyncTime,
 }
 
 impl OpcUaConfigField {
@@ -125,7 +126,7 @@ impl IoTConfigField {
 
 impl ActionsField {
     fn count() -> usize {
-        8 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana
+        9 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana, SyncTime
     }
     
     fn from_index(index: usize) -> Self {
@@ -138,6 +139,7 @@ impl ActionsField {
             5 => Self::RestartTelegraf,
             6 => Self::ServiceStatus,
             7 => Self::BackupGrafana,
+            8 => Self::SyncTime,
             _ => Self::GenerateConfig, // Default fallback
         }
     }
@@ -775,6 +777,34 @@ impl App {
             }
         }
     }
+    
+    fn sync_time(&mut self) {
+        let host = self.config.iot_host.clone();
+        let username = self.config.iot_username.clone();
+        let password = self.config.iot_password.clone();
+        
+        if host.is_empty() || username.is_empty() || password.is_empty() {
+            self.add_status_message("⚠️ IoT device credentials not configured".to_string());
+            return;
+        }
+        
+        if self.worker.is_some() {
+            self.is_working = true;
+            self.add_status_message("🕐 Syncing system time to device...".to_string());
+            if let Some(worker) = &self.worker {
+                if let Err(e) = worker.send_command(WorkerCommand::SyncTime { 
+                    host,
+                    username,
+                    password
+                }) {
+                    self.add_status_message(format!("❌ Failed to send command: {}", e));
+                    self.is_working = false;
+                }
+            }
+        } else {
+            self.add_status_message("❌ Worker not available".to_string());
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -1132,6 +1162,7 @@ fn handle_actions_input(app: &mut App, key: KeyCode) {
                 ActionsField::RestartTelegraf => app.restart_telegraf(),
                 ActionsField::ServiceStatus => app.check_service_status(),
                 ActionsField::BackupGrafana => app.backup_grafana(),
+                ActionsField::SyncTime => app.sync_time(),
             }
         }
         // Legacy hotkeys for backward compatibility
@@ -1143,6 +1174,7 @@ fn handle_actions_input(app: &mut App, key: KeyCode) {
         KeyCode::Char('r') => app.restart_telegraf(),
         KeyCode::Char('v') => app.check_service_status(),
         KeyCode::Char('b') => app.backup_grafana(),
+        KeyCode::Char('y') => app.sync_time(),
         _ => {}
     }
 }
@@ -1619,6 +1651,7 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
             if app.config.output_format.as_deref().unwrap_or("influxdb") == "prometheus" { "Prometheus" } else { "InfluxDB" }
         ), matches!(selected_field, ActionsField::ServiceStatus), "v"),
         render_action_item("📊 Backup Grafana", matches!(selected_field, ActionsField::BackupGrafana), "b"),
+        render_action_item("🕐 Sync Device Time", matches!(selected_field, ActionsField::SyncTime), "y"),
     ];
 
     let actions_block = Paragraph::new(actions)
