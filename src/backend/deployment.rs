@@ -212,6 +212,114 @@ impl IoTDeployer {
         Ok(())
     }
 
+    /// Update monitoring configuration on the device (download fresh copy from git)
+    pub fn update(&self, use_local: bool) -> Result<(), TelegrafError> {
+        println!("🔄 Updating monitoring configuration...");
+        
+        let session = self.create_ssh_session()?;
+        
+        // Remove existing monitoring directory
+        self.run_command(
+            &session,
+            "rm -rf ~/monitoring",
+            "Removing old monitoring directory"
+        )?;
+        
+        // Create monitoring directory
+        self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
+        
+        if use_local {
+            // Download locally and transfer via SCP
+            println!("📥 Downloading docker configuration locally from branch '{}'...", self.branch);
+            
+            // Create temp directory
+            let temp_dir = std::env::temp_dir().join(format!("monitoring-{}", self.branch));
+            std::fs::create_dir_all(&temp_dir)?;
+            
+            // Download tarball locally
+            let tarball_path = temp_dir.join("docker.tar.gz");
+            let output = std::process::Command::new("curl")
+                .arg("-L")
+                .arg(&self.repo_url)
+                .arg("-o")
+                .arg(&tarball_path)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to download: {}", e)))?;
+            
+            if !output.status.success() {
+                return Err(TelegrafError::ConfigError("Failed to download tarball".to_string()));
+            }
+            
+            // Extract locally
+            let extract_dir = temp_dir.join("extracted");
+            std::fs::create_dir_all(&extract_dir)?;
+            let extract_output = std::process::Command::new("tar")
+                .arg("-xzf")
+                .arg(&tarball_path)
+                .arg("-C")
+                .arg(&extract_dir)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
+            
+            if !extract_output.status.success() {
+                return Err(TelegrafError::ConfigError("Failed to extract tarball".to_string()));
+            }
+            
+            // Find the docker folder
+            let docker_path = extract_dir.join(format!("iot2050-telegraf-config-{}", self.branch)).join("docker");
+            
+            println!("📤 Transferring files to device...");
+            
+            // Use SCP to transfer the docker folder
+            let scp_cmd = format!(
+                "scp -r {}/* {}@{}:~/monitoring/",
+                docker_path.display(),
+                self.user(),
+                self.host()
+            );
+            
+            let scp_output = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&scp_cmd)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to SCP: {}", e)))?;
+            
+            if !scp_output.status.success() {
+                return Err(TelegrafError::ConfigError(format!(
+                    "SCP failed: {}",
+                    String::from_utf8_lossy(&scp_output.stderr)
+                )));
+            }
+            
+            // Cleanup temp directory
+            let _ = std::fs::remove_dir_all(&temp_dir);
+        } else {
+            // Download directly on the device (requires internet)
+            println!("📥 Downloading docker configuration on device from branch '{}'...", self.branch);
+            
+            let download_cmd = format!(
+                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
+                self.repo_url, self.branch
+            );
+            
+            self.run_command(
+                &session,
+                &download_cmd,
+                "Downloading docker configuration"
+            )?;
+        }
+        
+        // Make scripts executable
+        self.run_command(
+            &session,
+            "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh",
+            "Making scripts executable"
+        )?;
+        
+        println!("✅ Monitoring configuration updated successfully!");
+        Ok(())
+    }
+
     /// Run setup on the device (assumes provisioning is already done)
     pub fn setup(&self) -> Result<(), TelegrafError> {
         println!("🚀 Starting setup...");
@@ -222,7 +330,7 @@ impl IoTDeployer {
         let dir_exists = self.check_command(&session, "test -d ~/monitoring")?;
         if !dir_exists {
             return Err(TelegrafError::ConfigError(
-                "Monitoring directory not found. Please run 'provision' first.".to_string()
+                "Monitoring directory not found. Please run 'provision' or 'update' first.".to_string()
             ));
         }
         

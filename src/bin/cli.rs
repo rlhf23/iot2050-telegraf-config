@@ -1,4 +1,4 @@
-use clap::Command;
+use clap::{ArgAction, Command};
 use sie_generate_config::{
     backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig,
@@ -37,6 +37,21 @@ fn handle_deploy_command(matches: &clap::ArgMatches) {
             
             if let Err(e) = deployer.provision() {
                 exit_with_error(format!("Provisioning failed: {}", e));
+            }
+            
+            wrap_up(0);
+        }
+        Some(("update", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let use_local = sub_matches.get_flag("local");
+            
+            if let Err(e) = deployer.test_connection() {
+                exit_with_error(format!("Connection failed: {}", e));
+            }
+            
+            if let Err(e) = deployer.update(use_local) {
+                exit_with_error(format!("Update failed: {}", e));
             }
             
             wrap_up(0);
@@ -475,8 +490,18 @@ fn main() {
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                 )
                 .subcommand(
+                    Command::new("update")
+                        .about("Update monitoring configuration from git (removes and re-downloads)")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use"))
+                        .arg(clap::Arg::new("local").short('l').long("local").action(clap::ArgAction::SetTrue).help("Download locally and transfer via SCP (no internet needed on device)"))
+                )
+                .subcommand(
                     Command::new("setup")
-                        .about("Run setup on provisioned device (creates .env, pulls images)")
+                        .about("Run setup on provisioned device (creates .env, installs telegraf config)")
                         .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
