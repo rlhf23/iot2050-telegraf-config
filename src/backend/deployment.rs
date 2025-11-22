@@ -283,6 +283,16 @@ impl IoTDeployer {
             // Download directly on the device (requires internet)
             println!("📥 Downloading docker configuration on device from branch '{}'...", self.branch);
             
+            // Check if device has internet connectivity
+            println!("🌐 Checking device internet connectivity...");
+            let has_internet = self.check_command(&session, "ping -c 1 www.google.com > /dev/null 2>&1")?;
+            
+            if !has_internet {
+                return Err(TelegrafError::ConfigError(
+                    "Device has no internet connectivity. Use --local flag to download and transfer from your machine instead.".to_string()
+                ));
+            }
+            
             let download_cmd = format!(
                 "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
                 self.repo_url, self.branch
