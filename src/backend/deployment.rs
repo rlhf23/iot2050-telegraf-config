@@ -229,7 +229,7 @@ impl IoTDeployer {
         self.run_command(&session, "mkdir -p ~/monitoring", "Creating monitoring directory")?;
         
         if use_local {
-            // Download locally and transfer via SCP
+            // Download locally and transfer via SFTP
             println!("📥 Downloading docker configuration locally from branch '{}'...", self.branch);
             
             // Create temp directory
@@ -268,28 +268,14 @@ impl IoTDeployer {
             // Find the docker folder
             let docker_path = extract_dir.join(format!("iot2050-telegraf-config-{}", self.branch)).join("docker");
             
-            println!("📤 Transferring files to device...");
+            println!("📤 Transferring files to device via SFTP...");
             
-            // Use SCP to transfer the docker folder
-            let scp_cmd = format!(
-                "scp -r {}/* {}@{}:~/monitoring/",
-                docker_path.display(),
-                self.user(),
-                self.host()
-            );
+            // Use SFTP through the existing SSH session
+            let sftp = session.sftp()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e)))?;
             
-            let scp_output = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(&scp_cmd)
-                .output()
-                .map_err(|e| TelegrafError::ConfigError(format!("Failed to SCP: {}", e)))?;
-            
-            if !scp_output.status.success() {
-                return Err(TelegrafError::ConfigError(format!(
-                    "SCP failed: {}",
-                    String::from_utf8_lossy(&scp_output.stderr)
-                )));
-            }
+            // Recursively upload the docker folder
+            self.upload_directory(&sftp, &docker_path, Path::new("/home").join(self.user()).join("monitoring"))?;
             
             // Cleanup temp directory
             let _ = std::fs::remove_dir_all(&temp_dir);
@@ -662,5 +648,45 @@ struct PackageStatus {
 impl PackageStatus {
     fn needs_installation(&self) -> bool {
         self.needs_base_packages || self.needs_docker || self.needs_compose
+    }
+}
+
+impl IoTDeployer {
+    /// Recursively upload a directory via SFTP
+    fn upload_directory(&self, sftp: &ssh2::Sftp, local_path: &Path, remote_path: std::path::PathBuf) -> Result<(), TelegrafError> {
+        use std::fs;
+        
+        // Try to create directory (ignore error if it exists)
+        let _ = sftp.mkdir(&remote_path, 0o755);
+        
+        // Iterate through local directory
+        for entry in fs::read_dir(local_path)
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to read directory: {}", e)))? 
+        {
+            let entry = entry.map_err(|e| TelegrafError::ConfigError(format!("Failed to read entry: {}", e)))?;
+            let local_file_path = entry.path();
+            let file_name = entry.file_name();
+            let remote_file_path = remote_path.join(&file_name);
+            
+            if local_file_path.is_dir() {
+                // Recursively upload subdirectory
+                self.upload_directory(sftp, &local_file_path, remote_file_path)?;
+            } else {
+                // Upload file
+                let remote_file_str = remote_file_path.to_str()
+                    .ok_or_else(|| TelegrafError::ConfigError("Invalid remote file path".to_string()))?;
+                
+                let mut local_file = fs::File::open(&local_file_path)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to open local file: {}", e)))?;
+                
+                let mut remote_file = sftp.create(&remote_file_path)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to create remote file {}: {}", remote_file_str, e)))?;
+                
+                std::io::copy(&mut local_file, &mut remote_file)
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to upload file: {}", e)))?;
+            }
+        }
+        
+        Ok(())
     }
 }
