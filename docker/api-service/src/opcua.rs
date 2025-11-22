@@ -8,6 +8,15 @@ use tracing::{error, info};
 // Import from main project
 use sie_generate_config::{TelegrafConfig, backend::opcua_poller::OpcUaPoller};
 
+/// Ensure OPC-UA IP has port appended (default 4840)
+fn ensure_opcua_port(ip: String) -> String {
+    if ip.contains(':') {
+        ip
+    } else {
+        format!("{}:4840", ip)
+    }
+}
+
 #[derive(Deserialize)]
 pub struct PollNamespacesRequest {
     pub session_id: String,
@@ -41,7 +50,7 @@ pub async fn poll_namespaces(
 
     // Create TelegrafConfig for OpcUaPoller
     let config = TelegrafConfig {
-        ip: request.opcua_ip.clone(),
+        ip: ensure_opcua_port(request.opcua_ip.clone()),
         username: if request.anonymous {
             String::new()
         } else {
