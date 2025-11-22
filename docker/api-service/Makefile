@@ -5,6 +5,14 @@ BINARY_NAME = docker-api-service
 RELEASE_DIR = target/$(TARGET)/release
 INTERPRETER = /lib/ld-linux-aarch64.so.1
 
+# Auto-detect cross or cargo
+CARGO_CMD := $(shell command -v cross 2> /dev/null)
+ifndef CARGO_CMD
+    CARGO_CMD := cargo
+else
+    CARGO_CMD := cross
+endif
+
 .PHONY: all build patch copy clean test
 
 # Default target: build, patch, and copy
@@ -12,8 +20,8 @@ all: build patch copy
 
 # Build the release binary for aarch64
 build:
-	@echo "Building $(BINARY_NAME) for $(TARGET)..."
-	cargo build --target $(TARGET) --release
+	@echo "Building $(BINARY_NAME) for $(TARGET) using $(CARGO_CMD)..."
+	$(CARGO_CMD) build --target $(TARGET) --features vendored --release
 
 # Patch the binary with correct interpreter
 patch: build

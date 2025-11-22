@@ -31,6 +31,9 @@ cd docker/api-service
 # Build for aarch64 (ARM64)
 cargo build --target aarch64-unknown-linux-gnu --release
 
+# or possibly
+cross build --target aarch64-unknown-linux-gnu --features vendored --release
+
 # Copy and patch the binary
 cp target/aarch64-unknown-linux-gnu/release/docker-api-service ./docker-api-service
 patchelf --set-interpreter /lib/ld-linux-aarch64.so.1 docker-api-service
