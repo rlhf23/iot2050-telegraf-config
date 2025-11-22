@@ -61,8 +61,8 @@ impl OpcUaPoller {
         // Validate the IP address in the config
         config.validate_ip()?;
 
-        // Initialize logging
-        opcua::console_logging::init();
+        // Initialize logging (ignore error if already initialized)
+        let _ = opcua::console_logging::try_init();
 
         // Create a Tokio runtime for async operations
         Ok(Self { config })
