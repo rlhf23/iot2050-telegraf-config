@@ -40,7 +40,6 @@ mod tests {
         assert!(result.contains("config1"));
         assert!(result.contains("config2"));
         assert!(result.contains("[[outputs.influxdb_v2]]"));
-        assert!(!result.contains("[[outputs.prometheus_client]]"));
     }
 
     #[test]

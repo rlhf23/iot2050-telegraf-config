@@ -362,24 +362,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Restarting Telegraf service on {}...", host);
             
-            // Create a minimal config for the operation
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: username.clone(),
-                iot_password: password.clone(),
-                listener_files: Vec::new(),
-                output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-                use_source_timestamp: false,
-            };
-            
-            let _generator = ConfigGenerator::new(config)?;
-            // Use the ssh_utils function directly since ConfigGenerator doesn't expose restart_telegraf
+            // Use the ssh_utils function directly for restart
             match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(host, username, password) {
                 Ok(result) => {
                     println!("✅ Telegraf Restart Result:");
@@ -399,24 +382,8 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             
             println!("Backing up Grafana dashboards from {} to {}...", host, output_dir);
             
-            // Create a minimal config for the operation
-            let config = TelegrafConfig {
-                folder: ".".into(),
-                ip: "".to_string(),
-                username: "".to_string(),
-                password: "".to_string(),
-                iot_host: host.clone(),
-                iot_username: username.clone(),
-                iot_password: password.clone(),
-                listener_files: Vec::new(),
-                output_format: Some("influxdb".to_string()),
-                include_test_inputs: false,
-                selected_opcua_nodes: Vec::new(),
-                use_source_timestamp: false,
-            };
-            
-            let generator = ConfigGenerator::new(config)?;
-            match generator.backup_grafana() {
+            // Use the ssh_utils function directly for backup
+            match sie_generate_config::backend::ssh_utils::backup_grafana_config(host, username, password) {
                 Ok(result) => {
                     println!("✅ Grafana Backup Result:");
                     println!("Backup saved to: {}", output_dir);
