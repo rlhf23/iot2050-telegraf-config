@@ -69,6 +69,7 @@ pub async fn poll_namespaces(
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
         listener_files: vec![],
+        use_source_timestamp: false,
     };
 
     // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues
