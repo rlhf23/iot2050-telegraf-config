@@ -114,7 +114,7 @@ mod tests {
         #[test]
         fn test_new_poller() {
             let config = create_test_config();
-            let poller = OpcUaPoller::new(config);
+            let poller = OpcUaPoller::new(config.connection_config());
 
             // Should succeed with valid config
             assert!(poller.is_ok());
@@ -130,7 +130,7 @@ mod tests {
         #[test]
         fn test_browse_complete_structure() {
             let config = create_test_config();
-            let poller = OpcUaPoller::new(config).unwrap();
+            let poller = OpcUaPoller::new(config.connection_config()).unwrap();
 
             // This will fail to connect to a real OPC UA server, but we can test the error case
             let result = poller.browse_complete_structure();
@@ -142,7 +142,7 @@ mod tests {
             let mut config = create_test_config();
             config.ip = "invalid-ip".to_string();
 
-            let result = OpcUaPoller::new(config);
+            let result = OpcUaPoller::new(config.connection_config());
             // The error could be either ConfigError or OpcUaClientError
             assert!(result.is_err());
         }
@@ -341,7 +341,7 @@ mod tests {
         for (invalid_ip, case_name) in test_cases {
             let mut config = create_test_config();
             config.ip = invalid_ip.to_string();
-            let result = OpcUaPoller::new(config);
+            let result = OpcUaPoller::new(config.connection_config());
             assert!(
                 result.is_err(),
                 "Should fail with {}: {}",

@@ -318,7 +318,7 @@ impl WorkerHandle {
                     WorkerCommand::BrowseOpcUaNodes { config } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let result = OpcUaPoller::new(config.clone())
+                            let result = OpcUaPoller::new(config.connection_config())
                                 .and_then(|poller| poller.browse_complete_structure())
                                 .map(|nodes| WorkerResponse::OpcUaNodes(nodes))
                                 .unwrap_or_else(|e| WorkerResponse::OpcUaError(e.to_string()));
@@ -329,7 +329,7 @@ impl WorkerHandle {
                     WorkerCommand::GetOpcUaNamespaces { config, xml_files } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let result = OpcUaPoller::new(config.clone())
+                            let result = OpcUaPoller::new(config.connection_config())
                                 .and_then(|poller| poller.get_namespace_info(&xml_files))
                                 .map(|namespace_map| WorkerResponse::OpcUaNamespaces(namespace_map))
                                 .unwrap_or_else(|e| {

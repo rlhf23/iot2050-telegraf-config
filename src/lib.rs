@@ -12,6 +12,25 @@ pub struct SelectedOpcUaNode {
     pub folder_name: Option<String>, // Optional folder name for grouping nodes
 }
 
+/// Configuration for OPC-UA server connection
+/// Used by OpcUaPoller for browsing and namespace operations
+#[derive(Debug, Clone)]
+pub struct OpcUaConnectionConfig {
+    pub ip: String,
+    pub username: String,
+    pub password: String,
+}
+
+/// Configuration for IoT device deployment
+/// Used for SSH operations like deploying configs, backups, etc.
+#[derive(Debug, Clone)]
+pub struct DeploymentConfig {
+    pub iot_host: String,
+    pub iot_username: String,
+    pub iot_password: String,
+}
+
+/// Full Telegraf configuration for generating and deploying configs
 #[derive(Debug, Clone)]
 pub struct TelegrafConfig {
     pub folder: PathBuf,
@@ -28,7 +47,39 @@ pub struct TelegrafConfig {
     pub use_source_timestamp: bool,    // Use "source" instead of "gather" for timestamp
 }
 
+impl OpcUaConnectionConfig {
+    /// Create from TelegrafConfig
+    pub fn from_telegraf_config(config: &TelegrafConfig) -> Self {
+        Self {
+            ip: config.ip.clone(),
+            username: config.username.clone(),
+            password: config.password.clone(),
+        }
+    }
+}
+
+impl DeploymentConfig {
+    /// Create from TelegrafConfig
+    pub fn from_telegraf_config(config: &TelegrafConfig) -> Self {
+        Self {
+            iot_host: config.iot_host.clone(),
+            iot_username: config.iot_username.clone(),
+            iot_password: config.iot_password.clone(),
+        }
+    }
+}
+
 impl TelegrafConfig {
+    /// Extract OPC-UA connection config
+    pub fn connection_config(&self) -> OpcUaConnectionConfig {
+        OpcUaConnectionConfig::from_telegraf_config(self)
+    }
+
+    /// Extract deployment config
+    pub fn deployment_config(&self) -> DeploymentConfig {
+        DeploymentConfig::from_telegraf_config(self)
+    }
+
     /// Validate the entire configuration
     /// Returns a tuple of (is_valid, validation_errors)
     /// This checks for:

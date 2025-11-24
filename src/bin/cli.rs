@@ -203,7 +203,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let namespace_map = if !xml_files.is_empty() {
         println!("\nConnecting to OPC UA server to retrieve namespace information...");
         
-        let poller = OpcUaPoller::new(config.clone())?;
+        let poller = OpcUaPoller::new(config.connection_config())?;
         match poller.get_namespace_info(&xml_files) {
             Ok(map) => {
                 if !map.is_empty() {

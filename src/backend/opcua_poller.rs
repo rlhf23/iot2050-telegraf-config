@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::{error::TelegrafError, TelegrafConfig};
+use crate::{error::TelegrafError, OpcUaConnectionConfig, TelegrafConfig};
 use opcua::{
     client::prelude::*,
     core::comms::url::is_opc_ua_binary_url,
@@ -53,21 +53,43 @@ impl OpcUaNode {
 }
 
 pub struct OpcUaPoller {
-    config: TelegrafConfig,
+    config: OpcUaConnectionConfig,
 }
 
 impl OpcUaPoller {
-    pub fn new(config: TelegrafConfig) -> Result<Self, TelegrafError> {
-        // Validate the IP address in the config
-        config.validate_ip()?;
+    /// Create a new OpcUaPoller with connection config
+    pub fn new(config: OpcUaConnectionConfig) -> Result<Self, TelegrafError> {
+        // Validate the IP address
+        Self::validate_ip(&config.ip)?;
 
-        // Note: We don't initialize logging here anymore.
-        // When used as a library (e.g., in api-service), the parent application
-        // should handle logging initialization. For standalone binaries (CLI/TUI),
-        // logging is initialized in their main() functions.
-
-        // Create a Tokio runtime for async operations
         Ok(Self { config })
+    }
+
+    /// Create from TelegrafConfig (for backward compatibility during migration)
+    pub fn from_telegraf_config(config: TelegrafConfig) -> Result<Self, TelegrafError> {
+        Self::new(config.connection_config())
+    }
+
+    /// Validate IP address format
+    fn validate_ip(ip: &str) -> Result<(), TelegrafError> {
+        // Extract just the IP part (before the port)
+        let ip_part = ip.split(':').next().unwrap_or(ip);
+        
+        // Check if it's a valid IPv4 address
+        if ip_part.parse::<std::net::Ipv4Addr>().is_err() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Invalid IP address format: '{}'. Must be a valid IPv4 address (e.g., 192.168.1.1 or 192.168.1.1:4840)",
+                ip
+            )));
+        }
+        
+        Ok(())
+    }
+
+    /// Original new() method kept for backward compatibility
+    #[deprecated(note = "Use new() with OpcUaConnectionConfig or from_telegraf_config() instead")]
+    pub fn new_legacy(config: TelegrafConfig) -> Result<Self, TelegrafError> {
+        Self::from_telegraf_config(config)
     }
 
     /// Get namespace information for XML files by connecting to the OPC UA server once

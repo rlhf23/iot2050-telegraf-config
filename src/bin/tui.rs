@@ -576,7 +576,7 @@ impl App {
         self.add_status_message("Connecting to OPC-UA server to poll namespaces...".to_string());
 
         // Create OPC-UA poller with current config (relies on internal timeouts)
-        match OpcUaPoller::new(self.config.clone()) {
+        match OpcUaPoller::new(self.config.connection_config()) {
             Ok(poller) => {
                 match poller.get_namespace_info(&self.xml_files) {
                     Ok(namespace_map) => {

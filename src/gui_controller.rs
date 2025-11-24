@@ -261,7 +261,7 @@ impl GuiController {
 
     /// Load children for an OPC UA node
     pub fn load_node_children(&self, node: &OpcUaNode, indent_level: usize) -> Result<Vec<OpcUaNode>, Box<dyn std::error::Error>> {
-        let poller = OpcUaPoller::new(self.config.clone())?;
+        let poller = OpcUaPoller::new(self.config.connection_config())?;
         Ok(poller.load_node_children(node, indent_level)?)
     }
 
