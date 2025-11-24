@@ -71,32 +71,31 @@ pub async fn poll_namespaces(
         listener_files: vec![],
     };
 
-    // Create OpcUaPoller
-    let poller = match OpcUaPoller::new(config) {
-        Ok(p) => p,
-        Err(e) => {
-            error!("Failed to create OPC-UA poller: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(PollNamespacesResponse {
-                    success: false,
-                    message: format!("Failed to create OPC-UA poller: {}", e),
-                    mappings: vec![],
-                }),
-            ));
-        }
-    };
-
-    // Get namespace information for the uploaded files
-    let namespace_map = match poller.get_namespace_info(&request.filenames) {
-        Ok(map) => map,
-        Err(e) => {
+    // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues
+    let filenames = request.filenames.clone();
+    let namespace_map = match tokio::task::spawn_blocking(move || {
+        let poller = OpcUaPoller::new(config)?;
+        poller.get_namespace_info(&filenames)
+    }).await {
+        Ok(Ok(map)) => map,
+        Ok(Err(e)) => {
             error!("Failed to get namespace info: {}", e);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(PollNamespacesResponse {
                     success: false,
                     message: format!("Failed to get namespace info from OPC-UA server: {}", e),
+                    mappings: vec![],
+                }),
+            ));
+        }
+        Err(e) => {
+            error!("Task join error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PollNamespacesResponse {
+                    success: false,
+                    message: format!("Internal error: {}", e),
                     mappings: vec![],
                 }),
             ));
