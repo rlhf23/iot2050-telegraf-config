@@ -142,6 +142,7 @@ impl ConfigGenerator {
                 namespace_number: &file_config.namespace,
                 interval_ms: file_config.interval_ms,
                 identifier_type: "i", // Default to numeric identifier
+                use_source_timestamp: self.config.use_source_timestamp,
             };
 
             let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
@@ -238,6 +239,7 @@ impl ConfigGenerator {
                     namespace_number: &namespace_str,
                     interval_ms: 1000,                      // Default interval
                     identifier_type: group_identifier_type, // Use identifier type from the first node
+                    use_source_timestamp: self.config.use_source_timestamp,
                 };
 
                 let config_string = format::format_regular_config(&opcua_config, &nodes_str);
@@ -327,6 +329,7 @@ impl ConfigGenerator {
                         namespace_number: &namespace.to_string(),
                         interval_ms: 1000,                      // Default interval
                         identifier_type: group_identifier_type, // Use identifier type from the first node
+                        use_source_timestamp: self.config.use_source_timestamp,
                     };
 
                     let config_string =

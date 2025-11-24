@@ -121,6 +121,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -176,6 +177,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -221,6 +223,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -247,6 +250,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let nodes_str = "test_node";
@@ -272,6 +276,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let nodes_str = "test_node";

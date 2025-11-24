@@ -84,6 +84,8 @@ pub struct GenerateConfigRequest {
     pub iot_password: Option<String>,
     pub output_format: String,
     pub file_configs: Vec<FileConfig>,
+    #[serde(default)]
+    pub use_source_timestamp: bool, // Use "source" instead of "gather" for timestamp
 }
 
 #[derive(Serialize)]
@@ -530,6 +532,7 @@ pub async fn generate_config(
         output_format: Some(request.output_format.clone()),
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
+        use_source_timestamp: request.use_source_timestamp,
     };
 
     // Create ConfigGenerator
