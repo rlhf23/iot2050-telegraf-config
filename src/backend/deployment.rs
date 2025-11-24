@@ -266,7 +266,9 @@ impl IoTDeployer {
             }
             
             // Find the docker folder
-            let docker_path = extract_dir.join(format!("iot2050-telegraf-config-{}", self.branch)).join("docker");
+            // GitHub replaces '/' with '-' in branch names when creating tarballs
+            let sanitized_branch = self.branch.replace('/', "-");
+            let docker_path = extract_dir.join(format!("iot2050-telegraf-config-{}", sanitized_branch)).join("docker");
             
             println!("📤 Transferring files to device via SFTP...");
             
@@ -293,9 +295,11 @@ impl IoTDeployer {
                 ));
             }
             
+            // GitHub replaces '/' with '-' in branch names when creating tarballs
+            let sanitized_branch = self.branch.replace('/', "-");
             let download_cmd = format!(
                 "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-                self.repo_url, self.branch
+                self.repo_url, sanitized_branch
             );
             
             self.run_command(
