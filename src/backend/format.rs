@@ -64,6 +64,10 @@ pub fn format_config_header(
   token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
+
+# Output to Prometheus
+[[outputs.prometheus_client]]
+  listen = ":9273"
 "#,
         ),
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
