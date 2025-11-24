@@ -504,7 +504,7 @@
 
                 <div class="loading" id="generate-loading">
                     <div class="spinner"></div>
-                    <p style="margin-top: 10px;">Generating configuration...</p>
+                    <p id="loading-text" style="margin-top: 10px;">Generating configuration...</p>
                 </div>
             </div>
         </div>
@@ -780,6 +780,7 @@
                 return;
             }
 
+            document.getElementById('loading-text').textContent = 'Generating configuration...';
             showLoading('generate-loading', true);
 
             // Build file configurations array
@@ -851,6 +852,7 @@
                 return;
             }
 
+            document.getElementById('loading-text').textContent = 'Deploying configuration...';
             showLoading('generate-loading', true);
 
             const requestData = {
