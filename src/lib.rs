@@ -25,6 +25,7 @@ pub struct TelegrafConfig {
     pub output_format: Option<String>, // "influxdb" or "prometheus"
     pub include_test_inputs: bool,     // Include CPU, disk, mem inputs for testing
     pub selected_opcua_nodes: Vec<SelectedOpcUaNode>, // Selected OPC UA nodes from browser
+    pub use_source_timestamp: bool,    // Use "source" instead of "gather" for timestamp
 }
 
 impl TelegrafConfig {

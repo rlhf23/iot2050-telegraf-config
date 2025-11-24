@@ -174,6 +174,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         output_format: Some(output_format.clone()),
         include_test_inputs: test_inputs,
         selected_opcua_nodes: Vec::new(),
+        use_source_timestamp: false,
     };
 
     // Discover XML files
@@ -374,6 +375,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
                 selected_opcua_nodes: Vec::new(),
+                use_source_timestamp: false,
             };
             
             let _generator = ConfigGenerator::new(config)?;
@@ -410,6 +412,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
                 selected_opcua_nodes: Vec::new(),
+                use_source_timestamp: false,
             };
             
             let generator = ConfigGenerator::new(config)?;
