@@ -517,12 +517,16 @@
             <div class="service-card">
                 <div class="service-header">
                     <div class="service-name">Telegraf Config Generator</div>
-                    <div class="status-indicator healthy"></div>
+                    <div id="config-generator-status" class="status-indicator"></div>
                 </div>
                 <div class="service-description">
                     WebUI for generating Telegraf configurations from XML files
                 </div>
                 <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span id="config-generator-status-text" class="info-value">Checking...</span>
+                    </div>
                     <div class="info-row">
                         <span class="info-label">Features:</span>
                         <span class="info-value">Upload, Generate, Deploy</span>
@@ -532,7 +536,7 @@
                         <span class="info-value">Web Interface</span>
                     </div>
                 </div>
-                <a href="/config-upload.html" class="service-link">Open Config Generator</a>
+                <a href="/config-upload.html" id="config-generator-link" class="service-link">Open Config Generator</a>
             </div>
         </div>
 
@@ -630,6 +634,10 @@
             telegraf: {
                 healthUrl: '/telegraf/metrics',
                 port: 9273
+            },
+            'config-generator': {
+                healthUrl: '/api/health',
+                port: 8080
             }
         };
 
