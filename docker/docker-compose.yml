@@ -1,5 +1,10 @@
 # Load environment variables from .env file in the same directory as docker-compose.yml
 # This makes all variables available in the docker-compose file
+#
+# TARGETARCH: Set this environment variable to select the api-service binary architecture
+#   - arm64 (default): For ARM64 devices (IoT2050, Raspberry Pi, etc.)
+#   - amd64: For x86_64 devices (servers, VMs, etc.)
+# Example: TARGETARCH=amd64 docker-compose up -d
 
 services:
   influxdb:
@@ -141,6 +146,8 @@ services:
     build:
       context: .
       dockerfile: api-service/Dockerfile.prebuilt
+      args:
+        - TARGETARCH=${TARGETARCH:-arm64}
     container_name: api-service
     ports:
       - "8000:8000"
