@@ -71,6 +71,7 @@ pub fn create_app() -> Router {
     // Build router
     Router::new()
         .route("/health", get(health_check))
+        .route("/api/health", get(health_check))
         .route("/api/containers", get(list_containers))
         .route("/api/containers/:name/restart", post(restart_container))
         .route("/api/containers/:name/start", post(start_container))
