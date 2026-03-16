@@ -288,6 +288,12 @@ impl GuiRenderer {
                 }
             });
 
+            ui.horizontal(|ui| {
+                if ui.button("🕐 Sync Device Time").clicked() {
+                    controller.sync_time();
+                }
+            });
+
             // Service status check
             ui.horizontal(|ui| {
                 let is_prometheus = controller

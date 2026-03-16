@@ -84,4 +84,36 @@ if [ "$(uname -m)" != "aarch64" ]; then
     fi
 fi
 
+# Detect and export architecture for api-service binary selection
+detect_architecture() {
+    local machine_arch
+    machine_arch=$(uname -m)
+    
+    case "$machine_arch" in
+        x86_64|amd64)
+            export TARGETARCH="amd64"
+            ;;
+        aarch64|arm64)
+            export TARGETARCH="arm64"
+            ;;
+        *)
+            echo "⚠️  WARNING: Unknown architecture '$machine_arch', defaulting to arm64"
+            export TARGETARCH="arm64"
+            ;;
+    esac
+}
+
+detect_architecture
+echo "🔧 Detected architecture: $TARGETARCH"
+
+# Write architecture to .env file for docker-compose
+if [ -f .env ]; then
+    # Remove existing TARGETARCH line if present
+    grep -v "^TARGETARCH=" .env > .env.tmp || true
+    mv .env.tmp .env
+fi
+# Add TARGETARCH to .env
+echo "TARGETARCH=${TARGETARCH}" >> .env
+
 echo "✅ Setup complete!"
+echo "   Target architecture: ${TARGETARCH}"

@@ -61,8 +61,10 @@ impl OpcUaPoller {
         // Validate the IP address in the config
         config.validate_ip()?;
 
-        // Initialize logging
-        opcua::console_logging::init();
+        // Note: We don't initialize logging here anymore.
+        // When used as a library (e.g., in api-service), the parent application
+        // should handle logging initialization. For standalone binaries (CLI/TUI),
+        // logging is initialized in their main() functions.
 
         // Create a Tokio runtime for async operations
         Ok(Self { config })
@@ -85,6 +87,19 @@ impl OpcUaPoller {
         // Get all namespace information from the server
         let namespaces = self.browse_server_namespaces(&discovery_url)?;
 
+        // Check if we got any namespaces from the server
+        if namespaces.is_empty() {
+            return Err(TelegrafError::OpcUaClientError(
+                "No namespaces found on OPC-UA server. The server may not have ServerInterfaces configured, or the browse operation failed. Check server logs for details.".to_string()
+            ));
+        }
+
+        // Log the namespaces we found for debugging
+        eprintln!("Found {} namespaces from OPC-UA server:", namespaces.len());
+        for (idx, name) in &namespaces {
+            eprintln!("  Namespace {}: {}", idx, name);
+        }
+
         // Process XML files to extract base names (without extension)
         let file_base_names: Vec<(String, String)> = xml_files
             .iter()
@@ -99,20 +114,42 @@ impl OpcUaPoller {
             })
             .collect();
 
+        eprintln!("Looking for matches with {} XML files:", file_base_names.len());
+        for (file_name, base_name) in &file_base_names {
+            eprintln!("  File: {} (base: {})", file_name, base_name);
+        }
+
         // Match XML file names with namespace information
         let mut namespace_map = HashMap::new();
 
         for (file_name, base_name) in file_base_names {
             // Try to find a matching namespace
+            let mut found = false;
             for (namespace_index, namespace_name) in &namespaces {
                 // Compare the namespace name with the XML base name (case insensitive)
                 if namespace_name.to_lowercase() == base_name.to_lowercase() {
-                    namespace_map.insert(file_name, *namespace_index);
+                    eprintln!("  ✓ Matched '{}' to namespace {} ({})", file_name, namespace_index, namespace_name);
+                    namespace_map.insert(file_name.clone(), *namespace_index);
+                    found = true;
                     break;
                 }
             }
+            if !found {
+                eprintln!("  ✗ No match found for '{}' (base: {})", file_name, base_name);
+            }
         }
 
+        if namespace_map.is_empty() {
+            return Err(TelegrafError::OpcUaClientError(
+                format!(
+                    "Could not match any XML files to server namespaces. Found {} namespaces on server but none matched the {} uploaded file(s). Check that your XML file names match the namespace names on the server.",
+                    namespaces.len(),
+                    xml_files.len()
+                )
+            ));
+        }
+
+        eprintln!("Successfully mapped {} file(s) to namespaces", namespace_map.len());
         Ok(namespace_map)
     }
 
@@ -183,19 +220,41 @@ impl OpcUaPoller {
             result_mask: BrowseDescriptionResultMask::all().bits() as u32,
         };
 
+        eprintln!("Browsing ServerInterfaces node for namespace information...");
+        
         let browse_results = read_lock.browse(&[browse_desc]);
-        if let Ok(Some(ref results)) = browse_results {
-            for result in results {
-                if let Some(refs) = &result.references {
-                    for reference in refs {
-                        let namespace_index = reference.node_id.node_id.namespace;
-                        // Convert UAString to String
-                        let name = reference.browse_name.name.to_string();
-                        namespace_info.push((namespace_index, name));
+        match browse_results {
+            Ok(Some(ref results)) => {
+                eprintln!("Browse succeeded, processing {} result(s)", results.len());
+                for result in results {
+                    if let Some(refs) = &result.references {
+                        eprintln!("  Found {} reference(s)", refs.len());
+                        for reference in refs {
+                            let namespace_index = reference.node_id.node_id.namespace;
+                            // Convert UAString to String
+                            let name = reference.browse_name.name.to_string();
+                            eprintln!("    - Namespace {}: {}", namespace_index, name);
+                            namespace_info.push((namespace_index, name));
+                        }
+                    } else {
+                        eprintln!("  Browse result has no references");
                     }
                 }
             }
+            Ok(None) => {
+                eprintln!("Browse returned None - no results found");
+                return Err(TelegrafError::OpcUaClientError(
+                    "Browse operation returned no results. The ServerInterfaces node may not exist on this server.".to_string()
+                ));
+            }
+            Err(e) => {
+                eprintln!("Browse operation failed: {}", e);
+                return Err(TelegrafError::OpcUaClientError(
+                    format!("Failed to browse ServerInterfaces node: {}", e)
+                ));
+            }
         }
+        
         Ok(namespace_info)
     }
 

@@ -16,6 +16,15 @@ use sie_generate_config::{TelegrafConfig, backend::{ConfigGenerator, OutputForma
 const UPLOAD_DIR: &str = "/tmp/config-uploads";
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
 
+/// Ensure OPC-UA IP has port appended (default 4840)
+fn ensure_opcua_port(ip: String) -> String {
+    if ip.contains(':') {
+        ip
+    } else {
+        format!("{}:4840", ip)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SessionInfo {
     pub session_id: String,
@@ -498,9 +507,11 @@ pub async fn generate_config(
     // Use sensible defaults for web UI (local deployment, no SSH needed)
     let telegraf_config = TelegrafConfig {
         folder: session_dir.clone(),
-        ip: request.opcua_ip.clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "127.0.0.1".to_string()),
+        ip: ensure_opcua_port(
+            request.opcua_ip.clone()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "127.0.0.1".to_string())
+        ),
         username: username.clone(),
         password: password.clone(),
         iot_host: request.iot_host.clone()
@@ -541,10 +552,12 @@ pub async fn generate_config(
     // Set file configurations
     for fc in &request.file_configs {
         // Use per-file custom IP if provided, otherwise use main OPC-UA IP, fallback to 127.0.0.1
-        let file_ip = fc.custom_ip.clone()
-            .filter(|s| !s.is_empty())
-            .or_else(|| request.opcua_ip.clone().filter(|s| !s.is_empty()))
-            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let file_ip = ensure_opcua_port(
+            fc.custom_ip.clone()
+                .filter(|s| !s.is_empty())
+                .or_else(|| request.opcua_ip.clone().filter(|s| !s.is_empty()))
+                .unwrap_or_else(|| "127.0.0.1".to_string())
+        );
         
         // Build full path to the file
         let file_path = session_dir.join(&fc.filename).to_string_lossy().to_string();
