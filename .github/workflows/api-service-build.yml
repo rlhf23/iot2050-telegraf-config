@@ -67,7 +67,7 @@ jobs:
         if: ${{ !matrix.needs_cross }}
         run: |
           cd docker/api-service
-          cargo build --release --features vendored
+          cargo build --release --target ${{ matrix.target }} --features vendored
         env:
           OPENSSL_STATIC: 1
 
