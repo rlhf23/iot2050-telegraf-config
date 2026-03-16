@@ -1,4 +1,4 @@
-use clap::Command;
+use clap::{ArgAction, Command};
 use sie_generate_config::{
     backend::{
         deployment::{DeploymentConfig, IoTDeployer},

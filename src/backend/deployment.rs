@@ -353,7 +353,7 @@ impl IoTDeployer {
             })?;
 
             // Recursively upload the docker folder
-            self.upload_directory(
+            self.upload_directory_sftp(
                 &sftp,
                 &docker_path,
                 Path::new("/home").join(self.user()).join("monitoring"),
@@ -1419,7 +1419,7 @@ impl PackageStatus {
 
 impl IoTDeployer {
     /// Recursively upload a directory via SFTP
-    fn upload_directory(
+    fn upload_directory_sftp(
         &self,
         sftp: &ssh2::Sftp,
         local_path: &Path,
@@ -1442,7 +1442,7 @@ impl IoTDeployer {
 
             if local_file_path.is_dir() {
                 // Recursively upload subdirectory
-                self.upload_directory(sftp, &local_file_path, remote_file_path)?;
+                self.upload_directory_sftp(sftp, &local_file_path, remote_file_path)?;
             } else {
                 // Upload file
                 let remote_file_str = remote_file_path.to_str().ok_or_else(|| {
