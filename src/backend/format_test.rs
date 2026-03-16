@@ -40,7 +40,6 @@ mod tests {
         assert!(result.contains("config1"));
         assert!(result.contains("config2"));
         assert!(result.contains("[[outputs.influxdb_v2]]"));
-        assert!(!result.contains("[[outputs.prometheus_client]]"));
     }
 
     #[test]
@@ -121,6 +120,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -176,6 +176,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -221,6 +222,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let mut namespace_infos = Vec::new();
@@ -247,6 +249,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let nodes_str = "test_node";
@@ -272,6 +275,7 @@ mod tests {
             namespace_number: "2",
             identifier_type: "i",
             interval_ms: 1000,
+            use_source_timestamp: false,
         };
 
         let nodes_str = "test_node";

@@ -21,6 +21,7 @@ mod tests {
             selected_opcua_nodes: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            use_source_timestamp: false,
         };
 
         // Valid IP addresses
@@ -89,6 +90,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            use_source_timestamp: false,
         };
 
         // Test valid hostname formats
@@ -155,6 +157,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            use_source_timestamp: false,
             selected_opcua_nodes: Vec::new(),
         };
 
@@ -174,6 +177,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            use_source_timestamp: false,
         };
 
         let invalid_result = ConfigGenerator::new(invalid_config);
@@ -549,6 +553,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            use_source_timestamp: false,
             selected_opcua_nodes: Vec::new(),
         }
     }

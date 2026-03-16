@@ -258,9 +258,11 @@ impl IoTDeployer {
                 self.branch
             );
 
+            // GitHub replaces '/' with '-' in branch names when creating tarballs
+            let sanitized_branch = self.branch.replace('/', "-");
             let download_cmd = format!(
                 "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-                self.repo_url, self.branch
+                self.repo_url, sanitized_branch
             );
 
             self.run_command(&session, &download_cmd, "Downloading docker configuration")?;
@@ -340,9 +342,10 @@ impl IoTDeployer {
                 ));
             }
 
-            // Find the docker folder
+            // GitHub replaces '/' with '-' in branch names when creating tarballs
+            let sanitized_branch = self.branch.replace('/', "-");
             let docker_path = extract_dir
-                .join(format!("iot2050-telegraf-config-{}", self.branch))
+                .join(format!("iot2050-telegraf-config-{}", sanitized_branch))
                 .join("docker");
 
             println!("📤 Transferring files to device via SFTP...");
@@ -379,9 +382,11 @@ impl IoTDeployer {
                 ));
             }
 
+            // GitHub replaces '/' with '-' in branch names when creating tarballs
+            let sanitized_branch = self.branch.replace('/', "-");
             let download_cmd = format!(
                 "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-                self.repo_url, self.branch
+                self.repo_url, sanitized_branch
             );
 
             self.run_command(&session, &download_cmd, "Downloading docker configuration")?;
@@ -871,6 +876,8 @@ impl IoTDeployer {
 
         // Extract tarball locally
         println!("📦 Extracting tarball locally...");
+        // GitHub replaces '/' with '-' in branch names when creating tarballs
+        let sanitized_branch = self.branch.replace('/', "-");
         let output = Command::new("tar")
             .args(&[
                 "-xzf",
@@ -878,7 +885,7 @@ impl IoTDeployer {
                 "-C",
                 extract_dir.to_str().unwrap(),
                 "--strip-components=2",
-                &format!("iot2050-telegraf-config-{}/docker", self.branch),
+                &format!("iot2050-telegraf-config-{}/docker", sanitized_branch),
             ])
             .output()
             .map_err(|e| TelegrafError::ConfigError(format!("Failed to run tar: {}", e)))?;

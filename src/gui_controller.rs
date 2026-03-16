@@ -71,6 +71,7 @@ impl GuiController {
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: true,
                 selected_opcua_nodes: Vec::new(),
+                use_source_timestamp: false, // Default to "gather"
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),
@@ -260,7 +261,7 @@ impl GuiController {
 
     /// Load children for an OPC UA node
     pub fn load_node_children(&self, node: &OpcUaNode, indent_level: usize) -> Result<Vec<OpcUaNode>, Box<dyn std::error::Error>> {
-        let poller = OpcUaPoller::new(self.config.clone())?;
+        let poller = OpcUaPoller::new(self.config.connection_config())?;
         Ok(poller.load_node_children(node, indent_level)?)
     }
 

@@ -78,6 +78,7 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         include_test_inputs: true,
         selected_opcua_nodes: vec![],
         folder: tests_dir.clone(),
+        use_source_timestamp: false,
     };
 
     // Create a ConfigGenerator
@@ -229,10 +230,11 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
+        use_source_timestamp: false,
     };
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
-    let poller = OpcUaPoller::new(test_config).map_err(|e| {
+    let poller = OpcUaPoller::new(test_config.connection_config()).map_err(|e| {
         eprintln!("Failed to create OpcUaPoller: {}", e);
         e
     })?;
@@ -379,10 +381,11 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         include_test_inputs: false,
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
+        use_source_timestamp: false,
     };
 
     // Create a new OpcUaPoller instance
-    let poller = OpcUaPoller::new(test_config.clone())
+    let poller = OpcUaPoller::new(test_config.connection_config())
         .expect("Failed to create OpcUaPoller and connect to OPC UA server");
 
     // Get the top-level nodes from the OPC UA server

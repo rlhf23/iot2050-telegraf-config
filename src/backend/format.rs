@@ -26,11 +26,20 @@ pub struct OpcuaConfig<'a> {
     pub namespace_number: &'a str,
     pub interval_ms: u64,         // Store as u64 and format when needed
     pub identifier_type: &'a str, // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
+    pub use_source_timestamp: bool, // Use "source" instead of "gather" for timestamp
 }
 
 impl OpcuaConfig<'_> {
     fn get_interval_string(&self) -> String {
         format!("{}ms", self.interval_ms)
+    }
+
+    fn get_timestamp_mode(&self) -> &str {
+        if self.use_source_timestamp {
+            "source"
+        } else {
+            "gather"
+        }
     }
 }
 
@@ -55,6 +64,10 @@ pub fn format_config_header(
   token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
+
+# Output to Prometheus
+[[outputs.prometheus_client]]
+  listen = ":9273"
 "#,
         ),
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
@@ -174,6 +187,7 @@ pub fn format_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let timestamp_mode = config.get_timestamp_mode();
 
     format!(
         r#"
@@ -189,7 +203,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "{}"
   client_trace = false
   interval = "{}"
     [[inputs.opcua.group]]
@@ -203,6 +217,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         config.ip,
         config.username,
         config.password,
+        timestamp_mode,
         interval,
         config.group_name,
         config.namespace_number,
@@ -213,6 +228,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let timestamp_mode = config.get_timestamp_mode();
 
     format!(
         r#"
@@ -229,7 +245,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "{}"
   client_trace = false
     [[inputs.opcua_listener.group]]
       name = "{}"
@@ -243,6 +259,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
         config.ip,
         config.username,
         config.password,
+        timestamp_mode,
         config.group_name,
         config.namespace_number,
         config.identifier_type,
@@ -253,6 +270,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
 
 pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
     let interval = config.get_interval_string();
+    let timestamp_mode = config.get_timestamp_mode();
 
     format!(
         r#"
@@ -268,12 +286,12 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   auth_method = "UserName"
   username = "{}"
   password = "{}"
-  timestamp = "gather"
+  timestamp = "{}"
   client_trace = false
   interval = "{}" 
 {}
     "#,
-        config.ip, config.username, config.password, interval, nodes_str
+        config.ip, config.username, config.password, timestamp_mode, interval, nodes_str
     )
 }
 

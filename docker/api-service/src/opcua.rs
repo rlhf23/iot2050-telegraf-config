@@ -48,8 +48,8 @@ pub async fn poll_namespaces(
     info!("Polling OPC-UA server for namespaces: {}", request.opcua_ip);
     info!("Request details: {} file(s), anonymous={}", request.filenames.len(), request.anonymous);
 
-    // Create TelegrafConfig for OpcUaPoller
-    let config = TelegrafConfig {
+    // Create OpcUaConnectionConfig for namespace polling
+    let config = sie_generate_config::OpcUaConnectionConfig {
         ip: ensure_opcua_port(request.opcua_ip.clone()),
         username: if request.anonymous {
             String::new()
@@ -61,14 +61,6 @@ pub async fn poll_namespaces(
         } else {
             request.opcua_password.unwrap_or_default()
         },
-        folder: std::path::PathBuf::new(), // Not needed for namespace polling
-        iot_host: String::new(),
-        iot_username: String::new(),
-        iot_password: String::new(),
-        output_format: None,
-        include_test_inputs: false,
-        selected_opcua_nodes: vec![],
-        listener_files: vec![],
     };
 
     // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues

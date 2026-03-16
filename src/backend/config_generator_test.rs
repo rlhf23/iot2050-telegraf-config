@@ -45,6 +45,7 @@ mod tests {
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
             selected_opcua_nodes: Vec::new(),
+            use_source_timestamp: false,
         }
     }
 
