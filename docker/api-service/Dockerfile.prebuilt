@@ -1,5 +1,6 @@
 # Simple Dockerfile using pre-built binary
 # No compilation needed - just copy and run!
+# Use TARGETARCH build arg to select architecture: arm64 or amd64
 
 FROM debian:bookworm-slim
 
@@ -11,9 +12,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy pre-built binary
-# This binary should be built by GitHub Actions or locally
-COPY api-service/docker-api-service /app/docker-api-service
+# Accept TARGETARCH build argument (default to arm64 for backward compatibility)
+ARG TARGETARCH=arm64
+
+# Copy pre-built binary for the target architecture
+COPY api-service/docker-api-service-${TARGETARCH} /app/docker-api-service
 
 # Make it executable
 RUN chmod +x /app/docker-api-service
