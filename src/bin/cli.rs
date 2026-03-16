@@ -1,15 +1,15 @@
-use clap::Command;
+use clap::{ArgAction, Command};
 use sie_generate_config::{
-    backend::{deployment::{DeploymentConfig, IoTDeployer}, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
+    backend::{
+        deployment::{DeploymentConfig, IoTDeployer},
+        opcua_poller::OpcUaPoller,
+        ConfigGenerator, ServiceType,
+    },
     TelegrafConfig,
 };
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::path::Path;
-
-
-
-
 
 fn wrap_up(exit_code: i32) -> ! {
     if cfg!(target_os = "windows") {
@@ -30,85 +30,86 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            
+            let local_transfer = sub_matches.get_flag("local_transfer");
+
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
-            
-            if let Err(e) = deployer.provision() {
+
+            if let Err(e) = deployer.provision_with_transfer_mode(local_transfer) {
                 exit_with_error(format!("Provisioning failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("update", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
             let use_local = sub_matches.get_flag("local");
-            
+
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
-            
+
             if let Err(e) = deployer.update(use_local) {
                 exit_with_error(format!("Update failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            
+
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
-            
+
             if let Err(e) = deployer.setup() {
                 exit_with_error(format!("Setup failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("status", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            
+
             if let Err(e) = deployer.status() {
                 exit_with_error(format!("Status check failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("start", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            
+
             if let Err(e) = deployer.start() {
                 exit_with_error(format!("Start failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("time", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            
+
             if let Err(e) = deployer.test_connection() {
                 exit_with_error(format!("Connection failed: {}", e));
             }
-            
+
             if let Err(e) = deployer.sync_time() {
                 exit_with_error(format!("Time sync failed: {}", e));
             }
-            
+
             wrap_up(0);
         }
         Some(("stop", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
             let remove_volumes = sub_matches.get_flag("volumes");
-            
+
             if remove_volumes {
                 println!("⚠️  WARNING: This will remove all Docker volumes and DELETE ALL DATA!");
                 println!("   This includes:");
@@ -118,20 +119,42 @@ fn handle_device_command(matches: &clap::ArgMatches) {
                 println!();
                 print!("Are you sure you want to continue? (yes/no): ");
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                
+
                 let mut input = String::new();
                 std::io::stdin().read_line(&mut input).unwrap();
-                
+
                 if input.trim().to_lowercase() != "yes" {
                     println!("Aborted.");
                     wrap_up(1);
                 }
             }
-            
+
             if let Err(e) = deployer.stop_with_volumes(remove_volumes) {
                 exit_with_error(format!("Stop failed: {}", e));
             }
-            
+
+            wrap_up(0);
+        }
+        Some(("backup", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let output_dir = sub_matches.get_one::<String>("output").map(|s| s.clone());
+
+            if let Err(e) = deployer.backup(output_dir) {
+                exit_with_error(format!("Backup failed: {}", e));
+            }
+
+            wrap_up(0);
+        }
+        Some(("restore", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let deployer = IoTDeployer::new(config);
+            let archive = sub_matches.get_one::<String>("archive").unwrap().clone();
+
+            if let Err(e) = deployer.restore(archive) {
+                exit_with_error(format!("Restore failed: {}", e));
+            }
+
             wrap_up(0);
         }
         _ => {
@@ -149,14 +172,29 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let anonymous = matches.get_flag("anonymous");
     let output_format = matches.get_one::<String>("output_format").unwrap();
     let test_inputs = matches.get_flag("test_inputs");
-    let default_interval = matches.get_one::<String>("default_interval").unwrap().parse::<u32>().unwrap_or(500);
-    let listener_interval = matches.get_one::<String>("listener_interval").unwrap().parse::<u32>().unwrap_or(1000);
+    let default_interval = matches
+        .get_one::<String>("default_interval")
+        .unwrap()
+        .parse::<u32>()
+        .unwrap_or(500);
+    let listener_interval = matches
+        .get_one::<String>("listener_interval")
+        .unwrap()
+        .parse::<u32>()
+        .unwrap_or(1000);
     let send = matches.get_flag("send");
 
     println!("Generating Telegraf configuration with sane defaults...");
     println!("Folder: {}", folder);
     println!("OPC UA Server: {}", ip);
-    println!("Authentication: {}", if anonymous { "Anonymous" } else { "Username/Password" });
+    println!(
+        "Authentication: {}",
+        if anonymous {
+            "Anonymous"
+        } else {
+            "Username/Password"
+        }
+    );
     println!("Output format: {}", output_format);
     println!("Default interval: {}ms", default_interval);
     println!("Listener interval: {}ms", listener_interval);
@@ -165,8 +203,16 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let config = TelegrafConfig {
         folder: folder.into(),
         ip: ip.clone(),
-        username: if anonymous { String::new() } else { username.clone() },
-        password: if anonymous { String::new() } else { password.clone() },
+        username: if anonymous {
+            String::new()
+        } else {
+            username.clone()
+        },
+        password: if anonymous {
+            String::new()
+        } else {
+            password.clone()
+        },
         iot_host: matches.get_one::<String>("iot_host").unwrap().clone(),
         iot_username: matches.get_one::<String>("iot_username").unwrap().clone(),
         iot_password: matches.get_one::<String>("iot_password").unwrap().clone(),
@@ -178,9 +224,12 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
 
     // Discover XML files
     let xml_files = ConfigGenerator::discover_xml_files(&config.folder);
-    
+
     if xml_files.is_empty() && !test_inputs {
-        println!("No XML files found in folder '{}' and test inputs not enabled.", folder);
+        println!(
+            "No XML files found in folder '{}' and test inputs not enabled.",
+            folder
+        );
         println!("Use --test-inputs to generate config with test inputs only.");
         return Ok(());
     }
@@ -188,7 +237,8 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     if !xml_files.is_empty() {
         println!("\nFound {} XML file(s):", xml_files.len());
         for file in &xml_files {
-            let file_name = Path::new(file).file_name()
+            let file_name = Path::new(file)
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(file);
             println!("  - {}", file_name);
@@ -201,17 +251,22 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     // Get namespace information automatically
     let namespace_map = if !xml_files.is_empty() {
         println!("\nConnecting to OPC UA server to retrieve namespace information...");
-        
+
         let poller = OpcUaPoller::new(config.clone())?;
         match poller.get_namespace_info(&xml_files) {
             Ok(map) => {
                 if !map.is_empty() {
-                    println!("Successfully retrieved namespace information for {} file(s):", map.len());
+                    println!(
+                        "Successfully retrieved namespace information for {} file(s):",
+                        map.len()
+                    );
                     for (file_name, namespace) in &map {
                         println!("  {} -> namespace {}", file_name, namespace);
                     }
                 } else {
-                    println!("No matching namespaces found. Using default namespace 2 for all files.");
+                    println!(
+                        "No matching namespaces found. Using default namespace 2 for all files."
+                    );
                 }
                 map
             }
@@ -227,18 +282,17 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
 
     // Configure each XML file with defaults
     for file in &xml_files {
-        let file_name = Path::new(file).file_name()
+        let file_name = Path::new(file)
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("");
-        
-        let namespace = namespace_map.get(file_name)
-            .copied()
-            .unwrap_or(2); // Default namespace
-        
+
+        let namespace = namespace_map.get(file_name).copied().unwrap_or(2); // Default namespace
+
         // For simplicity, assume no files are listeners by default
         // Users can modify this behavior with additional CLI flags if needed
         let interval = default_interval;
-        
+
         generator.set_file_config(file.clone(), namespace.to_string(), interval.into(), None);
     }
 
@@ -252,7 +306,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
             println!("❌ Cannot send config: --iot-host not specified");
             return Ok(());
         }
-        
+
         println!("Sending configuration to IoT device...");
         generator.send_config()?;
         println!("✅ Configuration sent successfully!");
@@ -267,16 +321,22 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
     match matches.subcommand() {
         Some(("influxdb", sub_matches)) => {
             let host = sub_matches.get_one::<String>("host").unwrap();
-            let timeout = sub_matches.get_one::<String>("timeout").unwrap().parse::<u64>().unwrap_or(5);
-            
+            let timeout = sub_matches
+                .get_one::<String>("timeout")
+                .unwrap()
+                .parse::<u64>()
+                .unwrap_or(5);
+
             println!("Checking InfluxDB connectivity at {}...", host);
-            
+
             // Call SSH utility function directly to avoid ConfigGenerator validation
             // Use default credentials from environment variables
             let username = env!("DEFAULT_IOT_USERNAME");
             let password = env!("DEFAULT_IOT_PASSWORD");
-            
-            match sie_generate_config::backend::ssh_utils::check_influxdb_status(host, username, password, timeout) {
+
+            match sie_generate_config::backend::ssh_utils::check_influxdb_status(
+                host, username, password, timeout,
+            ) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
@@ -292,16 +352,27 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
         }
         Some(("prometheus", sub_matches)) => {
             let host = sub_matches.get_one::<String>("host").unwrap();
-            let timeout = sub_matches.get_one::<String>("timeout").unwrap().parse::<u64>().unwrap_or(5);
-            
+            let timeout = sub_matches
+                .get_one::<String>("timeout")
+                .unwrap()
+                .parse::<u64>()
+                .unwrap_or(5);
+
             println!("Checking Prometheus connectivity at {}...", host);
-            
+
             // Call SSH utility function directly to avoid ConfigGenerator validation
             // Use default credentials from environment variables
             let username = env!("DEFAULT_IOT_USERNAME");
             let password = env!("DEFAULT_IOT_PASSWORD");
-            
-            match sie_generate_config::backend::ssh_utils::check_service_status(host, username, password, host, ServiceType::Prometheus, timeout) {
+
+            match sie_generate_config::backend::ssh_utils::check_service_status(
+                host,
+                username,
+                password,
+                host,
+                ServiceType::Prometheus,
+                timeout,
+            ) {
                 Ok((true, message)) => {
                     println!("✅ {}", message);
                 }
@@ -319,11 +390,13 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             let host = sub_matches.get_one::<String>("host").unwrap();
             let username = sub_matches.get_one::<String>("username").unwrap();
             let password = sub_matches.get_one::<String>("password").unwrap();
-            
+
             println!("Getting Telegraf status from {}...", host);
-            
+
             // Call SSH utility function directly to avoid ConfigGenerator validation
-            match sie_generate_config::backend::ssh_utils::get_telegraf_status(host, username, password) {
+            match sie_generate_config::backend::ssh_utils::get_telegraf_status(
+                host, username, password,
+            ) {
                 Ok(status) => {
                     println!("✅ Telegraf Status:");
                     println!("{}", status);
@@ -338,12 +411,21 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             let host = sub_matches.get_one::<String>("host").unwrap();
             let username = sub_matches.get_one::<String>("username").unwrap();
             let password = sub_matches.get_one::<String>("password").unwrap();
-            let lines = sub_matches.get_one::<String>("lines").unwrap().parse::<usize>().unwrap_or(30);
-            
-            println!("Getting last {} lines of Telegraf logs from {}...", lines, host);
-            
+            let lines = sub_matches
+                .get_one::<String>("lines")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap_or(30);
+
+            println!(
+                "Getting last {} lines of Telegraf logs from {}...",
+                lines, host
+            );
+
             // Call SSH utility function directly to avoid ConfigGenerator validation
-            match sie_generate_config::backend::ssh_utils::get_telegraf_logs(host, username, password, lines) {
+            match sie_generate_config::backend::ssh_utils::get_telegraf_logs(
+                host, username, password, lines,
+            ) {
                 Ok(logs) => {
                     println!("✅ Telegraf Logs (last {} lines):", lines);
                     println!("{}", logs);
@@ -358,9 +440,9 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             let host = sub_matches.get_one::<String>("host").unwrap();
             let username = sub_matches.get_one::<String>("username").unwrap();
             let password = sub_matches.get_one::<String>("password").unwrap();
-            
+
             println!("Restarting Telegraf service on {}...", host);
-            
+
             // Create a minimal config for the operation
             let config = TelegrafConfig {
                 folder: ".".into(),
@@ -375,10 +457,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_test_inputs: false,
                 selected_opcua_nodes: Vec::new(),
             };
-            
+
             let _generator = ConfigGenerator::new(config)?;
             // Use the ssh_utils function directly since ConfigGenerator doesn't expose restart_telegraf
-            match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(host, username, password) {
+            match sie_generate_config::backend::ssh_utils::restart_telegraf_over_ssh(
+                host, username, password,
+            ) {
                 Ok(result) => {
                     println!("✅ Telegraf Restart Result:");
                     println!("{}", result);
@@ -394,9 +478,12 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             let username = sub_matches.get_one::<String>("username").unwrap();
             let password = sub_matches.get_one::<String>("password").unwrap();
             let output_dir = sub_matches.get_one::<String>("output").unwrap();
-            
-            println!("Backing up Grafana dashboards from {} to {}...", host, output_dir);
-            
+
+            println!(
+                "Backing up Grafana dashboards from {} to {}...",
+                host, output_dir
+            );
+
             // Create a minimal config for the operation
             let config = TelegrafConfig {
                 folder: ".".into(),
@@ -411,7 +498,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_test_inputs: false,
                 selected_opcua_nodes: Vec::new(),
             };
-            
+
             let generator = ConfigGenerator::new(config)?;
             match generator.backup_grafana() {
                 Ok(result) => {
@@ -430,14 +517,14 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
             std::process::exit(1);
         }
     }
-    
+
     Ok(())
 }
 
 fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     let host = matches.get_one::<String>("host").unwrap().clone();
     let user = matches.get_one::<String>("iot_username").unwrap().clone();
-    
+
     // Parse host:port - use default port 22 if not specified
     let (hostname, port) = if host.contains(':') {
         let parts: Vec<&str> = host.splitn(2, ':').collect();
@@ -446,23 +533,23 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     } else {
         (host, 22)
     };
-    
+
     let mut config = DeploymentConfig::new(hostname, user).with_port(port);
-    
+
     if let Some(password) = matches.get_one::<String>("iot_password") {
         config = config.with_password(password.clone());
     }
-    
+
     if let Some(key_file) = matches.get_one::<String>("key_file") {
         config = config.with_key_file(key_file.clone());
     }
-    
+
     // Add git branch if specified (for provision command)
     // Note: git_branch only exists on provision subcommand, so we use try_get_one
     if let Ok(Some(git_branch)) = matches.try_get_one::<String>("git_branch") {
         config = config.with_git_branch(git_branch.clone());
     }
-    
+
     config
 }
 
@@ -502,6 +589,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
+                        .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
                 )
                 .subcommand(
                     Command::new("update")
@@ -545,6 +633,24 @@ fn main() {
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("backup")
+                        .about("Backup all monitoring data (InfluxDB, Grafana, Prometheus)")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("output").short('o').long("output").help("Output directory for backup (default: ./monitoring_backup_<timestamp>)"))
+                )
+                .subcommand(
+                    Command::new("restore")
+                        .about("Restore monitoring data from backup archive")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("archive").short('a').long("archive").required(true).help("Path to backup archive (.tar.gz file)"))
                 )
                 .subcommand(
                     Command::new("time")
