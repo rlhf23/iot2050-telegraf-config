@@ -15,7 +15,7 @@ on:
 jobs:
   build:
     name: Build for ${{ matrix.arch }}
-    runs-on: ubuntu-latest  # Use x86_64 runner
+    runs-on: ubuntu-22.04  # Use x86_64 runner
     strategy:
       matrix:
         include:
