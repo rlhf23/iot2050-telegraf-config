@@ -1,14 +1,12 @@
 # Simple Dockerfile using pre-built binary
 # No compilation needed - just copy and run!
+# Uses musl binaries for maximum portability
 # Use TARGETARCH build arg to select architecture: arm64 or amd64
 
-FROM debian:bookworm-slim
+FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl3 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache ca-certificates libssl3
 
 WORKDIR /app
 

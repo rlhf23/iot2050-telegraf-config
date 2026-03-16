@@ -19,14 +19,14 @@ jobs:
     strategy:
       matrix:
         include:
-          # IoT2050 / Raspberry Pi (ARM64)
-          - target: aarch64-unknown-linux-gnu
+          # IoT2050 / Raspberry Pi (ARM64) - musl for maximum portability
+          - target: aarch64-unknown-linux-musl
             arch: arm64
             needs_cross: true
-          # Standard Linux servers / VMs (x86_64)
-          - target: x86_64-unknown-linux-gnu
+          # Standard Linux servers / VMs (x86_64) - musl for maximum portability
+          - target: x86_64-unknown-linux-musl
             arch: amd64
-            needs_cross: false
+            needs_cross: true
 
     steps:
       - name: Checkout code
@@ -37,14 +37,9 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross tool (for ARM builds)
-        if: matrix.needs_cross
+      - name: Install cross tool
         run: cargo install cross --git https://github.com/cross-rs/cross
       
-      - name: Install patchelf (for ARM builds)
-        if: matrix.needs_cross
-        run: sudo apt-get update && sudo apt-get install -y patchelf
-
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
@@ -63,27 +58,12 @@ jobs:
           path: target
           key: ${{ runner.os }}-${{ matrix.target }}-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build api-service (x86_64 native)
-        if: ${{ !matrix.needs_cross }}
-        run: |
-          cd docker/api-service
-          cargo build --release --target ${{ matrix.target }} --features vendored
-        env:
-          OPENSSL_STATIC: 1
-
-      - name: Build api-service with cross (ARM64)
-        if: matrix.needs_cross
+      - name: Build api-service with cross
         run: |
           cd docker/api-service
           cross build --release --target ${{ matrix.target }} --features vendored
         env:
           OPENSSL_STATIC: 1
-
-      - name: Patch binary interpreter (ARM64 only)
-        if: matrix.needs_cross
-        run: |
-          patchelf --set-interpreter /lib/ld-linux-aarch64.so.1 \
-            docker/api-service/target/${{ matrix.target }}/release/docker-api-service
 
       - name: Verify binary
         run: |
