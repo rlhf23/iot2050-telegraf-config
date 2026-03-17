@@ -799,14 +799,141 @@ impl IoTDeployer {
 
         let session = self.create_ssh_session()?;
 
-        // Upload tarball to device
+        // 1. Upload tarball to device
         println!("📤 Uploading archive to device...");
         let remote_path = "/tmp/monitoring_restore.tar.gz";
         self.upload_file(&session, &archive_path, remote_path)?;
-
         println!("✅ Archive uploaded to: {}", remote_path);
-        println!("\nTODO: Implement extraction and restore logic");
 
+        // 2. Extract on device
+        println!("📦 Extracting archive on device...");
+        let backup_name = archive_path.trim_end_matches(".tar.gz");
+        let backup_name = std::path::Path::new(backup_name)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let extract_dir = format!("/tmp/{}", backup_name);
+
+        // Remove old extraction if exists
+        self.run_command(
+            &session,
+            &format!("rm -rf {}", extract_dir),
+            "Cleaning up old extraction",
+        )?;
+
+        // Create directory and extract
+        self.run_command(
+            &session,
+            &format!(
+                "mkdir -p {} && tar -xzf {} -C /tmp",
+                extract_dir, remote_path
+            ),
+            "Extracting archive",
+        )?;
+
+        // 3. Check if InfluxDB container is running
+        println!("\n🔍 Checking if containers are running...");
+        let mut channel = session.channel_session()?;
+        channel.exec("docker ps --filter name=influxdb --format '{{.Names}}'")?;
+        let mut container_status = String::new();
+        channel.read_to_string(&mut container_status)?;
+        channel.wait_close()?;
+
+        if !container_status.trim().contains("influxdb") {
+            return Err(TelegrafError::ConfigError(
+                "InfluxDB container is not running. Please start the monitoring stack first with 'deploy start'".to_string()
+            ));
+        }
+        println!("✅ InfluxDB container is running");
+
+        // 4. Restore InfluxDB data
+        println!("\n📊 Restoring InfluxDB data...");
+        let influx_backup_dir = format!("{}/influxdb", extract_dir);
+
+        // Check if influxdb backup exists
+        let mut channel = session.channel_session()?;
+        channel.exec(&format!("ls {} 2>/dev/null", influx_backup_dir))?;
+        let mut influx_exists = String::new();
+        channel.read_to_string(&mut influx_exists)?;
+        channel.wait_close()?;
+
+        if !influx_exists.trim().is_empty() {
+            // Get InfluxDB token
+            let mut channel = session.channel_session()?;
+            channel.exec("cd ~/monitoring && grep INFLUXDB_TOKEN= .env | cut -d'=' -f2")?;
+            let mut token = String::new();
+            channel.read_to_string(&mut token)?;
+            channel.wait_close()?;
+            let token = token.trim();
+
+            if token.is_empty() {
+                return Err(TelegrafError::ConfigError(
+                    "Could not find INFLUXDB_TOKEN in .env file".to_string(),
+                ));
+            }
+
+            // Copy backup into container
+            self.run_command(
+                &session,
+                &format!(
+                    "docker cp {} influxdb:/tmp/influx_restore",
+                    influx_backup_dir
+                ),
+                "Copying backup into container",
+            )?;
+
+            // Run restore command and capture output
+            println!("🔧 Running InfluxDB restore...");
+            let mut channel = session.channel_session()?;
+            channel.exec(&format!(
+                "docker exec influxdb influx restore -t {} /tmp/influx_restore",
+                token
+            ))?;
+
+            use std::io::Read;
+            let mut stdout = String::new();
+            let mut stderr = String::new();
+            channel.read_to_string(&mut stdout).ok();
+            channel.wait_close()?;
+            channel.stderr().read_to_string(&mut stderr).ok();
+
+            println!("{}", stdout);
+            if !stderr.is_empty() {
+                eprintln!("{}", stderr);
+            }
+
+            // Get exit status
+            let exit_status = channel.exit_status()?;
+            if exit_status != 0 {
+                println!("\n⚠️  InfluxDB restore returned exit code: {}", exit_status);
+                println!("This may indicate an issue (e.g., bucket already exists)");
+                if !stdout.is_empty() || !stderr.is_empty() {
+                    println!("Check the output above for details");
+                }
+            } else {
+                println!("✅ InfluxDB restore completed");
+            }
+
+            // Cleanup inside container
+            self.run_command(
+                &session,
+                "docker exec influxdb rm -rf /tmp/influx_restore",
+                "Cleaning up",
+            )?;
+        } else {
+            println!("⏭️  No InfluxDB backup found, skipping");
+        }
+
+        // 5. Cleanup
+        println!("\n🧹 Cleaning up...");
+        self.run_command(
+            &session,
+            &format!("rm -rf {} {}", extract_dir, remote_path),
+            "Removing temporary files",
+        )?;
+
+        println!("\n✅ Restore process completed");
         Ok(())
     }
 
