@@ -785,9 +785,12 @@ impl IoTDeployer {
     }
 
     /// Restore monitoring data from backup archive
-    pub fn restore(&self, archive_path: String) -> Result<(), TelegrafError> {
+    pub fn restore(&self, archive_path: String, force: bool) -> Result<(), TelegrafError> {
         println!("♻️  Starting restore from backup...");
         println!("📦 Archive: {}", archive_path);
+        if force {
+            println!("⚠️  Force mode enabled - existing buckets will be deleted");
+        }
 
         // Verify archive exists
         if !std::path::Path::new(&archive_path).exists() {
@@ -859,18 +862,79 @@ impl IoTDeployer {
         channel.wait_close()?;
 
         if !influx_exists.trim().is_empty() {
-            // Get InfluxDB token
+            // Get InfluxDB token and org
             let mut channel = session.channel_session()?;
-            channel.exec("cd ~/monitoring && grep INFLUXDB_TOKEN= .env | cut -d'=' -f2")?;
-            let mut token = String::new();
-            channel.read_to_string(&mut token)?;
+            channel.exec("cd ~/monitoring && grep -E 'INFLUXDB_TOKEN|INFLUXDB_ORG' .env")?;
+            let mut env_vars = String::new();
+            channel.read_to_string(&mut env_vars)?;
             channel.wait_close()?;
-            let token = token.trim();
 
-            if token.is_empty() {
+            let mut token = String::new();
+            let mut org = String::new();
+            for line in env_vars.lines() {
+                if line.starts_with("INFLUXDB_TOKEN=") {
+                    token = line.split('=').nth(1).unwrap_or("").to_string();
+                } else if line.starts_with("INFLUXDB_ORG=") {
+                    org = line.split('=').nth(1).unwrap_or("").to_string();
+                }
+            }
+
+            if token.trim().is_empty() {
                 return Err(TelegrafError::ConfigError(
                     "Could not find INFLUXDB_TOKEN in .env file".to_string(),
                 ));
+            }
+
+            let token = token.trim();
+            let org = if org.trim().is_empty() {
+                "my-org"
+            } else {
+                org.trim()
+            };
+
+            // If force mode, delete existing buckets first
+            if force {
+                println!("🔧 Deleting existing buckets in org '{}'...", org);
+
+                // List buckets
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!(
+                    "docker exec influxdb influx bucket list -t {} -o {}",
+                    token, org
+                ))?;
+                let mut bucket_list = String::new();
+                channel.read_to_string(&mut bucket_list)?;
+                channel.wait_close()?;
+
+                // Parse bucket names and delete each one
+                // Format: ID Name Retention Policy Organization
+                for line in bucket_list.lines().skip(1) {
+                    // Skip header
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        // Skip system buckets
+                        let bucket_name = parts[1];
+                        if bucket_name.starts_with('_') {
+                            continue;
+                        }
+
+                        println!("   Deleting bucket: {}", bucket_name);
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&format!(
+                            "docker exec influxdb influx bucket delete -t {} -n {} -o {}",
+                            token, bucket_name, org
+                        ))?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("Error") || result.contains("error") {
+                            println!("   ⚠️  Could not delete {}: {}", bucket_name, result.trim());
+                        } else {
+                            println!("   ✓ Deleted bucket: {}", bucket_name);
+                        }
+                    }
+                }
             }
 
             // Copy backup into container
