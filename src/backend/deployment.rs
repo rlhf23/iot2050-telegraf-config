@@ -619,32 +619,96 @@ impl IoTDeployer {
             "Cleaning up remote backup",
         )?;
 
-        // 2. Backup Grafana data (dashboards, datasources, settings)
-        println!("\n📈 Backing up Grafana data...");
+        // 2. Backup Grafana dashboards via API
+        println!("\n📈 Backing up Grafana dashboards...");
         let grafana_local = format!("{}/grafana", local_backup_dir);
         fs::create_dir_all(&grafana_local)?;
 
-        // Export Grafana volume
-        let grafana_tar = format!("/tmp/grafana_data_{}.tar.gz", timestamp);
-        let export_cmd = format!(
-            "docker run --rm -v grafana_data:/data -v /tmp:/backup alpine tar czf /backup/grafana_data_{}.tar.gz -C /data .",
-            timestamp
+        // Get Grafana admin credentials from .env or use defaults
+        let creds_cmd =
+            "cd ~/monitoring && grep -E 'GRAFANA_ADMIN_USER|GRAFANA_ADMIN_PASSWORD' .env | head -2";
+        let mut channel = session.channel_session()?;
+        channel.exec(creds_cmd)?;
+        let mut creds = String::new();
+        channel.read_to_string(&mut creds)?;
+        channel.wait_close()?;
+
+        let mut admin_user = "admin".to_string();
+        let mut admin_pass = "admin".to_string();
+        for line in creds.lines() {
+            if line.starts_with("GRAFANA_ADMIN_USER=") {
+                admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
+            } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
+                admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+            }
+        }
+
+        // List all dashboards via Grafana API
+        let list_cmd = format!(
+            "curl -s -u {}:'{}' 'http://localhost:3000/api/search?type=dash-db'",
+            admin_user, admin_pass
         );
-        self.run_command(&session, &export_cmd, "Exporting Grafana volume")?;
+        let mut channel = session.channel_session()?;
+        channel.exec(&list_cmd)?;
+        let mut dashboards_json = String::new();
+        channel.read_to_string(&mut dashboards_json)?;
+        channel.wait_close()?;
 
-        // Download Grafana backup
-        self.download_file(
-            &session,
-            &grafana_tar,
-            &format!("{}/grafana_data.tar.gz", grafana_local),
-        )?;
+        // Parse dashboard UIDs and export each one
+        let dashboards_dir = format!("{}/dashboards", grafana_local);
+        fs::create_dir_all(&dashboards_dir)?;
 
-        // Cleanup
-        self.run_command(
-            &session,
-            &format!("rm {}", grafana_tar),
-            "Cleaning up Grafana backup",
-        )?;
+        // Extract UIDs using grep/sed (simple JSON parsing on remote)
+        let uids_cmd = format!(
+            "curl -s -u {}:'{}' 'http://localhost:3000/api/search?type=dash-db' | grep -oP '\"uid\":\\s*\"[^\"]+\"' | sed 's/\"uid\":\\s*\"\\([^\"]*\\)\"/\\1/'",
+            admin_user, admin_pass
+        );
+        let mut channel = session.channel_session()?;
+        channel.exec(&uids_cmd)?;
+        let mut uids_output = String::new();
+        channel.read_to_string(&mut uids_output)?;
+        channel.wait_close()?;
+
+        let mut dashboard_count = 0;
+        for uid in uids_output.lines() {
+            let uid = uid.trim();
+            if uid.is_empty() {
+                continue;
+            }
+
+            // Export dashboard
+            let export_cmd = format!(
+                "curl -s -u {}:'{}' 'http://localhost:3000/api/dashboards/uid/{}'",
+                admin_user, admin_pass, uid
+            );
+            let mut channel = session.channel_session()?;
+            channel.exec(&export_cmd)?;
+            let mut dashboard_json = String::new();
+            channel.read_to_string(&mut dashboard_json)?;
+            channel.wait_close()?;
+
+            // Save dashboard locally
+            let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
+            fs::write(&dashboard_file, &dashboard_json)?;
+            dashboard_count += 1;
+        }
+
+        println!("   Exported {} dashboards", dashboard_count);
+
+        // Export datasources
+        println!("   Exporting datasources...");
+        let datasources_cmd = format!(
+            "curl -s -u {}:'{}' 'http://localhost:3000/api/datasources'",
+            admin_user, admin_pass
+        );
+        let mut channel = session.channel_session()?;
+        channel.exec(&datasources_cmd)?;
+        let mut datasources_json = String::new();
+        channel.read_to_string(&mut datasources_json)?;
+        channel.wait_close()?;
+
+        let datasources_file = format!("{}/datasources.json", grafana_local);
+        fs::write(&datasources_file, &datasources_json)?;
 
         // 3. Backup Prometheus data
         println!("\n📉 Backing up Prometheus data...");
@@ -722,6 +786,7 @@ impl IoTDeployer {
 
     /// Restore monitoring data from backup archive
     pub fn restore(&self, archive_path: String) -> Result<(), TelegrafError> {
+        use std::fs;
         use std::process::Command;
 
         println!("♻️  Starting restore from backup...");
@@ -783,20 +848,93 @@ impl IoTDeployer {
             )?;
         }
 
-        // 2. Restore Grafana data
-        println!("\n📈 Restoring Grafana data...");
-        let grafana_tar = format!("{}/grafana/grafana_data.tar.gz", backup_dir);
+        // 2. Restore Grafana dashboards via API
+        println!("\n📈 Restoring Grafana dashboards...");
+        let dashboards_dir = format!("{}/grafana/dashboards", backup_dir);
 
-        if std::path::Path::new(&grafana_tar).exists() {
-            // Upload tar to device
-            self.upload_file(&grafana_tar, "/tmp/grafana_restore.tar.gz")?;
+        if std::path::Path::new(&dashboards_dir).exists() {
+            // Get Grafana admin credentials
+            let creds_cmd = "cd ~/monitoring && grep -E 'GF_SECURITY_ADMIN_USER|GF_SECURITY_ADMIN_PASSWORD' .env | head -2";
+            let mut channel = session.channel_session()?;
+            channel.exec(creds_cmd)?;
+            let mut creds = String::new();
+            channel.read_to_string(&mut creds)?;
+            channel.wait_close()?;
 
-            // Restore volume
-            let restore_cmd = "docker run --rm -v grafana_data:/data -v /tmp:/backup alpine sh -c 'cd /data && tar xzf /backup/grafana_restore.tar.gz'";
-            self.run_command(&session, restore_cmd, "Restoring Grafana volume")?;
+            let mut admin_user = "admin".to_string();
+            let mut admin_pass = "admin".to_string();
+            for line in creds.lines() {
+                if line.starts_with("GF_SECURITY_ADMIN_USER=") {
+                    admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
+                } else if line.starts_with("GF_SECURITY_ADMIN_PASSWORD=") {
+                    admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+                }
+            }
+
+            // Upload and import each dashboard
+            for entry in fs::read_dir(&dashboards_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "json") {
+                    let filename = path.file_name().unwrap().to_string_lossy();
+                    let remote_path = format!("/tmp/{}", filename);
+
+                    println!("   Restoring dashboard: {}", filename);
+
+                    // Upload dashboard JSON
+                    self.upload_file(&path.to_string_lossy(), &remote_path)?;
+
+                    // Import dashboard via API
+                    let import_cmd = format!(
+                        "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/dashboards/db'",
+                        admin_user, admin_pass, remote_path
+                    );
+                    self.run_command(&session, &import_cmd, &format!("Importing {}", filename))?;
+
+                    // Cleanup
+                    self.run_command(&session, &format!("rm {}", remote_path), "Cleaning up")?;
+                }
+            }
+        }
+
+        // Restore datasources
+        let datasources_file = format!("{}/grafana/datasources.json", backup_dir);
+        if std::path::Path::new(&datasources_file).exists() {
+            println!("   Restoring datasources...");
+
+            // Get credentials again (in case not set above)
+            let creds_cmd = "cd ~/monitoring && grep -E 'GF_SECURITY_ADMIN_USER|GF_SECURITY_ADMIN_PASSWORD' .env | head -2";
+            let mut channel = session.channel_session()?;
+            channel.exec(creds_cmd)?;
+            let mut creds = String::new();
+            channel.read_to_string(&mut creds)?;
+            channel.wait_close()?;
+
+            let mut admin_user = "admin".to_string();
+            let mut admin_pass = "admin".to_string();
+            for line in creds.lines() {
+                if line.starts_with("GF_SECURITY_ADMIN_USER=") {
+                    admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
+                } else if line.starts_with("GF_SECURITY_ADMIN_PASSWORD=") {
+                    admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+                }
+            }
+
+            let datasources_remote = "/tmp/datasources.json";
+            self.upload_file(&datasources_file, datasources_remote)?;
+
+            let import_ds_cmd = format!(
+                "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/datasources'",
+                admin_user, admin_pass, datasources_remote
+            );
+            self.run_command(&session, &import_ds_cmd, "Importing datasources")?;
 
             // Cleanup
-            self.run_command(&session, "rm /tmp/grafana_restore.tar.gz", "Cleaning up")?;
+            self.run_command(
+                &session,
+                &format!("rm {}", datasources_remote),
+                "Cleaning up",
+            )?;
         }
 
         // 3. Restore Prometheus data
