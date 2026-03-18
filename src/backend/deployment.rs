@@ -716,11 +716,13 @@ impl IoTDeployer {
         fs::create_dir_all(&prometheus_local)?;
 
         let prometheus_tar = format!("/tmp/prometheus_data_{}.tar.gz", timestamp);
+
+        // Use docker exec with running prometheus container (no image pull needed)
         let export_cmd = format!(
-            "docker run --rm -v prometheus_data:/data -v /tmp:/backup alpine tar czf /backup/prometheus_data_{}.tar.gz -C /data .",
-            timestamp
+            "docker exec prometheus tar czf - -C /prometheus . > {}",
+            prometheus_tar
         );
-        self.run_command(&session, &export_cmd, "Exporting Prometheus volume")?;
+        self.run_command(&session, &export_cmd, "Exporting Prometheus data")?;
 
         // Download Prometheus backup
         self.download_file(
@@ -741,10 +743,18 @@ impl IoTDeployer {
         let config_local = format!("{}/config", local_backup_dir);
         fs::create_dir_all(&config_local)?;
 
+        // Get home directory (SFTP doesn't expand ~)
+        let mut channel = session.channel_session()?;
+        channel.exec("echo $HOME")?;
+        let mut home_dir = String::new();
+        channel.read_to_string(&mut home_dir)?;
+        channel.wait_close()?;
+        let home_dir = home_dir.trim();
+
         // Copy .env file
         self.download_file(
             &session,
-            "~/monitoring/.env",
+            &format!("{}/monitoring/.env", home_dir),
             &format!("{}/env_backup", config_local),
         )?;
 
@@ -785,12 +795,12 @@ impl IoTDeployer {
     }
 
     /// Restore monitoring data from backup archive
-    pub fn restore(&self, archive_path: String) -> Result<(), TelegrafError> {
-        use std::fs;
-        use std::process::Command;
-
+    pub fn restore(&self, archive_path: String, force: bool) -> Result<(), TelegrafError> {
         println!("♻️  Starting restore from backup...");
         println!("📦 Archive: {}", archive_path);
+        if force {
+            println!("⚠️  Force mode enabled - existing buckets will be deleted");
+        }
 
         // Verify archive exists
         if !std::path::Path::new(&archive_path).exists() {
@@ -802,174 +812,386 @@ impl IoTDeployer {
 
         let session = self.create_ssh_session()?;
 
-        // Extract archive locally
-        println!("📦 Extracting archive...");
-        let output = Command::new("tar")
-            .args(&["-xzf", &archive_path])
-            .output()
-            .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract archive: {}", e)))?;
+        // 1. Upload tarball to device
+        println!("📤 Uploading archive to device...");
+        let remote_path = "/tmp/monitoring_restore.tar.gz";
+        self.upload_file(&session, &archive_path, remote_path)?;
+        println!("✅ Archive uploaded to: {}", remote_path);
 
-        if !output.status.success() {
-            return Err(TelegrafError::ConfigError(format!(
-                "Failed to extract archive: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
+        // 2. Extract on device
+        println!("📦 Extracting archive on device...");
+        let backup_name = archive_path.trim_end_matches(".tar.gz");
+        let backup_name = std::path::Path::new(backup_name)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let extract_dir = format!("/tmp/{}", backup_name);
 
-        // Find extracted directory
-        let backup_dir = archive_path.trim_end_matches(".tar.gz");
-
-        // Stop monitoring stack if running
-        println!("\n🛑 Stopping monitoring stack...");
-        let _ = self.run_command(
+        // Remove old extraction if exists
+        self.run_command(
             &session,
-            "cd ~/monitoring && docker-compose down",
-            "Stopping stack",
-        );
+            &format!("rm -rf {}", extract_dir),
+            "Cleaning up old extraction",
+        )?;
 
-        // 1. Restore InfluxDB data
+        // Create directory and extract
+        self.run_command(
+            &session,
+            &format!(
+                "mkdir -p {} && tar -xzf {} -C /tmp",
+                extract_dir, remote_path
+            ),
+            "Extracting archive",
+        )?;
+
+        // 3. Check if InfluxDB container is running
+        println!("\n🔍 Checking if containers are running...");
+        let mut channel = session.channel_session()?;
+        channel.exec("docker ps --filter name=influxdb --format '{{.Names}}'")?;
+        let mut container_status = String::new();
+        channel.read_to_string(&mut container_status)?;
+        channel.wait_close()?;
+
+        if !container_status.trim().contains("influxdb") {
+            return Err(TelegrafError::ConfigError(
+                "InfluxDB container is not running. Please start the monitoring stack first with 'deploy start'".to_string()
+            ));
+        }
+        println!("✅ InfluxDB container is running");
+
+        // 4. Restore InfluxDB data
         println!("\n📊 Restoring InfluxDB data...");
-        let influx_backup = format!("{}/influxdb", backup_dir);
+        let influx_backup_dir = format!("{}/influxdb", extract_dir);
 
-        if std::path::Path::new(&influx_backup).exists() {
-            // Upload backup to device
-            let remote_backup = "/tmp/influx_restore";
-            self.upload_directory(&influx_backup, remote_backup)?;
+        // Check if influxdb backup exists
+        let mut channel = session.channel_session()?;
+        channel.exec(&format!("ls {} 2>/dev/null", influx_backup_dir))?;
+        let mut influx_exists = String::new();
+        channel.read_to_string(&mut influx_exists)?;
+        channel.wait_close()?;
 
-            // Copy into container and restore
-            let restore_cmd = format!("docker exec influxdb influx restore {}", remote_backup);
-            self.run_command(&session, &restore_cmd, "Restoring InfluxDB data")?;
-
-            // Cleanup
-            self.run_command(
-                &session,
-                &format!("rm -rf {}", remote_backup),
-                "Cleaning up",
-            )?;
-        }
-
-        // 2. Restore Grafana dashboards via API
-        println!("\n📈 Restoring Grafana dashboards...");
-        let dashboards_dir = format!("{}/grafana/dashboards", backup_dir);
-
-        if std::path::Path::new(&dashboards_dir).exists() {
-            // Get Grafana admin credentials
-            let creds_cmd = "cd ~/monitoring && grep -E 'GF_SECURITY_ADMIN_USER|GF_SECURITY_ADMIN_PASSWORD' .env | head -2";
+        if !influx_exists.trim().is_empty() {
+            // Get InfluxDB token and org
             let mut channel = session.channel_session()?;
-            channel.exec(creds_cmd)?;
-            let mut creds = String::new();
-            channel.read_to_string(&mut creds)?;
+            channel.exec("cd ~/monitoring && grep -E 'INFLUXDB_TOKEN|INFLUXDB_ORG' .env")?;
+            let mut env_vars = String::new();
+            channel.read_to_string(&mut env_vars)?;
             channel.wait_close()?;
 
-            let mut admin_user = "admin".to_string();
-            let mut admin_pass = "admin".to_string();
-            for line in creds.lines() {
-                if line.starts_with("GF_SECURITY_ADMIN_USER=") {
-                    admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
-                } else if line.starts_with("GF_SECURITY_ADMIN_PASSWORD=") {
-                    admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+            let mut token = String::new();
+            let mut org = String::new();
+            for line in env_vars.lines() {
+                if line.starts_with("INFLUXDB_TOKEN=") {
+                    token = line.split('=').nth(1).unwrap_or("").to_string();
+                } else if line.starts_with("INFLUXDB_ORG=") {
+                    org = line.split('=').nth(1).unwrap_or("").to_string();
                 }
             }
 
-            // Upload and import each dashboard
-            for entry in fs::read_dir(&dashboards_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.extension().map_or(false, |ext| ext == "json") {
-                    let filename = path.file_name().unwrap().to_string_lossy();
-                    let remote_path = format!("/tmp/{}", filename);
-
-                    println!("   Restoring dashboard: {}", filename);
-
-                    // Upload dashboard JSON
-                    self.upload_file(&path.to_string_lossy(), &remote_path)?;
-
-                    // Import dashboard via API
-                    let import_cmd = format!(
-                        "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/dashboards/db'",
-                        admin_user, admin_pass, remote_path
-                    );
-                    self.run_command(&session, &import_cmd, &format!("Importing {}", filename))?;
-
-                    // Cleanup
-                    self.run_command(&session, &format!("rm {}", remote_path), "Cleaning up")?;
-                }
-            }
-        }
-
-        // Restore datasources
-        let datasources_file = format!("{}/grafana/datasources.json", backup_dir);
-        if std::path::Path::new(&datasources_file).exists() {
-            println!("   Restoring datasources...");
-
-            // Get credentials again (in case not set above)
-            let creds_cmd = "cd ~/monitoring && grep -E 'GF_SECURITY_ADMIN_USER|GF_SECURITY_ADMIN_PASSWORD' .env | head -2";
-            let mut channel = session.channel_session()?;
-            channel.exec(creds_cmd)?;
-            let mut creds = String::new();
-            channel.read_to_string(&mut creds)?;
-            channel.wait_close()?;
-
-            let mut admin_user = "admin".to_string();
-            let mut admin_pass = "admin".to_string();
-            for line in creds.lines() {
-                if line.starts_with("GF_SECURITY_ADMIN_USER=") {
-                    admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
-                } else if line.starts_with("GF_SECURITY_ADMIN_PASSWORD=") {
-                    admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
-                }
+            if token.trim().is_empty() {
+                return Err(TelegrafError::ConfigError(
+                    "Could not find INFLUXDB_TOKEN in .env file".to_string(),
+                ));
             }
 
-            let datasources_remote = "/tmp/datasources.json";
-            self.upload_file(&datasources_file, datasources_remote)?;
+            let token = token.trim();
+            let org = if org.trim().is_empty() {
+                "my-org"
+            } else {
+                org.trim()
+            };
 
-            let import_ds_cmd = format!(
-                "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/datasources'",
-                admin_user, admin_pass, datasources_remote
-            );
-            self.run_command(&session, &import_ds_cmd, "Importing datasources")?;
+            // If force mode, delete existing buckets first
+            if force {
+                println!("🔧 Deleting existing buckets in org '{}'...", org);
 
-            // Cleanup
+                // List buckets
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!(
+                    "docker exec influxdb influx bucket list -t {} -o {}",
+                    token, org
+                ))?;
+                let mut bucket_list = String::new();
+                channel.read_to_string(&mut bucket_list)?;
+                channel.wait_close()?;
+
+                // Parse bucket names and delete each one
+                // Format: ID Name Retention Policy Organization
+                for line in bucket_list.lines().skip(1) {
+                    // Skip header
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        // Skip system buckets
+                        let bucket_name = parts[1];
+                        if bucket_name.starts_with('_') {
+                            continue;
+                        }
+
+                        println!("   Deleting bucket: {}", bucket_name);
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&format!(
+                            "docker exec influxdb influx bucket delete -t {} -n {} -o {}",
+                            token, bucket_name, org
+                        ))?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("Error") || result.contains("error") {
+                            println!("   ⚠️  Could not delete {}: {}", bucket_name, result.trim());
+                        } else {
+                            println!("   ✓ Deleted bucket: {}", bucket_name);
+                        }
+                    }
+                }
+            }
+
+            // Copy backup into container
             self.run_command(
                 &session,
-                &format!("rm {}", datasources_remote),
+                &format!(
+                    "docker cp {} influxdb:/tmp/influx_restore",
+                    influx_backup_dir
+                ),
+                "Copying backup into container",
+            )?;
+
+            // Run restore command and capture output
+            println!("🔧 Running InfluxDB restore...");
+            let mut channel = session.channel_session()?;
+            channel.exec(&format!(
+                "docker exec influxdb influx restore -t {} /tmp/influx_restore",
+                token
+            ))?;
+
+            use std::io::Read;
+            let mut stdout = String::new();
+            let mut stderr = String::new();
+            channel.read_to_string(&mut stdout).ok();
+            channel.wait_close()?;
+            channel.stderr().read_to_string(&mut stderr).ok();
+
+            println!("{}", stdout);
+            if !stderr.is_empty() {
+                eprintln!("{}", stderr);
+            }
+
+            // Get exit status
+            let exit_status = channel.exit_status()?;
+            if exit_status != 0 {
+                println!("\n⚠️  InfluxDB restore returned exit code: {}", exit_status);
+                println!("This may indicate an issue (e.g., bucket already exists)");
+                if !stdout.is_empty() || !stderr.is_empty() {
+                    println!("Check the output above for details");
+                }
+            } else {
+                println!("✅ InfluxDB restore completed");
+            }
+
+            // Cleanup inside container
+            self.run_command(
+                &session,
+                "docker exec influxdb rm -rf /tmp/influx_restore",
                 "Cleaning up",
             )?;
+        } else {
+            println!("⏭️  No InfluxDB backup found, skipping");
         }
 
-        // 3. Restore Prometheus data
-        println!("\n📉 Restoring Prometheus data...");
-        let prometheus_tar = format!("{}/prometheus/prometheus_data.tar.gz", backup_dir);
+        // 5. Restore Grafana dashboards and datasources
+        println!("\n📈 Restoring Grafana data...");
+        let grafana_backup_dir = format!("{}/grafana", extract_dir);
+        let dashboards_dir = format!("{}/dashboards", grafana_backup_dir);
 
-        if std::path::Path::new(&prometheus_tar).exists() {
-            // Upload tar to device
-            self.upload_file(&prometheus_tar, "/tmp/prometheus_restore.tar.gz")?;
+        // Check if Grafana container is running
+        let mut channel = session.channel_session()?;
+        channel.exec("docker ps --filter name=grafana --format '{{.Names}}'")?;
+        let mut grafana_status = String::new();
+        channel.read_to_string(&mut grafana_status)?;
+        channel.wait_close()?;
 
-            // Restore volume
-            let restore_cmd = "docker run --rm -v prometheus_data:/data -v /tmp:/backup alpine sh -c 'cd /data && tar xzf /backup/prometheus_restore.tar.gz'";
-            self.run_command(&session, restore_cmd, "Restoring Prometheus volume")?;
+        if !grafana_status.trim().contains("grafana") {
+            println!("⚠️  Grafana container is not running, skipping Grafana restore");
+        } else {
+            // Check if Grafana backup exists on remote device
+            let mut channel = session.channel_session()?;
+            channel.exec(&format!("ls {} 2>/dev/null", dashboards_dir))?;
+            let mut grafana_exists = String::new();
+            channel.read_to_string(&mut grafana_exists)?;
+            channel.wait_close()?;
 
-            // Cleanup
-            self.run_command(&session, "rm /tmp/prometheus_restore.tar.gz", "Cleaning up")?;
+            if !grafana_exists.trim().is_empty() {
+                // Get Grafana credentials
+                let mut channel = session.channel_session()?;
+                channel.exec(
+                    "cd ~/monitoring && grep -E 'GRAFANA_ADMIN_USER|GRAFANA_ADMIN_PASSWORD' .env | head -2",
+                )?;
+                let mut creds = String::new();
+                channel.read_to_string(&mut creds)?;
+                channel.wait_close()?;
+
+                let mut admin_user = "admin".to_string();
+                let mut admin_pass = "admin".to_string();
+                for line in creds.lines() {
+                    if line.starts_with("GRAFANA_ADMIN_USER=") {
+                        admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
+                    } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
+                        admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+                    }
+                }
+
+                // List dashboard files on remote device
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!("ls {}/*.json 2>/dev/null", dashboards_dir))?;
+                let mut dashboard_list = String::new();
+                channel.read_to_string(&mut dashboard_list)?;
+                channel.wait_close()?;
+
+                // Restore dashboards
+                if !dashboard_list.trim().is_empty() {
+                    println!("   Restoring dashboards...");
+                    for dashboard_file in dashboard_list.lines() {
+                        let dashboard_file = dashboard_file.trim();
+                        if dashboard_file.is_empty() {
+                            continue;
+                        }
+
+                        let filename = dashboard_file.split('/').last().unwrap_or("unknown");
+
+                        // Import dashboard via API directly from remote file
+                        let import_cmd = format!(
+                            "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/dashboards/db'",
+                            admin_user, admin_pass, dashboard_file
+                        );
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&import_cmd)?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("\"success\":true") || result.contains("\"id\"") {
+                            println!("   ✓ Restored dashboard: {}", filename);
+                        } else {
+                            println!("   ⚠️  Failed to restore {}: {}", filename, result.trim());
+                        }
+                    }
+                }
+
+                // Restore datasources
+                let datasources_file = format!("{}/datasources.json", grafana_backup_dir);
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!("ls {} 2>/dev/null", datasources_file))?;
+                let mut ds_exists = String::new();
+                channel.read_to_string(&mut ds_exists)?;
+                channel.wait_close()?;
+
+                if !ds_exists.trim().is_empty() {
+                    println!("   Restoring datasources...");
+
+                    // Read the datasources file on remote
+                    let mut channel = session.channel_session()?;
+                    channel.exec(&format!("cat {}", datasources_file))?;
+                    let mut ds_content = String::new();
+                    channel.read_to_string(&mut ds_content)?;
+                    channel.wait_close()?;
+
+                    // Parse each datasource and import
+                    for line in ds_content.lines() {
+                        let line = line.trim();
+                        if !line.starts_with('{') {
+                            continue;
+                        }
+
+                        // Extract name from the JSON line
+                        let name = if let Some(start) = line.find("\"name\":\"") {
+                            let start = start + 8;
+                            if let Some(end) = line[start..].find('"') {
+                                &line[start..start + end]
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        };
+
+                        // Save individual datasource to temp file
+                        let ds_file = "/tmp/ds_single.json";
+                        let clean_line = line.trim_end_matches(',');
+                        let echo_cmd =
+                            format!("echo '{}' > {}", clean_line.replace("'", "'\\''"), ds_file);
+                        self.run_command(
+                            &session,
+                            &echo_cmd,
+                            &format!("Preparing datasource: {}", name),
+                        )?;
+
+                        if force {
+                            // Delete existing datasource by name
+                            let delete_cmd = format!(
+                                "curl -s -u {}:'{}' 'http://localhost:3000/api/datasources/name/{}' | grep -o '\"id\":[0-9]*' | head -1 | cut -d: -f2",
+                                admin_user, admin_pass, name
+                            );
+                            let mut channel = session.channel_session()?;
+                            channel.exec(&delete_cmd)?;
+                            let mut id_result = String::new();
+                            channel.read_to_string(&mut id_result)?;
+                            channel.wait_close()?;
+
+                            let ds_id = id_result.trim();
+                            if !ds_id.is_empty() && ds_id.chars().all(|c| c.is_numeric()) {
+                                let del_cmd = format!(
+                                    "curl -s -u {}:'{}' -X DELETE 'http://localhost:3000/api/datasources/{}'",
+                                    admin_user, admin_pass, ds_id
+                                );
+                                self.run_command(
+                                    &session,
+                                    &del_cmd,
+                                    &format!("Deleting datasource: {}", name),
+                                )?;
+                            }
+                        }
+
+                        // Import datasource
+                        let import_cmd = format!(
+                            "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/datasources'",
+                            admin_user, admin_pass, ds_file
+                        );
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&import_cmd)?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("\"success\":true") || result.contains("\"id\"") {
+                            println!("   ✓ Restored datasource: {}", name);
+                        } else if result.contains("already exists") {
+                            println!("   ⚠️  Datasource '{}' already exists, skipped", name);
+                        } else {
+                            println!(
+                                "   ⚠️  Failed to restore datasource {}: {}",
+                                name,
+                                result.trim()
+                            );
+                        }
+                    }
+                }
+
+                println!("✅ Grafana restore completed");
+            } else {
+                println!("⏭️  No Grafana backup found, skipping");
+            }
         }
 
-        // 4. Restore configuration
-        println!("\n⚙️  Restoring configuration...");
-        let env_backup = format!("{}/config/env_backup", backup_dir);
+        // 6. Cleanup
+        // println!("\n🧹 Cleaning up...");
+        // self.run_command(
+        //     &session,
+        //     &format!("rm -rf {} {}", extract_dir, remote_path),
+        //     "Removing temporary files",
+        // )?;
 
-        if std::path::Path::new(&env_backup).exists() {
-            self.upload_file(&env_backup, "~/monitoring/.env")?;
-        }
-
-        // Start monitoring stack
-        println!("\n🚀 Starting monitoring stack...");
-        self.start()?;
-
-        println!("\n✅ Restore completed successfully!");
-        println!("🔗 Access your services at:");
-        println!("   - Grafana: http://{}:3000", self.config.host);
-        println!("   - InfluxDB: http://{}:8086", self.config.host);
-
+        // println!("\n✅ Restore process completed");
         Ok(())
     }
 
@@ -1307,126 +1529,49 @@ impl IoTDeployer {
     }
 
     /// Upload a file from local machine to remote device
-    fn upload_file(&self, local_path: &str, remote_path: &str) -> Result<(), TelegrafError> {
-        use std::process::Command;
+    fn upload_file(
+        &self,
+        session: &Session,
+        local_path: &str,
+        remote_path: &str,
+    ) -> Result<(), TelegrafError> {
+        use std::fs::File;
+        use std::io::Read;
+        use std::io::Write;
 
-        let mut scp_cmd = Command::new("scp");
-        scp_cmd.args(&["-o", "StrictHostKeyChecking=no"]);
+        let mut local_file = File::open(local_path)?;
+        let mut contents = Vec::new();
+        local_file.read_to_end(&mut contents)?;
 
-        if self.config.port != 22 {
-            scp_cmd.args(&["-P", &self.config.port.to_string()]);
-        }
-
-        if let Some(key_file) = &self.config.key_file {
-            scp_cmd.args(&["-i", key_file]);
-        }
-
-        scp_cmd.arg(local_path);
-        scp_cmd.arg(format!(
-            "{}@{}:{}",
-            self.config.user, self.config.host, remote_path
-        ));
-
-        if let Some(password) = &self.config.password {
-            // Use sshpass for password auth
-            let mut sshpass_cmd = Command::new("sshpass");
-            sshpass_cmd.args(&["-p", password, "scp", "-o", "StrictHostKeyChecking=no"]);
-
-            if self.config.port != 22 {
-                sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
-            }
-
-            sshpass_cmd.arg(local_path);
-            sshpass_cmd.arg(format!(
-                "{}@{}:{}",
-                self.config.user, self.config.host, remote_path
-            ));
-
-            let output = sshpass_cmd.output()?;
-            if !output.status.success() {
-                return Err(TelegrafError::ConfigError(format!(
-                    "SCP upload failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                )));
-            }
-        } else {
-            let output = scp_cmd.output()?;
-            if !output.status.success() {
-                return Err(TelegrafError::ConfigError(format!(
-                    "SCP upload failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                )));
-            }
-        }
+        let sftp = session.sftp()?;
+        let mut remote_file = sftp.create(std::path::Path::new(remote_path))?;
+        remote_file.write_all(&contents)?;
 
         Ok(())
     }
 
     /// Upload a directory from local machine to remote device
-    fn upload_directory(&self, local_path: &str, remote_path: &str) -> Result<(), TelegrafError> {
-        use std::process::Command;
-
+    fn upload_directory(
+        &self,
+        session: &Session,
+        local_path: &str,
+        remote_path: &str,
+    ) -> Result<(), TelegrafError> {
         // Create remote directory first
-        let session = self.create_ssh_session()?;
         self.run_command(
-            &session,
+            session,
             &format!("mkdir -p {}", remote_path),
             "Creating remote directory",
         )?;
 
-        let mut scp_cmd = Command::new("scp");
-        scp_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
-
-        if self.config.port != 22 {
-            scp_cmd.args(&["-P", &self.config.port.to_string()]);
-        }
-
-        if let Some(key_file) = &self.config.key_file {
-            scp_cmd.args(&["-i", key_file]);
-        }
-
-        scp_cmd.arg(format!("{}/*", local_path));
-        scp_cmd.arg(format!(
-            "{}@{}:{}",
-            self.config.user, self.config.host, remote_path
-        ));
-
-        if let Some(password) = &self.config.password {
-            // Use sshpass for password auth
-            let mut sshpass_cmd = Command::new("sshpass");
-            sshpass_cmd.args(&[
-                "-p",
-                password,
-                "scp",
-                "-r",
-                "-o",
-                "StrictHostKeyChecking=no",
-            ]);
-
-            if self.config.port != 22 {
-                sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
-            }
-
-            sshpass_cmd.arg(format!("{}/*", local_path));
-            sshpass_cmd.arg(format!(
-                "{}@{}:{}",
-                self.config.user, self.config.host, remote_path
-            ));
-
-            let output = sshpass_cmd.output()?;
-            if !output.status.success() {
-                return Err(TelegrafError::ConfigError(format!(
-                    "SCP upload failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                )));
-            }
-        } else {
-            let output = scp_cmd.output()?;
-            if !output.status.success() {
-                return Err(TelegrafError::ConfigError(format!(
-                    "SCP upload failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                )));
+        // Upload each file in the directory
+        for entry in std::fs::read_dir(local_path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_name().unwrap().to_string_lossy();
+                let remote_file = format!("{}/{}", remote_path, file_name);
+                self.upload_file(session, &path.to_string_lossy(), &remote_file)?;
             }
         }
 

@@ -150,8 +150,9 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
             let archive = sub_matches.get_one::<String>("archive").unwrap().clone();
+            let force = sub_matches.get_flag("force");
 
-            if let Err(e) = deployer.restore(archive) {
+            if let Err(e) = deployer.restore(archive, force) {
                 exit_with_error(format!("Restore failed: {}", e));
             }
 
@@ -654,6 +655,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("archive").short('a').long("archive").required(true).help("Path to backup archive (.tar.gz file)"))
+                        .arg(clap::Arg::new("force").short('f').long("force").action(clap::ArgAction::SetTrue).help("Delete existing buckets before restore"))
                 )
                 .subcommand(
                     Command::new("time")
