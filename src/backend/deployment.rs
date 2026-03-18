@@ -1,3 +1,4 @@
+use crate::backend::ssh_utils;
 use crate::error::TelegrafError;
 use ssh2::Session;
 use std::io::Read;
@@ -783,81 +784,7 @@ impl IoTDeployer {
         command: &str,
         description: &str,
     ) -> Result<(), TelegrafError> {
-        println!("🔧 {}", description);
-
-        // Check if this is a sudo command and we have a password
-        let command = if command.contains("sudo ") && self.config.password.is_some() {
-            // Use the -S flag to read password from stdin
-            let password = self.config.password.as_ref().unwrap();
-            format!(
-                "echo '{}' | sudo -S {}",
-                password,
-                command.replace("sudo ", "")
-            )
-        } else {
-            command.to_string()
-        };
-
-        let mut channel = session.channel_session()?;
-        channel.exec(&command)?;
-
-        use std::io::{BufReader, Read, Write};
-        use std::time::{Duration, Instant};
-        // ssh2::Channel is not used directly
-        use std::thread;
-
-        let mut stdout = channel.stream(0);
-        let mut stderr = channel.stderr();
-        let mut stdout_reader = BufReader::new(&mut stdout);
-        let mut stderr_reader = BufReader::new(&mut stderr);
-        let start_time = Instant::now();
-        let timeout = Duration::from_secs(300); // 5 minutes
-
-        let mut stdout_buf = [0u8; 1024];
-        let mut stderr_buf = [0u8; 1024];
-        loop {
-            // Timeout check
-            if start_time.elapsed() > timeout {
-                println!("⏰ Command timed out after 5 minutes");
-                channel.close().ok();
-                return Err(TelegrafError::SshOperationError(format!(
-                    "Command timed out: {}",
-                    command
-                )));
-            }
-            // Read stdout
-            match stdout_reader.read(&mut stdout_buf) {
-                Ok(n) if n > 0 => {
-                    let s = String::from_utf8_lossy(&stdout_buf[..n]);
-                    print!("{}", s);
-                    std::io::stdout().flush().ok();
-                }
-                _ => {}
-            }
-            // Read stderr
-            match stderr_reader.read(&mut stderr_buf) {
-                Ok(n) if n > 0 => {
-                    let s = String::from_utf8_lossy(&stderr_buf[..n]);
-                    eprint!("{}", s);
-                    std::io::stderr().flush().ok();
-                }
-                _ => {}
-            }
-            // Check if command is done
-            if channel.eof() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(100));
-        }
-        channel.wait_close()?;
-        let exit_status = channel.exit_status()?;
-        if exit_status != 0 {
-            return Err(TelegrafError::SshOperationError(format!(
-                "Command failed (exit code {}): {}",
-                exit_status, command
-            )));
-        }
-        Ok(())
+        ssh_utils::run_command(session, command, description, self.config.password.as_ref())
     }
 
     /// Download a file from remote device to local machine
@@ -867,13 +794,7 @@ impl IoTDeployer {
         remote_path: &str,
         local_path: &str,
     ) -> Result<(), TelegrafError> {
-        use std::fs::File;
-
-        let (mut remote_file, _stat) = session.scp_recv(std::path::Path::new(remote_path))?;
-        let mut local_file = File::create(local_path)?;
-        std::io::copy(&mut remote_file, &mut local_file)?;
-
-        Ok(())
+        ssh_utils::download_file(session, remote_path, local_path)
     }
 
     /// Download a directory from remote device to local machine
@@ -883,26 +804,7 @@ impl IoTDeployer {
         remote_path: &str,
         local_path: &str,
     ) -> Result<(), TelegrafError> {
-        use std::fs::File;
-
-        // List files in remote directory
-        let mut channel = session.channel_session()?;
-        channel.exec(&format!("ls {}", remote_path))?;
-        let mut file_list = String::new();
-        channel.read_to_string(&mut file_list)?;
-        channel.wait_close()?;
-
-        // Download each file
-        for file_name in file_list.lines() {
-            let remote_file = format!("{}/{}", remote_path, file_name);
-            let local_file = format!("{}/{}", local_path, file_name);
-
-            let (mut remote, _stat) = session.scp_recv(std::path::Path::new(&remote_file))?;
-            let mut local = File::create(local_file)?;
-            std::io::copy(&mut remote, &mut local)?;
-        }
-
-        Ok(())
+        ssh_utils::download_directory(session, remote_path, local_path)
     }
 
     /// Upload a file from local machine to remote device
@@ -912,19 +814,7 @@ impl IoTDeployer {
         local_path: &str,
         remote_path: &str,
     ) -> Result<(), TelegrafError> {
-        use std::fs::File;
-        use std::io::Read;
-        use std::io::Write;
-
-        let mut local_file = File::open(local_path)?;
-        let mut contents = Vec::new();
-        local_file.read_to_end(&mut contents)?;
-
-        let sftp = session.sftp()?;
-        let mut remote_file = sftp.create(std::path::Path::new(remote_path))?;
-        remote_file.write_all(&contents)?;
-
-        Ok(())
+        ssh_utils::upload_file(session, local_path, remote_path)
     }
 
     /// Upload a directory from local machine to remote device
@@ -934,25 +824,12 @@ impl IoTDeployer {
         local_path: &str,
         remote_path: &str,
     ) -> Result<(), TelegrafError> {
-        // Create remote directory first
-        self.run_command(
+        ssh_utils::upload_directory(
             session,
-            &format!("mkdir -p {}", remote_path),
-            "Creating remote directory",
-        )?;
-
-        // Upload each file in the directory
-        for entry in std::fs::read_dir(local_path)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() {
-                let file_name = path.file_name().unwrap().to_string_lossy();
-                let remote_file = format!("{}/{}", remote_path, file_name);
-                self.upload_file(session, &path.to_string_lossy(), &remote_file)?;
-            }
-        }
-
-        Ok(())
+            local_path,
+            remote_path,
+            self.config.password.as_ref(),
+        )
     }
 
     /// Check if a command succeeds (returns true) or fails (returns false)
