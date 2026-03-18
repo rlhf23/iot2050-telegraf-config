@@ -1184,14 +1184,14 @@ impl IoTDeployer {
         }
 
         // 6. Cleanup
-        println!("\n🧹 Cleaning up...");
-        self.run_command(
-            &session,
-            &format!("rm -rf {} {}", extract_dir, remote_path),
-            "Removing temporary files",
-        )?;
+        // println!("\n🧹 Cleaning up...");
+        // self.run_command(
+        //     &session,
+        //     &format!("rm -rf {} {}", extract_dir, remote_path),
+        //     "Removing temporary files",
+        // )?;
 
-        println!("\n✅ Restore process completed");
+        // println!("\n✅ Restore process completed");
         Ok(())
     }
 
