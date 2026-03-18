@@ -716,11 +716,13 @@ impl IoTDeployer {
         fs::create_dir_all(&prometheus_local)?;
 
         let prometheus_tar = format!("/tmp/prometheus_data_{}.tar.gz", timestamp);
+
+        // Use docker exec with running prometheus container (no image pull needed)
         let export_cmd = format!(
-            "docker run --rm -v prometheus_data:/data -v /tmp:/backup alpine tar czf /backup/prometheus_data_{}.tar.gz -C /data .",
-            timestamp
+            "docker exec prometheus tar czf - -C /prometheus . > {}",
+            prometheus_tar
         );
-        self.run_command(&session, &export_cmd, "Exporting Prometheus volume")?;
+        self.run_command(&session, &export_cmd, "Exporting Prometheus data")?;
 
         // Download Prometheus backup
         self.download_file(
@@ -741,10 +743,18 @@ impl IoTDeployer {
         let config_local = format!("{}/config", local_backup_dir);
         fs::create_dir_all(&config_local)?;
 
+        // Get home directory (SFTP doesn't expand ~)
+        let mut channel = session.channel_session()?;
+        channel.exec("echo $HOME")?;
+        let mut home_dir = String::new();
+        channel.read_to_string(&mut home_dir)?;
+        channel.wait_close()?;
+        let home_dir = home_dir.trim();
+
         // Copy .env file
         self.download_file(
             &session,
-            "~/monitoring/.env",
+            &format!("{}/monitoring/.env", home_dir),
             &format!("{}/env_backup", config_local),
         )?;
 
