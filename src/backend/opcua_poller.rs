@@ -74,7 +74,7 @@ impl OpcUaPoller {
     fn validate_ip(ip: &str) -> Result<(), TelegrafError> {
         // Extract just the IP part (before the port)
         let ip_part = ip.split(':').next().unwrap_or(ip);
-        
+
         // Check if it's a valid IPv4 address
         if ip_part.parse::<std::net::Ipv4Addr>().is_err() {
             return Err(TelegrafError::ConfigError(format!(
@@ -82,7 +82,7 @@ impl OpcUaPoller {
                 ip
             )));
         }
-        
+
         Ok(())
     }
 
@@ -136,7 +136,10 @@ impl OpcUaPoller {
             })
             .collect();
 
-        eprintln!("Looking for matches with {} XML files:", file_base_names.len());
+        eprintln!(
+            "Looking for matches with {} XML files:",
+            file_base_names.len()
+        );
         for (file_name, base_name) in &file_base_names {
             eprintln!("  File: {} (base: {})", file_name, base_name);
         }
@@ -150,14 +153,20 @@ impl OpcUaPoller {
             for (namespace_index, namespace_name) in &namespaces {
                 // Compare the namespace name with the XML base name (case insensitive)
                 if namespace_name.to_lowercase() == base_name.to_lowercase() {
-                    eprintln!("  ✓ Matched '{}' to namespace {} ({})", file_name, namespace_index, namespace_name);
+                    eprintln!(
+                        "  ✓ Matched '{}' to namespace {} ({})",
+                        file_name, namespace_index, namespace_name
+                    );
                     namespace_map.insert(file_name.clone(), *namespace_index);
                     found = true;
                     break;
                 }
             }
             if !found {
-                eprintln!("  ✗ No match found for '{}' (base: {})", file_name, base_name);
+                eprintln!(
+                    "  ✗ No match found for '{}' (base: {})",
+                    file_name, base_name
+                );
             }
         }
 
@@ -171,7 +180,10 @@ impl OpcUaPoller {
             ));
         }
 
-        eprintln!("Successfully mapped {} file(s) to namespaces", namespace_map.len());
+        eprintln!(
+            "Successfully mapped {} file(s) to namespaces",
+            namespace_map.len()
+        );
         Ok(namespace_map)
     }
 
@@ -243,7 +255,7 @@ impl OpcUaPoller {
         };
 
         eprintln!("Browsing ServerInterfaces node for namespace information...");
-        
+
         let browse_results = read_lock.browse(&[browse_desc]);
         match browse_results {
             Ok(Some(ref results)) => {
@@ -271,12 +283,13 @@ impl OpcUaPoller {
             }
             Err(e) => {
                 eprintln!("Browse operation failed: {}", e);
-                return Err(TelegrafError::OpcUaClientError(
-                    format!("Failed to browse ServerInterfaces node: {}", e)
-                ));
+                return Err(TelegrafError::OpcUaClientError(format!(
+                    "Failed to browse ServerInterfaces node: {}",
+                    e
+                )));
             }
         }
-        
+
         Ok(namespace_info)
     }
 

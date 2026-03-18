@@ -8,7 +8,7 @@ fn deployment_config_builder_methods_work() {
         .with_password("pass123".to_string())
         .with_key_file("/path/to/key".to_string())
         .with_port(2222);
-    
+
     assert_eq!(config.host, "host.example.com");
     assert_eq!(config.user, "user1");
     assert_eq!(config.password.as_deref(), Some("pass123"));
@@ -28,7 +28,8 @@ fn iot_deployer_can_be_constructed() {
 #[test]
 fn create_ssh_session_fails_without_authentication() {
     use super::deployment::IoTDeployer;
-    let config = super::deployment::DeploymentConfig::new("localhost".to_string(), "tester".to_string());
+    let config =
+        super::deployment::DeploymentConfig::new("localhost".to_string(), "tester".to_string());
     let deployer = IoTDeployer::new(config);
     let result = deployer.create_ssh_session();
     assert!(result.is_err());
@@ -36,17 +37,18 @@ fn create_ssh_session_fails_without_authentication() {
     let msg = format!("{}", err);
     println!("Observed error message: {}", msg);
     assert!(
-        msg.contains("No authentication method provided") ||
-        msg.contains("Failed to connect") ||
-        msg.contains("Unable to exchange encryption keys")
+        msg.contains("No authentication method provided")
+            || msg.contains("Failed to connect")
+            || msg.contains("Unable to exchange encryption keys")
     );
 }
 
 #[test]
 fn create_ssh_session_fails_with_missing_key_file() {
     use super::deployment::IoTDeployer;
-    let config = super::deployment::DeploymentConfig::new("localhost".to_string(), "tester".to_string())
-        .with_key_file("/nonexistent/keyfile".to_string());
+    let config =
+        super::deployment::DeploymentConfig::new("localhost".to_string(), "tester".to_string())
+            .with_key_file("/nonexistent/keyfile".to_string());
     let deployer = IoTDeployer::new(config);
     let result = deployer.create_ssh_session();
     assert!(result.is_err());
@@ -54,9 +56,9 @@ fn create_ssh_session_fails_with_missing_key_file() {
     let msg = format!("{}", err);
     println!("Observed error message: {}", msg);
     assert!(
-        msg.contains("SSH key file not found") ||
-        msg.contains("Failed to connect") ||
-        msg.contains("Unable to exchange encryption keys")
+        msg.contains("SSH key file not found")
+            || msg.contains("Failed to connect")
+            || msg.contains("Unable to exchange encryption keys")
     );
 }
 
