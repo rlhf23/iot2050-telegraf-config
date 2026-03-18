@@ -1295,7 +1295,6 @@ pub fn download_file(
     local_path: &str,
 ) -> Result<(), TelegrafError> {
     use std::fs::File;
-    use std::io::Write;
 
     let (mut remote_file, _stat) = session.scp_recv(std::path::Path::new(remote_path))?;
     let mut local_file = File::create(local_path)?;
@@ -1310,7 +1309,6 @@ pub fn download_directory(
     local_path: &str,
 ) -> Result<(), TelegrafError> {
     use std::fs::File;
-    use std::io::Write;
 
     // List files in remote directory
     let mut channel = session.channel_session()?;

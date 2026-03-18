@@ -787,51 +787,6 @@ impl IoTDeployer {
         ssh_utils::run_command(session, command, description, self.config.password.as_ref())
     }
 
-    /// Download a file from remote device to local machine
-    fn download_file(
-        &self,
-        session: &Session,
-        remote_path: &str,
-        local_path: &str,
-    ) -> Result<(), TelegrafError> {
-        ssh_utils::download_file(session, remote_path, local_path)
-    }
-
-    /// Download a directory from remote device to local machine
-    fn download_directory(
-        &self,
-        session: &Session,
-        remote_path: &str,
-        local_path: &str,
-    ) -> Result<(), TelegrafError> {
-        ssh_utils::download_directory(session, remote_path, local_path)
-    }
-
-    /// Upload a file from local machine to remote device
-    fn upload_file(
-        &self,
-        session: &Session,
-        local_path: &str,
-        remote_path: &str,
-    ) -> Result<(), TelegrafError> {
-        ssh_utils::upload_file(session, local_path, remote_path)
-    }
-
-    /// Upload a directory from local machine to remote device
-    fn upload_directory(
-        &self,
-        session: &Session,
-        local_path: &str,
-        remote_path: &str,
-    ) -> Result<(), TelegrafError> {
-        ssh_utils::upload_directory(
-            session,
-            local_path,
-            remote_path,
-            self.config.password.as_ref(),
-        )
-    }
-
     /// Check if a command succeeds (returns true) or fails (returns false)
     fn check_command(&self, session: &Session, command: &str) -> Result<bool, TelegrafError> {
         let mut channel = session.channel_session()?;
