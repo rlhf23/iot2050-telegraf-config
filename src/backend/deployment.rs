@@ -687,9 +687,56 @@ impl IoTDeployer {
             channel.read_to_string(&mut dashboard_json)?;
             channel.wait_close()?;
 
+            // Transform to import format: {"dashboard": {...}, "overwrite": true}
+            // The export returns {"dashboard": {...}, "meta": {...}}
+            // Extract dashboard object and wrap in import format
+            let import_json = {
+                let json = dashboard_json.trim();
+
+                // Find "dashboard": and extract its object by tracking brace depth
+                if let Some(dash_key_pos) = json.find("\"dashboard\":") {
+                    // Find opening brace of dashboard object
+                    let rest = &json[dash_key_pos..];
+                    if let Some(brace_start) = rest.find('{') {
+                        let start_pos = dash_key_pos + brace_start;
+
+                        // Track brace depth to find matching closing brace
+                        let mut depth = 0;
+                        let mut end_pos = start_pos;
+
+                        for (i, c) in json[start_pos..].chars().enumerate() {
+                            match c {
+                                '{' => depth += 1,
+                                '}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        end_pos = start_pos + i + 1;
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        let dashboard_obj = &json[start_pos..end_pos];
+                        format!("{{\"dashboard\": {}, \"overwrite\": true}}", dashboard_obj)
+                    } else {
+                        // Fallback: simple removal
+                        if let Some(meta_pos) = json.find(",\"meta\":") {
+                            format!("{}, \"overwrite\": true}}", &json[..meta_pos])
+                        } else {
+                            format!("{}, \"overwrite\": true}}", json.trim_end_matches('}'))
+                        }
+                    }
+                } else {
+                    // Last resort
+                    json.to_string()
+                }
+            };
+
             // Save dashboard locally
             let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
-            fs::write(&dashboard_file, &dashboard_json)?;
+            fs::write(&dashboard_file, &import_json)?;
             dashboard_count += 1;
         }
 
@@ -989,7 +1036,191 @@ impl IoTDeployer {
             println!("⏭️  No InfluxDB backup found, skipping");
         }
 
-        // 5. Cleanup
+        // 5. Restore Grafana dashboards and datasources
+        println!("\n📈 Restoring Grafana data...");
+        let grafana_backup_dir = format!("{}/grafana", extract_dir);
+        let dashboards_dir = format!("{}/dashboards", grafana_backup_dir);
+
+        // Check if Grafana container is running
+        let mut channel = session.channel_session()?;
+        channel.exec("docker ps --filter name=grafana --format '{{.Names}}'")?;
+        let mut grafana_status = String::new();
+        channel.read_to_string(&mut grafana_status)?;
+        channel.wait_close()?;
+
+        if !grafana_status.trim().contains("grafana") {
+            println!("⚠️  Grafana container is not running, skipping Grafana restore");
+        } else {
+            // Check if Grafana backup exists on remote device
+            let mut channel = session.channel_session()?;
+            channel.exec(&format!("ls {} 2>/dev/null", dashboards_dir))?;
+            let mut grafana_exists = String::new();
+            channel.read_to_string(&mut grafana_exists)?;
+            channel.wait_close()?;
+
+            if !grafana_exists.trim().is_empty() {
+                // Get Grafana credentials
+                let mut channel = session.channel_session()?;
+                channel.exec(
+                    "cd ~/monitoring && grep -E 'GRAFANA_ADMIN_USER|GRAFANA_ADMIN_PASSWORD' .env | head -2",
+                )?;
+                let mut creds = String::new();
+                channel.read_to_string(&mut creds)?;
+                channel.wait_close()?;
+
+                let mut admin_user = "admin".to_string();
+                let mut admin_pass = "admin".to_string();
+                for line in creds.lines() {
+                    if line.starts_with("GRAFANA_ADMIN_USER=") {
+                        admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
+                    } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
+                        admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
+                    }
+                }
+
+                // List dashboard files on remote device
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!("ls {}/*.json 2>/dev/null", dashboards_dir))?;
+                let mut dashboard_list = String::new();
+                channel.read_to_string(&mut dashboard_list)?;
+                channel.wait_close()?;
+
+                // Restore dashboards
+                if !dashboard_list.trim().is_empty() {
+                    println!("   Restoring dashboards...");
+                    for dashboard_file in dashboard_list.lines() {
+                        let dashboard_file = dashboard_file.trim();
+                        if dashboard_file.is_empty() {
+                            continue;
+                        }
+
+                        let filename = dashboard_file.split('/').last().unwrap_or("unknown");
+
+                        // Import dashboard via API directly from remote file
+                        let import_cmd = format!(
+                            "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/dashboards/db'",
+                            admin_user, admin_pass, dashboard_file
+                        );
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&import_cmd)?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("\"success\":true") || result.contains("\"id\"") {
+                            println!("   ✓ Restored dashboard: {}", filename);
+                        } else {
+                            println!("   ⚠️  Failed to restore {}: {}", filename, result.trim());
+                        }
+                    }
+                }
+
+                // Restore datasources
+                let datasources_file = format!("{}/datasources.json", grafana_backup_dir);
+                let mut channel = session.channel_session()?;
+                channel.exec(&format!("ls {} 2>/dev/null", datasources_file))?;
+                let mut ds_exists = String::new();
+                channel.read_to_string(&mut ds_exists)?;
+                channel.wait_close()?;
+
+                if !ds_exists.trim().is_empty() {
+                    println!("   Restoring datasources...");
+
+                    // Read the datasources file on remote
+                    let mut channel = session.channel_session()?;
+                    channel.exec(&format!("cat {}", datasources_file))?;
+                    let mut ds_content = String::new();
+                    channel.read_to_string(&mut ds_content)?;
+                    channel.wait_close()?;
+
+                    // Parse each datasource and import
+                    for line in ds_content.lines() {
+                        let line = line.trim();
+                        if !line.starts_with('{') {
+                            continue;
+                        }
+
+                        // Extract name from the JSON line
+                        let name = if let Some(start) = line.find("\"name\":\"") {
+                            let start = start + 8;
+                            if let Some(end) = line[start..].find('"') {
+                                &line[start..start + end]
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        };
+
+                        // Save individual datasource to temp file
+                        let ds_file = "/tmp/ds_single.json";
+                        let clean_line = line.trim_end_matches(',');
+                        let echo_cmd =
+                            format!("echo '{}' > {}", clean_line.replace("'", "'\\''"), ds_file);
+                        self.run_command(
+                            &session,
+                            &echo_cmd,
+                            &format!("Preparing datasource: {}", name),
+                        )?;
+
+                        if force {
+                            // Delete existing datasource by name
+                            let delete_cmd = format!(
+                                "curl -s -u {}:'{}' 'http://localhost:3000/api/datasources/name/{}' | grep -o '\"id\":[0-9]*' | head -1 | cut -d: -f2",
+                                admin_user, admin_pass, name
+                            );
+                            let mut channel = session.channel_session()?;
+                            channel.exec(&delete_cmd)?;
+                            let mut id_result = String::new();
+                            channel.read_to_string(&mut id_result)?;
+                            channel.wait_close()?;
+
+                            let ds_id = id_result.trim();
+                            if !ds_id.is_empty() && ds_id.chars().all(|c| c.is_numeric()) {
+                                let del_cmd = format!(
+                                    "curl -s -u {}:'{}' -X DELETE 'http://localhost:3000/api/datasources/{}'",
+                                    admin_user, admin_pass, ds_id
+                                );
+                                self.run_command(
+                                    &session,
+                                    &del_cmd,
+                                    &format!("Deleting datasource: {}", name),
+                                )?;
+                            }
+                        }
+
+                        // Import datasource
+                        let import_cmd = format!(
+                            "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/datasources'",
+                            admin_user, admin_pass, ds_file
+                        );
+                        let mut channel = session.channel_session()?;
+                        channel.exec(&import_cmd)?;
+                        let mut result = String::new();
+                        channel.read_to_string(&mut result)?;
+                        channel.wait_close()?;
+
+                        if result.contains("\"success\":true") || result.contains("\"id\"") {
+                            println!("   ✓ Restored datasource: {}", name);
+                        } else if result.contains("already exists") {
+                            println!("   ⚠️  Datasource '{}' already exists, skipped", name);
+                        } else {
+                            println!(
+                                "   ⚠️  Failed to restore datasource {}: {}",
+                                name,
+                                result.trim()
+                            );
+                        }
+                    }
+                }
+
+                println!("✅ Grafana restore completed");
+            } else {
+                println!("⏭️  No Grafana backup found, skipping");
+            }
+        }
+
+        // 6. Cleanup
         println!("\n🧹 Cleaning up...");
         self.run_command(
             &session,
