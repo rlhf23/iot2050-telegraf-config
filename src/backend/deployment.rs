@@ -687,56 +687,9 @@ impl IoTDeployer {
             channel.read_to_string(&mut dashboard_json)?;
             channel.wait_close()?;
 
-            // Transform to import format: {"dashboard": {...}, "overwrite": true}
-            // The export returns {"dashboard": {...}, "meta": {...}}
-            // Extract dashboard object and wrap in import format
-            let import_json = {
-                let json = dashboard_json.trim();
-
-                // Find "dashboard": and extract its object by tracking brace depth
-                if let Some(dash_key_pos) = json.find("\"dashboard\":") {
-                    // Find opening brace of dashboard object
-                    let rest = &json[dash_key_pos..];
-                    if let Some(brace_start) = rest.find('{') {
-                        let start_pos = dash_key_pos + brace_start;
-
-                        // Track brace depth to find matching closing brace
-                        let mut depth = 0;
-                        let mut end_pos = start_pos;
-
-                        for (i, c) in json[start_pos..].chars().enumerate() {
-                            match c {
-                                '{' => depth += 1,
-                                '}' => {
-                                    depth -= 1;
-                                    if depth == 0 {
-                                        end_pos = start_pos + i + 1;
-                                        break;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        let dashboard_obj = &json[start_pos..end_pos];
-                        format!("{{\"dashboard\": {}, \"overwrite\": true}}", dashboard_obj)
-                    } else {
-                        // Fallback: simple removal
-                        if let Some(meta_pos) = json.find(",\"meta\":") {
-                            format!("{}, \"overwrite\": true}}", &json[..meta_pos])
-                        } else {
-                            format!("{}, \"overwrite\": true}}", json.trim_end_matches('}'))
-                        }
-                    }
-                } else {
-                    // Last resort
-                    json.to_string()
-                }
-            };
-
             // Save dashboard locally
             let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
-            fs::write(&dashboard_file, &import_json)?;
+            fs::write(&dashboard_file, &dashboard_json)?;
             dashboard_count += 1;
         }
 
