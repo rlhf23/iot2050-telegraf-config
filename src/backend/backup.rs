@@ -6,6 +6,7 @@
 use crate::backend::deployment::DeploymentConfig;
 use crate::backend::ssh_utils::{download_directory, download_file, run_command, upload_file};
 use crate::error::TelegrafError;
+use serde_json::Value;
 use ssh2::Session;
 use std::fs;
 use std::io::Read;
@@ -95,37 +96,42 @@ pub fn parse_datasource_name(json_line: &str) -> Option<String> {
     }
 }
 
-/// Transform Grafana dashboard export JSON to import format
+/// Transform Grafana dashboard export JSON to import format using serde_json
 /// Grafana export: {"dashboard": {...}, "meta": {...}}
 /// Grafana import: {"dashboard": {...}, "overwrite": true}
-pub fn transform_grafana_dashboard_for_import(export_json: &str) -> String {
-    let json = export_json.trim();
-    if let Some(dash_key_pos) = json.find("\"dashboard\":") {
-        let rest = &json[dash_key_pos..];
-        if let Some(brace_start) = rest.find('{') {
-            let start_pos = dash_key_pos + brace_start;
-            let mut depth = 0;
-            let mut end_pos = start_pos;
-            for (i, c) in json[start_pos..].chars().enumerate() {
-                match c {
-                    '{' => depth += 1,
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            end_pos = start_pos + i + 1;
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            let dashboard_obj = &json[start_pos..end_pos];
-            format!("{{\"dashboard\": {}, \"overwrite\": true}}", dashboard_obj)
-        } else {
-            json.to_string()
-        }
+///
+/// This function also removes fields that should not be present during import:
+/// - `id`: Must be removed (Grafana will assign a new one)
+/// - `version`: Must be removed (Grafana manages versioning)
+pub fn transform_grafana_dashboard_for_import(export_json: &str) -> Result<String, TelegrafError> {
+    let json: Value = serde_json::from_str(export_json).map_err(|e| {
+        TelegrafError::ConfigError(format!("Failed to parse dashboard JSON: {}", e))
+    })?;
+
+    // Extract the dashboard object from the export
+    let dashboard = json.get("dashboard").cloned().unwrap_or(Value::Null);
+
+    // Remove fields that should not be present during import
+    if let Value::Object(ref mut dash_map) = dashboard.clone() {
+        let mut cleaned_dashboard = dash_map.clone();
+        cleaned_dashboard.remove("id"); // Remove id - Grafana will assign new one
+        cleaned_dashboard.remove("version"); // Remove version - Grafana manages this
+                                             // Keep uid so dashboard maintains consistent identity across import
+
+        // Create the import format
+        let import_json = serde_json::json!({
+            "dashboard": cleaned_dashboard,
+            "overwrite": true
+        });
+
+        serde_json::to_string(&import_json).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to serialize dashboard JSON: {}", e))
+        })
     } else {
-        json.to_string()
+        // If dashboard is not an object, return error
+        Err(TelegrafError::ConfigError(
+            "Dashboard is not a valid JSON object".to_string(),
+        ))
     }
 }
 
@@ -287,11 +293,24 @@ pub fn backup(
         channel.read_to_string(&mut dashboard_json)?;
         channel.wait_close()?;
 
-        let import_json = transform_grafana_dashboard_for_import(&dashboard_json);
+        // Save raw JSON from Grafana export API (for debugging/archival)
+        let raw_dir = format!("{}/raw", dashboards_dir);
+        fs::create_dir_all(&raw_dir)?;
+        let raw_file = format!("{}/{}.json", raw_dir, uid);
+        fs::write(&raw_file, dashboard_json.trim())?;
 
-        let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
-        fs::write(&dashboard_file, &import_json)?;
-        dashboard_count += 1;
+        // Transform and save for restore
+        match transform_grafana_dashboard_for_import(&dashboard_json) {
+            Ok(import_json) => {
+                let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
+                fs::write(&dashboard_file, &import_json)?;
+                dashboard_count += 1;
+            }
+            Err(e) => {
+                eprintln!("   ⚠️  Failed to transform dashboard {}: {}", uid, e);
+                // Still save the raw file for manual recovery
+            }
+        }
     }
 
     println!("   Exported {} dashboards", dashboard_count);

@@ -3491,6 +3491,8 @@ dependencies = [
  "rfd",
  "roxmltree",
  "scopeguard",
+ "serde",
+ "serde_json",
  "ssh2",
  "tempfile",
  "thiserror 2.0.12",

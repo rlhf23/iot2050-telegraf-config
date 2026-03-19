@@ -14,32 +14,82 @@ use super::backup::{
 fn transform_grafana_simple_dashboard() {
     let export_json =
         r#"{"dashboard": {"id": 1, "title": "My Dashboard"}, "meta": {"isStarred": false}}"#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert!(result.starts_with("{\"dashboard\": {"));
-    assert!(result.ends_with("}"));
-    assert!(result.contains("\"overwrite\": true"));
-    assert!(result.contains("\"title\": \"My Dashboard\""));
-    assert!(!result.contains("isStarred"));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(parsed.get("dashboard").is_some());
+    assert!(parsed.get("overwrite").is_some());
+    assert_eq!(parsed["overwrite"], true);
+    assert!(parsed["dashboard"]["title"] == "My Dashboard");
+    assert!(parsed.get("meta").is_none(), "meta should be removed");
+    assert!(
+        !parsed["dashboard"].as_object().unwrap().contains_key("id"),
+        "id should be removed"
+    );
+}
+
+#[test]
+fn transform_grafana_removes_id_and_version() {
+    // This is the critical test - ensures id and version are removed
+    let export_json =
+        r#"{"dashboard": {"id": 47, "uid": "abc123", "version": 12, "title": "Test"}, "meta": {}}"#;
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    let dashboard = &parsed["dashboard"];
+
+    // id and version must NOT be present
+    assert!(
+        !dashboard.as_object().unwrap().contains_key("id"),
+        "id should be removed for import"
+    );
+    assert!(
+        !dashboard.as_object().unwrap().contains_key("version"),
+        "version should be removed for import"
+    );
+
+    // uid and other fields should remain
+    assert!(dashboard["uid"] == "abc123", "uid should be preserved");
+    assert!(dashboard["title"] == "Test", "title should be preserved");
+}
+
+#[test]
+fn transform_grafana_preserves_uid() {
+    let export_json =
+        r#"{"dashboard": {"id": 99, "uid": "my-custom-uid", "title": "Dashboard"}, "meta": {}}"#;
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        parsed["dashboard"]["uid"] == "my-custom-uid",
+        "uid should be preserved for dashboard identity"
+    );
+    assert!(!parsed["dashboard"].as_object().unwrap().contains_key("id"));
 }
 
 #[test]
 fn transform_grafana_nested_dashboard() {
     let export_json = r#"{"dashboard": {"id": 1, "panels": [{"title": "Panel1"}, {"title": "Panel2"}]}, "meta": {}}"#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert!(result.contains("\"panels\":"));
-    assert!(result.contains("\"Panel1\""));
-    assert!(result.contains("\"Panel2\""));
-    assert!(result.contains("\"overwrite\": true"));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(parsed["dashboard"]["panels"].is_array());
+    assert!(parsed.get("meta").is_none());
+    assert_eq!(parsed["overwrite"], true);
+    assert!(
+        !parsed["dashboard"].as_object().unwrap().contains_key("id"),
+        "id should be removed"
+    );
 }
 
 #[test]
 fn transform_grafana_empty_dashboard() {
     let export_json = r#"{"dashboard": {}, "meta": {}}"#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert_eq!(result, r#"{"dashboard": {}, "overwrite": true}"#);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed["dashboard"], serde_json::json!({}));
+    assert_eq!(parsed["overwrite"], true);
 }
 
 #[test]
@@ -47,7 +97,11 @@ fn transform_grafana_no_dashboard_key() {
     let no_dashboard_key = r#"{"id": 1, "title": "Something"}"#;
     let result = transform_grafana_dashboard_for_import(no_dashboard_key);
 
-    assert_eq!(result, no_dashboard_key);
+    // Should return error when no dashboard key exists
+    assert!(
+        result.is_err(),
+        "Should return error when dashboard key is missing"
+    );
 }
 
 #[test]
@@ -61,31 +115,59 @@ fn transform_grafana_with_whitespace() {
         "meta": {}
     }
     "#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert!(result.contains("\"overwrite\": true"));
-    assert!(result.contains("\"title\": \"Test\""));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(parsed.get("dashboard").is_some());
+    assert_eq!(parsed["overwrite"], true);
+    assert!(
+        !parsed["dashboard"].as_object().unwrap().contains_key("id"),
+        "id should be removed"
+    );
 }
 
 #[test]
 fn transform_grafana_complex_nested_structure() {
-    let export_json = r#"{"dashboard": {"uid": "abc123", "version": 5, "nested": {"deep": {"value": 42}}}, "meta": {"created": "2024-01-01"}}"#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+    let export_json = r#"{"dashboard": {"id": 42, "uid": "abc123", "version": 5, "nested": {"deep": {"value": 42}}}, "meta": {"created": "2024-01-01"}}"#;
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert!(result.contains("\"uid\": \"abc123\""));
-    assert!(result.contains("\"version\": 5"));
-    assert!(result.contains("\"deep\": {\"value\": 42}"));
-    assert!(!result.contains("created"));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(parsed.get("meta").is_none());
+    assert!(parsed["dashboard"]["uid"] == "abc123");
+    assert!(parsed["dashboard"]["nested"]["deep"]["value"] == 42);
+    assert!(
+        !parsed["dashboard"].as_object().unwrap().contains_key("id"),
+        "id should be removed"
+    );
+    assert!(
+        !parsed["dashboard"]
+            .as_object()
+            .unwrap()
+            .contains_key("version"),
+        "version should be removed"
+    );
 }
 
 #[test]
 fn transform_grafana_preserves_arrays() {
     let export_json =
-        r#"{"dashboard": {"tags": ["tag1", "tag2"], "panels": [1, 2, 3]}, "meta": {}}"#;
-    let result = transform_grafana_dashboard_for_import(export_json);
+        r#"{"dashboard": {"id": 1, "tags": ["tag1", "tag2"], "panels": [1, 2, 3]}, "meta": {}}"#;
+    let result = transform_grafana_dashboard_for_import(export_json).unwrap();
 
-    assert!(result.contains("\"tags\": [\"tag1\", \"tag2\"]"));
-    assert!(result.contains("\"panels\": [1, 2, 3]"));
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(parsed["dashboard"]["tags"].is_array());
+    assert!(parsed["dashboard"]["panels"].is_array());
+    assert!(
+        !parsed["dashboard"].as_object().unwrap().contains_key("id"),
+        "id should be removed"
+    );
+}
+
+#[test]
+fn transform_grafana_invalid_json() {
+    let invalid_json = r#"{"dashboard": {invalid json}"#;
+    let result = transform_grafana_dashboard_for_import(invalid_json);
+    assert!(result.is_err(), "Should return error for invalid JSON");
 }
 
 // ============================================================================
