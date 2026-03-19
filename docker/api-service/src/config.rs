@@ -94,6 +94,7 @@ pub struct GenerateConfigResponse {
     pub message: String,
     pub config_path: Option<String>,
     pub preview: Option<String>,
+    pub measurements: Option<Vec<String>>,
 }
 
 /// Create a new session
@@ -462,6 +463,7 @@ pub async fn generate_config(
                 message: "Session not found".to_string(),
                 config_path: None,
                 preview: None,
+                measurements: None,
             }),
         ));
     }
@@ -475,6 +477,7 @@ pub async fn generate_config(
                 message: "No file configurations provided".to_string(),
                 config_path: None,
                 preview: None,
+                measurements: None,
             }),
         ));
     }
@@ -490,6 +493,7 @@ pub async fn generate_config(
                     message: format!("File not found: {}", file_config.filename),
                     config_path: None,
                     preview: None,
+                    measurements: None,
                 }),
             ));
         }
@@ -547,6 +551,7 @@ pub async fn generate_config(
                     message: format!("Failed to create ConfigGenerator: {}", e),
                     config_path: None,
                     preview: None,
+                    measurements: None,
                 }),
             ));
         }
@@ -594,6 +599,7 @@ pub async fn generate_config(
                 message: "Failed to create output directory".to_string(),
                 config_path: None,
                 preview: None,
+                measurements: None,
             }),
         ));
     }
@@ -612,9 +618,9 @@ pub async fn generate_config(
     // Generate configuration
     let output_path = generated_dir.join("telegraf.conf");
     match generator.generate_config(&xml_files, &listener_files) {
-        Ok(config_content) => {
+        Ok(result) => {
             // Write config to file
-            if let Err(e) = fs::write(&output_path, &config_content).await {
+            if let Err(e) = fs::write(&output_path, &result.config_content).await {
                 error!("Failed to write config file: {}", e);
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -623,6 +629,7 @@ pub async fn generate_config(
                         message: format!("Failed to write configuration file: {}", e),
                         config_path: None,
                         preview: None,
+                        measurements: None,
                     }),
                 ));
             }
@@ -630,14 +637,14 @@ pub async fn generate_config(
             info!("Successfully generated config for session: {}", request.session_id);
             
             // Limit preview to first 100 lines
-            let lines: Vec<&str> = config_content.lines().collect();
+            let lines: Vec<&str> = result.config_content.lines().collect();
             let total_lines = lines.len();
             let preview = if total_lines > 100 {
                 let preview_lines = lines[..100].join("\n");
                 format!("{}...\n\n[Preview truncated - showing 100 of {} total lines]", 
                     preview_lines, total_lines)
             } else {
-                config_content
+                result.config_content
             };
 
             Ok(Json(GenerateConfigResponse {
@@ -645,6 +652,7 @@ pub async fn generate_config(
                 message: format!("Configuration generated successfully from {} file(s)", request.file_configs.len()),
                 config_path: Some(output_path.to_string_lossy().to_string()),
                 preview: Some(preview),
+                measurements: Some(result.measurements),
             }))
         }
         Err(e) => {
@@ -656,6 +664,7 @@ pub async fn generate_config(
                     message: format!("Failed to generate configuration: {}", e),
                     config_path: None,
                     preview: None,
+                    measurements: None,
                 }),
             ))
         }

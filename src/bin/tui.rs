@@ -3,6 +3,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use dirs;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -12,10 +13,9 @@ use ratatui::{
     Frame, Terminal,
 };
 use sie_generate_config::{
-    backend::{ConfigGenerator, opcua_poller::OpcUaPoller, ServiceType},
+    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
     TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
-use dirs;
 use std::collections::HashMap;
 use std::{
     fs,
@@ -95,7 +95,7 @@ impl OpcUaConfigField {
     fn count() -> usize {
         6 // Ip, Username, Password, OutputFormat, Anonymous, TestInputs
     }
-    
+
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::Ip,
@@ -113,7 +113,7 @@ impl IoTConfigField {
     fn count() -> usize {
         3 // Host, Username, Password
     }
-    
+
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::Host,
@@ -128,7 +128,7 @@ impl ActionsField {
     fn count() -> usize {
         9 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana, SyncTime
     }
-    
+
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::GenerateConfig,
@@ -150,44 +150,44 @@ struct App {
     current_tab: Tab,
     input_mode: InputMode,
     current_edit_field: Option<EditField>,
-    
+
     // Configuration
     config: TelegrafConfig,
-    
+
     // File management
     xml_files: Vec<String>,
     selected_files: Vec<bool>,
     selected_listener_files: Vec<bool>,
     file_list_state: ListState,
-    
+
     // Folder navigation
     current_directory: PathBuf,
     directory_entries: Vec<PathBuf>,
     directory_list_state: ListState,
-    
+
     // Status and messages
     status_messages: Vec<String>,
     status_list_state: ListState,
     show_help: bool,
-    
+
     // Worker for async operations
     worker: Option<WorkerHandle>,
     is_working: bool,
-    
+
     // Anonymous mode
     anonymous_mode: bool,
-    
+
     // Per-file configurations
     file_configs: HashMap<String, XmlFileConfig>,
-    
+
     // Generated configuration
     generated_config: Option<String>,
     config_scroll: u16,
     config_horizontal_scroll: u16,
-    
+
     // Temporary input buffer
     input_buffer: String,
-    
+
     // Config tab selection states
     opcua_config_selection: usize,
     iot_config_selection: usize,
@@ -236,43 +236,43 @@ impl App {
             iot_config_selection: 0,
             actions_selection: 0,
         };
-        
+
         app.load_directory_entries();
         app.refresh_files();
         app
     }
-    
+
     fn refresh_files(&mut self) {
         self.config.folder = self.current_directory.clone();
         self.xml_files = sie_generate_config::discover_xml_files(&self.config.folder);
         self.selected_files = vec![false; self.xml_files.len()];
         self.selected_listener_files = vec![false; self.xml_files.len()];
-        
+
         // Initialize configs for new files
         for file in &self.xml_files {
             self.file_configs.entry(file.clone()).or_default();
         }
-        
+
         if self.xml_files.is_empty() {
             self.add_status_message("No XML files found in current directory".to_string());
         } else {
             self.add_status_message(format!("Found {} XML files", self.xml_files.len()));
         }
     }
-    
+
     fn load_directory_entries(&mut self) {
         self.directory_entries.clear();
-        
+
         // Add parent directory entry if not at root
         if let Some(parent) = self.current_directory.parent() {
             self.directory_entries.push(parent.to_path_buf());
         }
-        
+
         // Read directory entries
         if let Ok(entries) = fs::read_dir(&self.current_directory) {
             let mut dirs: Vec<PathBuf> = Vec::new();
             let mut files: Vec<PathBuf> = Vec::new();
-            
+
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
@@ -281,34 +281,37 @@ impl App {
                     files.push(path);
                 }
             }
-            
+
             // Sort directories and files separately
             dirs.sort();
             files.sort();
-            
+
             // Add directories first, then files
             self.directory_entries.extend(dirs);
             self.directory_entries.extend(files);
         }
-        
+
         // Reset selection
         self.directory_list_state.select(Some(0));
     }
-    
+
     fn navigate_to_directory(&mut self, path: PathBuf) {
         if path.is_dir() {
             self.current_directory = path;
             self.load_directory_entries();
             self.refresh_files();
-            self.add_status_message(format!("Changed to directory: {}", self.current_directory.display()));
+            self.add_status_message(format!(
+                "Changed to directory: {}",
+                self.current_directory.display()
+            ));
         }
     }
-    
+
     fn enter_selected_directory(&mut self) {
         if let Some(selected) = self.directory_list_state.selected() {
             if selected < self.directory_entries.len() {
                 let selected_path = self.directory_entries[selected].clone();
-                
+
                 // Handle parent directory (..) navigation
                 if selected == 0 && self.current_directory.parent().is_some() {
                     if let Some(parent) = self.current_directory.parent() {
@@ -320,7 +323,7 @@ impl App {
             }
         }
     }
-    
+
     fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
         // Increased buffer size to accommodate larger outputs like logs
@@ -329,10 +332,11 @@ impl App {
         }
         // Auto-scroll to the latest message
         if !self.status_messages.is_empty() {
-            self.status_list_state.select(Some(self.status_messages.len() - 1));
+            self.status_list_state
+                .select(Some(self.status_messages.len() - 1));
         }
     }
-    
+
     fn process_worker_responses(&mut self) {
         if let Some(worker) = &self.worker {
             if let Some(response) = worker.try_get_response() {
@@ -340,11 +344,14 @@ impl App {
                 if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
                     self.is_working = false;
                 }
-                
+
                 // Process the response
                 match response {
                     WorkerResponse::SshCommandOutput(output) => {
-                        self.add_status_message(format!("✅ Command completed successfully:\n{}", output));
+                        self.add_status_message(format!(
+                            "✅ Command completed successfully:\n{}",
+                            output
+                        ));
                     }
                     WorkerResponse::SshError(err) => {
                         self.add_status_message(format!("❌ SSH error: {}", err));
@@ -363,7 +370,7 @@ impl App {
             }
         }
     }
-    
+
     fn toggle_file_selection(&mut self) {
         if let Some(selected) = self.file_list_state.selected() {
             if selected < self.selected_files.len() {
@@ -371,27 +378,37 @@ impl App {
             }
         }
     }
-    
+
     fn toggle_listener_selection(&mut self) {
         if let Some(selected) = self.file_list_state.selected() {
             if selected < self.selected_listener_files.len() {
                 self.selected_listener_files[selected] = !self.selected_listener_files[selected];
-                let filename = self.xml_files.get(selected).map(|f| {
-                    std::path::Path::new(f)
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or(f)
-                }).unwrap_or("file");
-                
+                let filename = self
+                    .xml_files
+                    .get(selected)
+                    .map(|f| {
+                        std::path::Path::new(f)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(f)
+                    })
+                    .unwrap_or("file");
+
                 if self.selected_listener_files[selected] {
-                    self.add_status_message(format!("{} marked as listener (500ms default)", filename));
+                    self.add_status_message(format!(
+                        "{} marked as listener (500ms default)",
+                        filename
+                    ));
                 } else {
-                    self.add_status_message(format!("{} unmarked as listener (1000ms default)", filename));
+                    self.add_status_message(format!(
+                        "{} unmarked as listener (1000ms default)",
+                        filename
+                    ));
                 }
             }
         }
     }
-    
+
     fn toggle_anonymous_mode(&mut self) {
         self.anonymous_mode = !self.anonymous_mode;
         if self.anonymous_mode {
@@ -400,22 +417,23 @@ impl App {
             self.add_status_message("Anonymous mode disabled".to_string());
         }
     }
-    
+
     fn generate_config(&mut self) {
         // Update config based on anonymous mode
         if self.anonymous_mode {
             self.config.username = String::new();
             self.config.password = String::new();
         }
-        
+
         // Get selected files
-        let selected_xml_files: Vec<String> = self.xml_files
+        let selected_xml_files: Vec<String> = self
+            .xml_files
             .iter()
             .enumerate()
             .filter(|(i, _)| *self.selected_files.get(*i).unwrap_or(&false))
             .map(|(_, file)| file.clone())
             .collect();
-        
+
         if selected_xml_files.is_empty() && !self.config.include_test_inputs {
             self.add_status_message("No files selected and test inputs not enabled".to_string());
             return;
@@ -429,7 +447,8 @@ impl App {
                         let is_listener = self.config.listener_files.contains(file);
                         let default_interval = if is_listener { 500 } else { 1000 };
 
-                        let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
+                        let interval_ms =
+                            file_config.interval_ms.parse().unwrap_or(default_interval);
 
                         // Convert empty IP string to None, otherwise Some(ip)
                         let ip_option = if file_config.ip.is_empty() {
@@ -448,11 +467,13 @@ impl App {
                 }
 
                 // Build listener files list from selected files
-                let listener_files: Vec<String> = self.xml_files
+                let listener_files: Vec<String> = self
+                    .xml_files
                     .iter()
                     .enumerate()
                     .filter_map(|(i, file)| {
-                        if i < self.selected_listener_files.len() && self.selected_listener_files[i] {
+                        if i < self.selected_listener_files.len() && self.selected_listener_files[i]
+                        {
                             Some(file.clone())
                         } else {
                             None
@@ -461,9 +482,12 @@ impl App {
                     .collect();
 
                 match generator.generate_config(&self.xml_files, &listener_files) {
-                    Ok(output_path) => {
-                        self.generated_config = Some(output_path.clone());
-                        self.add_status_message(format!("Config generated: {:?}", output_path));
+                    Ok(result) => {
+                        self.generated_config = Some(result.config_content.clone());
+                        self.add_status_message(format!(
+                            "Config generated with {} measurement(s)",
+                            result.measurements.len()
+                        ));
                     }
                     Err(e) => {
                         self.generated_config = None;
@@ -477,13 +501,13 @@ impl App {
             }
         }
     }
-    
+
     fn send_config(&mut self) {
         if self.config.iot_host.is_empty() {
             self.add_status_message("IoT host not configured".to_string());
             return;
         }
-        
+
         match ConfigGenerator::new(self.config.clone()) {
             Ok(mut generator) => {
                 // Set configurations for each file (like the GUI does)
@@ -492,7 +516,8 @@ impl App {
                         let is_listener = self.config.listener_files.contains(file);
                         let default_interval = if is_listener { 500 } else { 1000 };
 
-                        let interval_ms = file_config.interval_ms.parse().unwrap_or(default_interval);
+                        let interval_ms =
+                            file_config.interval_ms.parse().unwrap_or(default_interval);
 
                         // Convert empty IP string to None, otherwise Some(ip)
                         let ip_option = if file_config.ip.is_empty() {
@@ -524,11 +549,11 @@ impl App {
             }
         }
     }
-    
+
     fn start_editing(&mut self, field: EditField) {
         self.input_mode = InputMode::Editing;
         self.current_edit_field = Some(field.clone());
-        
+
         // Pre-populate input buffer with current value
         self.input_buffer = match field {
             EditField::OpcUaIp => self.config.ip.clone(),
@@ -537,31 +562,45 @@ impl App {
             EditField::IoTHost => self.config.iot_host.clone(),
             EditField::IoTUsername => self.config.iot_username.clone(),
             EditField::IoTPassword => self.config.iot_password.clone(),
-            EditField::OutputFormat => self.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()).clone(),
+            EditField::OutputFormat => self
+                .config
+                .output_format
+                .as_ref()
+                .unwrap_or(&"influxdb".to_string())
+                .clone(),
             EditField::FileNamespace(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
-                    self.file_configs.get(file).map(|c| c.namespace.clone()).unwrap_or_else(|| "2".to_string())
+                    self.file_configs
+                        .get(file)
+                        .map(|c| c.namespace.clone())
+                        .unwrap_or_else(|| "2".to_string())
                 } else {
                     "2".to_string()
                 }
-            },
+            }
             EditField::FileIp(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
-                    self.file_configs.get(file).map(|c| c.ip.clone()).unwrap_or_default()
+                    self.file_configs
+                        .get(file)
+                        .map(|c| c.ip.clone())
+                        .unwrap_or_default()
                 } else {
                     String::new()
                 }
-            },
+            }
             EditField::FileInterval(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
-                    self.file_configs.get(file).map(|c| c.interval_ms.clone()).unwrap_or_else(|| "1000".to_string())
+                    self.file_configs
+                        .get(file)
+                        .map(|c| c.interval_ms.clone())
+                        .unwrap_or_else(|| "1000".to_string())
                 } else {
                     "1000".to_string()
                 }
-            },
+            }
         };
     }
-    
+
     fn poll_namespaces(&mut self) {
         if self.xml_files.is_empty() {
             self.add_status_message("No XML files loaded to poll namespaces for".to_string());
@@ -594,12 +633,18 @@ impl App {
                                         .unwrap_or(false)
                                 }) {
                                     // Update the namespace for this file
-                                    let config = self.file_configs.entry(full_path.clone()).or_insert_with(|| XmlFileConfig::default());
+                                    let config = self
+                                        .file_configs
+                                        .entry(full_path.clone())
+                                        .or_insert_with(|| XmlFileConfig::default());
                                     config.namespace = namespace_index.to_string();
                                     updated_count += 1;
                                 }
                             }
-                            self.add_status_message(format!("Successfully updated namespaces for {} file(s)!", updated_count));
+                            self.add_status_message(format!(
+                                "Successfully updated namespaces for {} file(s)!",
+                                updated_count
+                            ));
                         }
                     }
                     Err(e) => {
@@ -622,49 +667,58 @@ impl App {
                 EditField::IoTHost => self.config.iot_host = self.input_buffer.clone(),
                 EditField::IoTUsername => self.config.iot_username = self.input_buffer.clone(),
                 EditField::IoTPassword => self.config.iot_password = self.input_buffer.clone(),
-                EditField::OutputFormat => self.config.output_format = Some(self.input_buffer.clone()),
+                EditField::OutputFormat => {
+                    self.config.output_format = Some(self.input_buffer.clone())
+                }
                 EditField::FileNamespace(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        let config = self
+                            .file_configs
+                            .entry(file.clone())
+                            .or_insert_with(|| XmlFileConfig::default());
                         config.namespace = self.input_buffer.clone();
                     }
-                },
+                }
                 EditField::FileIp(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        let config = self
+                            .file_configs
+                            .entry(file.clone())
+                            .or_insert_with(|| XmlFileConfig::default());
                         config.ip = self.input_buffer.clone();
                     }
-                },
+                }
                 EditField::FileInterval(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self.file_configs.entry(file.clone()).or_insert_with(|| XmlFileConfig::default());
+                        let config = self
+                            .file_configs
+                            .entry(file.clone())
+                            .or_insert_with(|| XmlFileConfig::default());
                         config.interval_ms = self.input_buffer.clone();
                     }
-                },
+                }
             }
         }
-        
+
         self.input_mode = InputMode::Normal;
         self.current_edit_field = None;
         self.input_buffer.clear();
     }
-    
+
     fn cancel_editing(&mut self) {
         self.input_mode = InputMode::Normal;
         self.current_edit_field = None;
         self.input_buffer.clear();
     }
-    
 
-    
     // Operational commands for Actions tab
     fn get_telegraf_status(&mut self) {
         if self.worker.is_some() {
             self.is_working = true;
             self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
             if let Some(worker) = &self.worker {
-                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus { 
-                    config: self.config.clone() 
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus {
+                    config: self.config.clone(),
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
                     self.is_working = false;
@@ -674,15 +728,15 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
         }
     }
-    
+
     fn get_telegraf_logs(&mut self) {
         if self.worker.is_some() {
             self.is_working = true;
             self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
             if let Some(worker) = &self.worker {
-                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs { 
+                if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs {
                     config: self.config.clone(),
-                    lines: 30
+                    lines: 30,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
                     self.is_working = false;
@@ -692,25 +746,25 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
         }
     }
-    
+
     fn restart_telegraf(&mut self) {
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
-        
+
         if host.is_empty() || username.is_empty() || password.is_empty() {
             self.add_status_message("⚠️ IoT device credentials not configured".to_string());
             return;
         }
-        
+
         if self.worker.is_some() {
             self.is_working = true;
             self.add_status_message("🔄 Restarting Telegraf service...".to_string());
             if let Some(worker) = &self.worker {
-                if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf { 
+                if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf {
                     host,
                     username,
-                    password
+                    password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
                     self.is_working = false;
@@ -720,35 +774,54 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
         }
     }
-    
+
     fn check_service_status(&mut self) {
-        let is_prometheus = self.config.output_format
-            .as_deref()
-            .unwrap_or("influxdb") == "prometheus";
-        
-        let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+        let is_prometheus =
+            self.config.output_format.as_deref().unwrap_or("influxdb") == "prometheus";
+
+        let service_name = if is_prometheus {
+            "Prometheus"
+        } else {
+            "InfluxDB"
+        };
         self.add_status_message(format!("Checking {} status...", service_name));
-        
+
         match ConfigGenerator::new(self.config.clone()) {
             Ok(generator) => {
                 if is_prometheus {
-                    match generator.check_service_status(&self.config.iot_host, ServiceType::Prometheus, 5) {
+                    match generator.check_service_status(
+                        &self.config.iot_host,
+                        ServiceType::Prometheus,
+                        5,
+                    ) {
                         Ok((is_healthy, status)) => {
                             let health_status = if is_healthy { "Healthy" } else { "Unhealthy" };
-                            self.add_status_message(format!("Prometheus Status: {}\n{}", health_status, status));
+                            self.add_status_message(format!(
+                                "Prometheus Status: {}\n{}",
+                                health_status, status
+                            ));
                         }
                         Err(e) => {
-                            self.add_status_message(format!("Failed to check Prometheus status: {}", e));
+                            self.add_status_message(format!(
+                                "Failed to check Prometheus status: {}",
+                                e
+                            ));
                         }
                     }
                 } else {
                     match generator.check_influxdb_status() {
                         Ok((is_healthy, status)) => {
                             let health_status = if is_healthy { "Healthy" } else { "Unhealthy" };
-                            self.add_status_message(format!("InfluxDB Status: {}\n{}", health_status, status));
+                            self.add_status_message(format!(
+                                "InfluxDB Status: {}\n{}",
+                                health_status, status
+                            ));
                         }
                         Err(e) => {
-                            self.add_status_message(format!("Failed to check InfluxDB status: {}", e));
+                            self.add_status_message(format!(
+                                "Failed to check InfluxDB status: {}",
+                                e
+                            ));
                         }
                     }
                 }
@@ -758,45 +831,43 @@ impl App {
             }
         }
     }
-    
+
     fn backup_grafana(&mut self) {
         self.add_status_message("Backing up Grafana...".to_string());
-        
+
         match ConfigGenerator::new(self.config.clone()) {
-            Ok(generator) => {
-                match generator.backup_grafana() {
-                    Ok(backup_info) => {
-                        self.add_status_message(format!("Grafana backup successful:\n{}", backup_info));
-                    }
-                    Err(e) => {
-                        self.add_status_message(format!("Failed to backup Grafana: {}", e));
-                    }
+            Ok(generator) => match generator.backup_grafana() {
+                Ok(backup_info) => {
+                    self.add_status_message(format!("Grafana backup successful:\n{}", backup_info));
                 }
-            }
+                Err(e) => {
+                    self.add_status_message(format!("Failed to backup Grafana: {}", e));
+                }
+            },
             Err(e) => {
                 self.add_status_message(format!("Configuration error: {}", e));
             }
         }
     }
-    
+
     fn sync_time(&mut self) {
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
-        
+
         if host.is_empty() || username.is_empty() || password.is_empty() {
             self.add_status_message("⚠️ IoT device credentials not configured".to_string());
             return;
         }
-        
+
         if self.worker.is_some() {
             self.is_working = true;
             self.add_status_message("🕐 Syncing system time to device...".to_string());
             if let Some(worker) = &self.worker {
-                if let Err(e) = worker.send_command(WorkerCommand::SyncTime { 
+                if let Err(e) = worker.send_command(WorkerCommand::SyncTime {
                     host,
                     username,
-                    password
+                    password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
                     self.is_working = false;
@@ -840,7 +911,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
     loop {
         // Process worker responses before drawing
         app.process_worker_responses();
-        
+
         terminal.draw(|f| ui(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -856,7 +927,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                     app.status_list_state.select(Some(selected - 1));
                                 }
                             } else if !app.status_messages.is_empty() {
-                                app.status_list_state.select(Some(app.status_messages.len() - 1));
+                                app.status_list_state
+                                    .select(Some(app.status_messages.len() - 1));
                             }
                         }
                         KeyCode::PageDown => {
@@ -894,16 +966,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
                         KeyCode::Char('5') => app.current_tab = Tab::Config,
                         KeyCode::Char('6') => app.current_tab = Tab::Actions,
-                        _ => {
-                            match app.current_tab {
-                                Tab::Folder => handle_folder_input(&mut app, key.code),
-                                Tab::Files => handle_files_input(&mut app, key.code),
-                                Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
-                                Tab::IoTConfig => handle_iot_input(&mut app, key.code),
-                                Tab::Config => handle_config_input(&mut app, key.code),
-                                Tab::Actions => handle_actions_input(&mut app, key.code),
-                            }
-                        }
+                        _ => match app.current_tab {
+                            Tab::Folder => handle_folder_input(&mut app, key.code),
+                            Tab::Files => handle_files_input(&mut app, key.code),
+                            Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
+                            Tab::IoTConfig => handle_iot_input(&mut app, key.code),
+                            Tab::Config => handle_config_input(&mut app, key.code),
+                            Tab::Actions => handle_actions_input(&mut app, key.code),
+                        },
                     },
                     InputMode::Editing => match key.code {
                         KeyCode::Enter => app.finish_editing(),
@@ -920,7 +990,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             KeyCode::Esc => app.input_mode = InputMode::Normal,
                             _ => {}
                         }
-                    },
+                    }
                 }
             }
         }
@@ -1052,9 +1122,11 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
                     } else {
                         "influxdb".to_string()
                     });
-                },
+                }
                 OpcUaConfigField::Anonymous => app.toggle_anonymous_mode(),
-                OpcUaConfigField::TestInputs => app.config.include_test_inputs = !app.config.include_test_inputs,
+                OpcUaConfigField::TestInputs => {
+                    app.config.include_test_inputs = !app.config.include_test_inputs
+                }
             }
         }
         // Keep some legacy hotkeys for now (can be removed later)
@@ -1069,7 +1141,7 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
             } else {
                 "influxdb".to_string()
             });
-        },
+        }
         KeyCode::Char('a') => app.toggle_anonymous_mode(),
         KeyCode::Char('t') => app.config.include_test_inputs = !app.config.include_test_inputs,
         _ => {}
@@ -1192,7 +1264,14 @@ fn ui(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     // Render tabs
-    let tab_titles = vec!["Folder", "Files", "OPC-UA Config", "IoT Config", "Config", "Actions"];
+    let tab_titles = vec![
+        "Folder",
+        "Files",
+        "OPC-UA Config",
+        "IoT Config",
+        "Config",
+        "Actions",
+    ];
     let selected_tab = match app.current_tab {
         Tab::Folder => 0,
         Tab::Files => 1,
@@ -1201,9 +1280,13 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Config => 4,
         Tab::Actions => 5,
     };
-    
+
     let tabs = Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title("IoT2050 Config TUI"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("IoT2050 Config TUI"),
+        )
         .select(selected_tab)
         .style(Style::default().fg(Color::Cyan))
         .highlight_style(
@@ -1252,7 +1335,7 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
                     .and_then(|n| n.to_str())
                     .unwrap_or("<invalid>")
                     .to_string();
-                
+
                 if path.is_dir() {
                     format!("📁 {}/", name)
                 } else {
@@ -1265,7 +1348,11 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let current_dir_display = app.current_directory.display().to_string();
     let directory_list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(format!("Directory: {}", current_dir_display)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Directory: {}", current_dir_display)),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::Cyan)
@@ -1316,20 +1403,24 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or(file);
-            
+
             // Get per-file configuration
             let config = app.file_configs.get(file);
             let namespace = config.map(|c| c.namespace.as_str()).unwrap_or("2");
             let ip = config.map(|c| c.ip.as_str()).unwrap_or("");
             let interval = config.map(|c| c.interval_ms.as_str()).unwrap_or("");
-            
+
             // Show different default interval for listeners (500ms vs 1000ms)
             let is_listener = *app.selected_listener_files.get(i).unwrap_or(&false);
             let default_interval = if is_listener { "500" } else { "1000" };
-            let display_interval = if interval.is_empty() { default_interval } else { interval };
-            
+            let display_interval = if interval.is_empty() {
+                default_interval
+            } else {
+                interval
+            };
+
             let listener_checkbox = if is_listener { "[L]" } else { "[ ]" };
-            
+
             // Format: [x] filename.xml (first line)
             // Format:   [L] Listener | NS:2 | IP:192.168.1.100 | INT:1000ms (second line)
             let config_info = format!(
@@ -1339,7 +1430,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
                 if ip.is_empty() { "default" } else { ip },
                 display_interval
             );
-            
+
             ListItem::new(vec![
                 Line::from(format!("{} {}", checkbox, filename)),
                 Line::from(format!("  {}", config_info)).style(Style::default().fg(Color::Gray)),
@@ -1371,7 +1462,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
         let edit_title = if let Some(ref field) = app.current_edit_field {
             match field {
                 EditField::FileNamespace(_) => "Edit Namespace",
-                EditField::FileIp(_) => "Edit IP Address", 
+                EditField::FileIp(_) => "Edit IP Address",
                 EditField::FileInterval(_) => "Edit Interval (ms)",
                 _ => "Edit Field",
             }
@@ -1447,43 +1538,92 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Render each field with selection highlighting
     let selected_field = OpcUaConfigField::from_index(app.opcua_config_selection);
-    
-    render_config_field_with_selection(f, "OPC-UA Server IP", &app.config.ip, 
-                       matches!(app.current_edit_field, Some(EditField::OpcUaIp)), 
-                       &app.input_buffer, config_chunks[0],
-                       matches!(selected_field, OpcUaConfigField::Ip));
 
-    let username_display = if app.anonymous_mode { 
-        "[Anonymous Mode]".to_string() 
-    } else { 
-        app.config.username.clone() 
+    render_config_field_with_selection(
+        f,
+        "OPC-UA Server IP",
+        &app.config.ip,
+        matches!(app.current_edit_field, Some(EditField::OpcUaIp)),
+        &app.input_buffer,
+        config_chunks[0],
+        matches!(selected_field, OpcUaConfigField::Ip),
+    );
+
+    let username_display = if app.anonymous_mode {
+        "[Anonymous Mode]".to_string()
+    } else {
+        app.config.username.clone()
     };
-    render_config_field_with_selection(f, "Username", &username_display, 
-                       matches!(app.current_edit_field, Some(EditField::OpcUaUsername)), 
-                       &app.input_buffer, config_chunks[1],
-                       matches!(selected_field, OpcUaConfigField::Username));
+    render_config_field_with_selection(
+        f,
+        "Username",
+        &username_display,
+        matches!(app.current_edit_field, Some(EditField::OpcUaUsername)),
+        &app.input_buffer,
+        config_chunks[1],
+        matches!(selected_field, OpcUaConfigField::Username),
+    );
 
-    let password_display = if app.anonymous_mode { 
-        "[Anonymous Mode]".to_string() 
-    } else { 
-        "*".repeat(app.config.password.len()) 
+    let password_display = if app.anonymous_mode {
+        "[Anonymous Mode]".to_string()
+    } else {
+        "*".repeat(app.config.password.len())
     };
-    render_config_field_with_selection(f, "Password", &password_display, 
-                       matches!(app.current_edit_field, Some(EditField::OpcUaPassword)), 
-                       &app.input_buffer, config_chunks[2],
-                       matches!(selected_field, OpcUaConfigField::Password));
+    render_config_field_with_selection(
+        f,
+        "Password",
+        &password_display,
+        matches!(app.current_edit_field, Some(EditField::OpcUaPassword)),
+        &app.input_buffer,
+        config_chunks[2],
+        matches!(selected_field, OpcUaConfigField::Password),
+    );
 
-    let output_format_display = app.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()).clone();
-    render_config_field_with_selection(f, "Output Format", &output_format_display, false, "", config_chunks[3],
-                       matches!(selected_field, OpcUaConfigField::OutputFormat));
+    let output_format_display = app
+        .config
+        .output_format
+        .as_ref()
+        .unwrap_or(&"influxdb".to_string())
+        .clone();
+    render_config_field_with_selection(
+        f,
+        "Output Format",
+        &output_format_display,
+        false,
+        "",
+        config_chunks[3],
+        matches!(selected_field, OpcUaConfigField::OutputFormat),
+    );
 
-    let anonymous_status = if app.anonymous_mode { "Enabled" } else { "Disabled" };
-    render_config_field_with_selection(f, "Anonymous Mode", anonymous_status, false, "", config_chunks[4],
-                       matches!(selected_field, OpcUaConfigField::Anonymous));
+    let anonymous_status = if app.anonymous_mode {
+        "Enabled"
+    } else {
+        "Disabled"
+    };
+    render_config_field_with_selection(
+        f,
+        "Anonymous Mode",
+        anonymous_status,
+        false,
+        "",
+        config_chunks[4],
+        matches!(selected_field, OpcUaConfigField::Anonymous),
+    );
 
-    let test_inputs_status = if app.config.include_test_inputs { "Enabled" } else { "Disabled" };
-    render_config_field_with_selection(f, "Test Inputs", test_inputs_status, false, "", config_chunks[5],
-                       matches!(selected_field, OpcUaConfigField::TestInputs));
+    let test_inputs_status = if app.config.include_test_inputs {
+        "Enabled"
+    } else {
+        "Disabled"
+    };
+    render_config_field_with_selection(
+        f,
+        "Test Inputs",
+        test_inputs_status,
+        false,
+        "",
+        config_chunks[5],
+        matches!(selected_field, OpcUaConfigField::TestInputs),
+    );
 
     // Instructions
     let instructions = vec![
@@ -1525,22 +1665,37 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Render each field with selection highlighting
     let selected_field = IoTConfigField::from_index(app.iot_config_selection);
-    
-    render_config_field_with_selection(f, "IoT Device Host", &app.config.iot_host, 
-                       matches!(app.current_edit_field, Some(EditField::IoTHost)), 
-                       &app.input_buffer, config_chunks[0],
-                       matches!(selected_field, IoTConfigField::Host));
 
-    render_config_field_with_selection(f, "IoT Username", &app.config.iot_username, 
-                       matches!(app.current_edit_field, Some(EditField::IoTUsername)), 
-                       &app.input_buffer, config_chunks[1],
-                       matches!(selected_field, IoTConfigField::Username));
+    render_config_field_with_selection(
+        f,
+        "IoT Device Host",
+        &app.config.iot_host,
+        matches!(app.current_edit_field, Some(EditField::IoTHost)),
+        &app.input_buffer,
+        config_chunks[0],
+        matches!(selected_field, IoTConfigField::Host),
+    );
+
+    render_config_field_with_selection(
+        f,
+        "IoT Username",
+        &app.config.iot_username,
+        matches!(app.current_edit_field, Some(EditField::IoTUsername)),
+        &app.input_buffer,
+        config_chunks[1],
+        matches!(selected_field, IoTConfigField::Username),
+    );
 
     let password_display = "*".repeat(app.config.iot_password.len());
-    render_config_field_with_selection(f, "IoT Password", &password_display, 
-                       matches!(app.current_edit_field, Some(EditField::IoTPassword)), 
-                       &app.input_buffer, config_chunks[2],
-                       matches!(selected_field, IoTConfigField::Password));
+    render_config_field_with_selection(
+        f,
+        "IoT Password",
+        &password_display,
+        matches!(app.current_edit_field, Some(EditField::IoTPassword)),
+        &app.input_buffer,
+        config_chunks[2],
+        matches!(selected_field, IoTConfigField::Password),
+    );
 
     // Instructions
     let instructions = vec![
@@ -1575,9 +1730,13 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let config_paragraph = Paragraph::new(config_content)
-        .block(Block::default().borders(Borders::ALL).title("Generated Configuration"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Generated Configuration"),
+        )
         .scroll((app.config_scroll, app.config_horizontal_scroll));
-    
+
     f.render_widget(config_paragraph, chunks[0]);
 
     // Controls and status
@@ -1599,8 +1758,8 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from("Home   - Reset scroll"),
     ];
 
-    let controls_block = Paragraph::new(controls)
-        .block(Block::default().borders(Borders::ALL).title("Controls"));
+    let controls_block =
+        Paragraph::new(controls).block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(controls_block, control_chunks[0]);
 
     // Status
@@ -1609,22 +1768,32 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         "⚠️  No configuration"
     };
-    
+
     let selected_count = app.selected_files.iter().filter(|&&x| x).count();
-    let auth_mode = if app.anonymous_mode { "Anonymous" } else { "Username/Password" };
-    
+    let auth_mode = if app.anonymous_mode {
+        "Anonymous"
+    } else {
+        "Username/Password"
+    };
+
     let status = vec![
         Line::from("Status:"),
         Line::from(""),
         Line::from(config_status),
         Line::from(format!("Files: {}", selected_count)),
         Line::from(format!("Auth: {}", auth_mode)),
-        Line::from(format!("IoT: {}", 
-                          if app.config.iot_host.is_empty() { "Not set" } else { "Configured" })),
+        Line::from(format!(
+            "IoT: {}",
+            if app.config.iot_host.is_empty() {
+                "Not set"
+            } else {
+                "Configured"
+            }
+        )),
     ];
 
-    let status_block = Paragraph::new(status)
-        .block(Block::default().borders(Borders::ALL).title("Status"));
+    let status_block =
+        Paragraph::new(status).block(Block::default().borders(Borders::ALL).title("Status"));
     f.render_widget(status_block, control_chunks[1]);
 }
 
@@ -1636,33 +1805,78 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Actions with selection bar
     let selected_field = ActionsField::from_index(app.actions_selection);
-    
+
     let actions = vec![
         Line::from("Available Actions (↑/↓ to navigate, Enter to execute):"),
         Line::from(""),
-        render_action_item("Generate Configuration", matches!(selected_field, ActionsField::GenerateConfig), "g"),
-        render_action_item("Send Config to IoT Device", matches!(selected_field, ActionsField::SendConfig), "s"),
-        render_action_item("Clear Status Messages", matches!(selected_field, ActionsField::ClearMessages), "c"),
+        render_action_item(
+            "Generate Configuration",
+            matches!(selected_field, ActionsField::GenerateConfig),
+            "g",
+        ),
+        render_action_item(
+            "Send Config to IoT Device",
+            matches!(selected_field, ActionsField::SendConfig),
+            "s",
+        ),
+        render_action_item(
+            "Clear Status Messages",
+            matches!(selected_field, ActionsField::ClearMessages),
+            "c",
+        ),
         Line::from(""),
         Line::from("Operational Commands:"),
-        render_action_item("🔍 Get Telegraf Status", matches!(selected_field, ActionsField::TelegrafStatus), "t"),
-        render_action_item("📋 Get Telegraf Logs", matches!(selected_field, ActionsField::TelegrafLogs), "l"),
-        render_action_item("🔄 Restart Telegraf", matches!(selected_field, ActionsField::RestartTelegraf), "r"),
-        render_action_item(&format!("✅ Check {} Status", 
-            if app.config.output_format.as_deref().unwrap_or("influxdb") == "prometheus" { "Prometheus" } else { "InfluxDB" }
-        ), matches!(selected_field, ActionsField::ServiceStatus), "v"),
-        render_action_item("📊 Backup Grafana", matches!(selected_field, ActionsField::BackupGrafana), "b"),
-        render_action_item("🕐 Sync Device Time", matches!(selected_field, ActionsField::SyncTime), "y"),
+        render_action_item(
+            "🔍 Get Telegraf Status",
+            matches!(selected_field, ActionsField::TelegrafStatus),
+            "t",
+        ),
+        render_action_item(
+            "📋 Get Telegraf Logs",
+            matches!(selected_field, ActionsField::TelegrafLogs),
+            "l",
+        ),
+        render_action_item(
+            "🔄 Restart Telegraf",
+            matches!(selected_field, ActionsField::RestartTelegraf),
+            "r",
+        ),
+        render_action_item(
+            &format!(
+                "✅ Check {} Status",
+                if app.config.output_format.as_deref().unwrap_or("influxdb") == "prometheus" {
+                    "Prometheus"
+                } else {
+                    "InfluxDB"
+                }
+            ),
+            matches!(selected_field, ActionsField::ServiceStatus),
+            "v",
+        ),
+        render_action_item(
+            "📊 Backup Grafana",
+            matches!(selected_field, ActionsField::BackupGrafana),
+            "b",
+        ),
+        render_action_item(
+            "🕐 Sync Device Time",
+            matches!(selected_field, ActionsField::SyncTime),
+            "y",
+        ),
     ];
 
-    let actions_block = Paragraph::new(actions)
-        .block(Block::default().borders(Borders::ALL).title("Actions"));
+    let actions_block =
+        Paragraph::new(actions).block(Block::default().borders(Borders::ALL).title("Actions"));
     f.render_widget(actions_block, chunks[0]);
 
     // Current configuration summary
     let selected_count = app.selected_files.iter().filter(|&&x| x).count();
-    let auth_mode = if app.anonymous_mode { "Anonymous" } else { "Username/Password" };
-    
+    let auth_mode = if app.anonymous_mode {
+        "Anonymous"
+    } else {
+        "Username/Password"
+    };
+
     let summary = vec![
         Line::from("Current Configuration:"),
         Line::from(""),
@@ -1670,22 +1884,41 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("OPC-UA Server: {}", app.config.ip)),
         Line::from(format!("Authentication: {}", auth_mode)),
         Line::from(format!("IoT Device: {}", app.config.iot_host)),
-        Line::from(format!("Output Format: {}", 
-                          app.config.output_format.as_ref().unwrap_or(&"influxdb".to_string()))),
-        Line::from(format!("Test Inputs: {}", 
-                          if app.config.include_test_inputs { "Yes" } else { "No" })),
+        Line::from(format!(
+            "Output Format: {}",
+            app.config
+                .output_format
+                .as_ref()
+                .unwrap_or(&"influxdb".to_string())
+        )),
+        Line::from(format!(
+            "Test Inputs: {}",
+            if app.config.include_test_inputs {
+                "Yes"
+            } else {
+                "No"
+            }
+        )),
     ];
 
-    let summary_block = Paragraph::new(summary)
-        .block(Block::default().borders(Borders::ALL).title("Summary"));
+    let summary_block =
+        Paragraph::new(summary).block(Block::default().borders(Borders::ALL).title("Summary"));
     f.render_widget(summary_block, chunks[1]);
 }
 
 fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'static> {
     if is_selected {
         Line::from(vec![
-            Span::styled("► ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled(text.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "► ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                text.to_string(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::styled(format!(" ({})", hotkey), Style::default().fg(Color::Gray)),
         ])
     } else {
@@ -1698,12 +1931,12 @@ fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'stat
 }
 
 fn render_config_field(
-    f: &mut Frame, 
-    label: &str, 
-    value: &str, 
-    is_editing: bool, 
-    input_buffer: &str, 
-    area: Rect
+    f: &mut Frame,
+    label: &str,
+    value: &str,
+    is_editing: bool,
+    input_buffer: &str,
+    area: Rect,
 ) {
     let display_value = if is_editing {
         format!("{}_", input_buffer)
@@ -1712,7 +1945,9 @@ fn render_config_field(
     };
 
     let style = if is_editing {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
@@ -1720,18 +1955,18 @@ fn render_config_field(
     let paragraph = Paragraph::new(display_value)
         .block(Block::default().borders(Borders::ALL).title(label))
         .style(style);
-    
+
     f.render_widget(paragraph, area);
 }
 
 fn render_config_field_with_selection(
-    f: &mut Frame, 
-    label: &str, 
-    value: &str, 
-    is_editing: bool, 
-    input_buffer: &str, 
+    f: &mut Frame,
+    label: &str,
+    value: &str,
+    is_editing: bool,
+    input_buffer: &str,
     area: Rect,
-    is_selected: bool
+    is_selected: bool,
 ) {
     let display_value = if is_editing {
         format!("{}_", input_buffer)
@@ -1740,7 +1975,9 @@ fn render_config_field_with_selection(
     };
 
     let style = if is_editing {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
     } else if is_selected {
         Style::default().add_modifier(Modifier::BOLD)
     } else {
@@ -1748,15 +1985,22 @@ fn render_config_field_with_selection(
     };
 
     let block_style = if is_selected {
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default()
     };
 
     let paragraph = Paragraph::new(display_value)
-        .block(Block::default().borders(Borders::ALL).title(label).border_style(block_style))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(label)
+                .border_style(block_style),
+        )
         .style(style);
-    
+
     f.render_widget(paragraph, area);
 }
 
@@ -1776,14 +2020,19 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
             }
         })
         .collect();
-    
+
     // Add helpful message if empty
     if messages.is_empty() {
-        messages.push(ListItem::new("Status area ready - press 'c' to clear messages, PgUp/PgDn to scroll"));
+        messages.push(ListItem::new(
+            "Status area ready - press 'c' to clear messages, PgUp/PgDn to scroll",
+        ));
     }
 
-    let title = format!("Status Messages ({}/{}) - PgUp/PgDn to scroll", 
-                       app.status_messages.len(), 50);
+    let title = format!(
+        "Status Messages ({}/{}) - PgUp/PgDn to scroll",
+        app.status_messages.len(),
+        50
+    );
     let messages_list = List::new(messages)
         .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(Style::default().add_modifier(Modifier::BOLD));
@@ -1793,7 +2042,7 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn render_help_popup(f: &mut Frame, _app: &App) {
     let popup_area = centered_rect(60, 70, f.area());
-    
+
     let help_text = vec![
         Line::from("IoT2050 Configuration TUI - Help"),
         Line::from(""),

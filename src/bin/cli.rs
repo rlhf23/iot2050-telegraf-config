@@ -299,7 +299,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     }
 
     // Generate config
-    let _config_content = generator.generate_config(&xml_files, &Vec::new())?;
+    let _result = generator.generate_config(&xml_files, &Vec::new())?;
     println!("\n✅ Telegraf configuration generated successfully!");
 
     // Send config if requested

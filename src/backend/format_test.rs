@@ -127,17 +127,26 @@ mod tests {
         let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
 
         assert!(result.is_ok());
-        let config_str = result.unwrap();
+        let parse_result = result.unwrap();
 
         // Check that the parsed config contains expected elements
-        assert!(config_str.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
-        assert!(config_str.contains("username = \"user\""));
-        assert!(config_str.contains("password = \"pass\""));
-        assert!(config_str.contains("name = \"TestDevice\""));
-        assert!(config_str.contains("namespace = \"2\""));
-        assert!(config_str.contains("interval = \"1000ms\""));
-        assert!(config_str.contains("name=\"Temperature\", identifier=\"2\""));
-        assert!(config_str.contains("name=\"Pressure\", identifier=\"3\""));
+        assert!(parse_result
+            .config_string
+            .contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
+        assert!(parse_result.config_string.contains("username = \"user\""));
+        assert!(parse_result.config_string.contains("password = \"pass\""));
+        assert!(parse_result.config_string.contains("name = \"TestDevice\""));
+        assert!(parse_result.config_string.contains("namespace = \"2\""));
+        assert!(parse_result.config_string.contains("interval = \"1000ms\""));
+        assert!(parse_result
+            .config_string
+            .contains("name=\"Temperature\", identifier=\"2\""));
+        assert!(parse_result
+            .config_string
+            .contains("name=\"Pressure\", identifier=\"3\""));
+
+        // Check measurement name was extracted
+        assert_eq!(parse_result.measurement_name, "TestDevice");
 
         assert_eq!(namespace_infos.len(), 1);
         assert_eq!(namespace_infos[0].number, "2");
@@ -229,11 +238,18 @@ mod tests {
         let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
 
         assert!(result.is_ok());
-        let config_str = result.unwrap();
+        let parse_result = result.unwrap();
 
         // Check that the variable mapping is used instead of BrowseName
-        assert!(config_str.contains("name=\"MappedTemperature\", identifier=\"2\""));
-        assert!(!config_str.contains("name=\"Temperature\", identifier=\"2\""));
+        assert!(parse_result
+            .config_string
+            .contains("name=\"MappedTemperature\", identifier=\"2\""));
+        assert!(!parse_result
+            .config_string
+            .contains("name=\"Temperature\", identifier=\"2\""));
+
+        // Check measurement name
+        assert_eq!(parse_result.measurement_name, "TestDevice");
 
         Ok(())
     }

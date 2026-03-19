@@ -732,4 +732,3 @@ mod tests {
         assert_eq!(controller.config.selected_opcua_nodes.len(), 1);
     }
 }
-

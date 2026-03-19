@@ -13,6 +13,15 @@ pub struct NamespaceInfo {
     pub file_name: String,
 }
 
+/// Result of parsing an XML file
+#[derive(Clone)]
+pub struct XmlParseResult {
+    /// The generated OPC-UA configuration string
+    pub config_string: String,
+    /// The measurement name (group name) extracted from the XML
+    pub measurement_name: String,
+}
+
 #[derive(Clone)]
 pub struct OpcuaConfig<'a> {
     // Connection settings
@@ -299,7 +308,7 @@ pub fn parse_xml(
     config: &OpcuaConfig,
     xml_file: &str,
     namespace_infos: &mut Vec<NamespaceInfo>,
-) -> Result<String, TelegrafError> {
+) -> Result<XmlParseResult, TelegrafError> {
     let xml = std::fs::read_to_string(xml_file).map_err(|e| TelegrafError::IoError(e))?;
 
     let doc = Document::parse(&xml)
@@ -391,5 +400,8 @@ pub fn parse_xml(
         ..config.clone()
     };
 
-    Ok(format_config(&config_with_group, &nodes_str))
+    Ok(XmlParseResult {
+        config_string: format_config(&config_with_group, &nodes_str),
+        measurement_name: group_name,
+    })
 }

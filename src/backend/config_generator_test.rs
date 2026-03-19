@@ -172,17 +172,32 @@ mod tests {
         let result = generator.generate_config(&[xml_path_str.clone()], &listener_files);
 
         assert!(result.is_ok());
-        let config_content = result.unwrap();
+        let config_result = result.unwrap();
 
         // Check that the config contains expected elements
-        assert!(config_content.contains("bucket = \"${INFLUXDB_BUCKET}\""));
-        assert!(config_content.contains("token = \"${INFLUXDB_TOKEN}\""));
-        assert!(config_content.contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
-        assert!(config_content.contains("username = \"user\""));
-        assert!(config_content.contains("password = \"pass\""));
-        assert!(config_content.contains("name = \"TestDevice\""));
-        assert!(config_content.contains("namespace = \"2\""));
-        assert!(config_content.contains("interval = \"1000ms\""));
+        assert!(config_result
+            .config_content
+            .contains("bucket = \"${INFLUXDB_BUCKET}\""));
+        assert!(config_result
+            .config_content
+            .contains("token = \"${INFLUXDB_TOKEN}\""));
+        assert!(config_result
+            .config_content
+            .contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
+        assert!(config_result.config_content.contains("username = \"user\""));
+        assert!(config_result.config_content.contains("password = \"pass\""));
+        assert!(config_result
+            .config_content
+            .contains("name = \"TestDevice\""));
+        assert!(config_result.config_content.contains("namespace = \"2\""));
+        assert!(config_result
+            .config_content
+            .contains("interval = \"1000ms\""));
+
+        // Check that measurements were extracted
+        assert!(config_result
+            .measurements
+            .contains(&"TestDevice".to_string()));
 
         // Verify the config file was created
         let config_file_path = dir.path().join("telegraf.conf");
@@ -215,13 +230,22 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        let config_content = result.unwrap();
+        let config_result = result.unwrap();
 
         // Check that the listener config uses the right input type and sampling interval
-        assert!(config_content.contains("[[inputs.opcua]]"));
-        assert!(config_content.contains("[[inputs.opcua_listener]]"));
-        assert!(config_content.contains("interval = \"1000ms\""));
-        assert!(config_content.contains("sampling_interval = \"500ms\""));
+        assert!(config_result.config_content.contains("[[inputs.opcua]]"));
+        assert!(config_result
+            .config_content
+            .contains("[[inputs.opcua_listener]]"));
+        assert!(config_result
+            .config_content
+            .contains("interval = \"1000ms\""));
+        assert!(config_result
+            .config_content
+            .contains("sampling_interval = \"500ms\""));
+
+        // Check measurements were extracted from both files
+        assert_eq!(config_result.measurements.len(), 2);
     }
 
     #[test]
@@ -249,11 +273,15 @@ mod tests {
         let result = generator.generate_config(&[xml_path_str.clone()], &listener_files);
 
         assert!(result.is_ok());
-        let config_content = result.unwrap();
+        let config_result = result.unwrap();
 
         // Verify the custom IP is used instead of the default
-        assert!(config_content.contains(&format!("endpoint = \"opc.tcp://{}\"", custom_ip)));
-        assert!(!config_content.contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
+        assert!(config_result
+            .config_content
+            .contains(&format!("endpoint = \"opc.tcp://{}\"", custom_ip)));
+        assert!(!config_result
+            .config_content
+            .contains("endpoint = \"opc.tcp://192.168.1.1:4840\""));
     }
 
     #[test]
@@ -277,14 +305,14 @@ mod tests {
         let result = generator.generate_config(&[xml_path_str.clone()], &listener_files);
 
         assert!(result.is_ok());
-        let config_content = result.unwrap();
+        let config_result = result.unwrap();
 
         // Verify test inputs are included
-        assert!(config_content.contains("[[inputs.cpu]]"));
-        assert!(config_content.contains("[[inputs.disk]]"));
-        assert!(config_content.contains("[[inputs.mem]]"));
-        assert!(config_content.contains("TEST INPUTS START"));
-        assert!(config_content.contains("TEST INPUTS END"));
+        assert!(config_result.config_content.contains("[[inputs.cpu]]"));
+        assert!(config_result.config_content.contains("[[inputs.disk]]"));
+        assert!(config_result.config_content.contains("[[inputs.mem]]"));
+        assert!(config_result.config_content.contains("TEST INPUTS START"));
+        assert!(config_result.config_content.contains("TEST INPUTS END"));
     }
 
     #[test]
@@ -308,12 +336,16 @@ mod tests {
         let result = generator.generate_config(&[xml_path_str.clone()], &listener_files);
 
         assert!(result.is_ok());
-        let config_content = result.unwrap();
+        let config_result = result.unwrap();
 
         // Verify Prometheus output is used
-        assert!(config_content.contains("[[outputs.prometheus_client]]"));
-        assert!(config_content.contains("listen = \":9273\""));
-        assert!(!config_content.contains("[[outputs.influxdb_v2]]"));
+        assert!(config_result
+            .config_content
+            .contains("[[outputs.prometheus_client]]"));
+        assert!(config_result.config_content.contains("listen = \":9273\""));
+        assert!(!config_result
+            .config_content
+            .contains("[[outputs.influxdb_v2]]"));
     }
 
     #[test]

@@ -22,6 +22,8 @@ multer = "3.0"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 tokio-util = { version = "0.7", features = ["io"] }
 chrono = { version = "0.4", features = ["serde"] }
+# HTTP client for Grafana API
+reqwest = { version = "0.11", features = ["json"] }
 
 # Dependencies for config generation (avoiding GUI deps from main project)
 roxmltree = "0.20.0"

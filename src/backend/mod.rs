@@ -2,12 +2,14 @@ use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 pub mod backup;
 #[cfg(test)]
 mod backup_test;
 #[cfg(test)]
 mod config_generator_test;
+pub mod dashboard;
 pub mod deployment;
 #[cfg(test)]
 mod deployment_test;
@@ -21,7 +23,9 @@ pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
 
+pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
+pub use format::XmlParseResult;
 pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]
@@ -29,6 +33,15 @@ pub struct FileConfig {
     pub namespace: String,
     pub interval_ms: u64,
     pub ip: Option<String>,
+}
+
+/// Result of config generation
+#[derive(Debug)]
+pub struct ConfigResult {
+    /// The generated telegraf.conf content
+    pub config_content: String,
+    /// List of measurement names extracted from XML files
+    pub measurements: Vec<String>,
 }
 
 pub struct ConfigGenerator {
@@ -103,9 +116,10 @@ impl ConfigGenerator {
         &self,
         xml_files: &[String],
         listener_files: &[String],
-    ) -> Result<String, TelegrafError> {
+    ) -> Result<ConfigResult, TelegrafError> {
         let mut config_strings = Vec::new();
         let mut namespace_numbers = Vec::new();
+        let mut measurements = Vec::new();
 
         // Generate configuration strings for each XML file
         for file in xml_files {
@@ -148,9 +162,10 @@ impl ConfigGenerator {
                 use_source_timestamp: self.config.use_source_timestamp,
             };
 
-            let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
+            let parse_result = format::parse_xml(&config, file, &mut namespace_numbers)
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
-            config_strings.push(config_string);
+            config_strings.push(parse_result.config_string);
+            measurements.push(parse_result.measurement_name);
         }
 
         // Generate configuration for selected OPC UA nodes from browser if available
@@ -247,6 +262,7 @@ impl ConfigGenerator {
 
                 let config_string = format::format_regular_config(&opcua_config, &nodes_str);
                 config_strings.push(config_string);
+                measurements.push(folder_name.clone());
             }
 
             // Now handle individual nodes (not part of a folder)
@@ -338,6 +354,7 @@ impl ConfigGenerator {
                     let config_string =
                         format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
                     config_strings.push(config_string);
+                    measurements.push(format!("opcua_browser_ns{}", namespace));
                 }
             }
         }
@@ -358,7 +375,10 @@ impl ConfigGenerator {
             .write_all(config_content.as_bytes())
             .map_err(TelegrafError::IoError)?;
 
-        Ok(config_content)
+        Ok(ConfigResult {
+            config_content,
+            measurements,
+        })
     }
 
     pub fn send_config(&self) -> Result<String, TelegrafError> {
@@ -372,6 +392,71 @@ impl ConfigGenerator {
         ssh_utils::send_and_restart_telegraf(
             &config_path,
             "telegraf/telegraf.conf",
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+        )
+    }
+
+    /// Generate a Grafana dashboard from template
+    ///
+    /// # Arguments
+    /// * `measurements` - List of measurement names (from XML parsing or browser selection)
+    /// * `bucket` - InfluxDB bucket name (default: "telegraf")
+    /// * `datasource_uid` - Grafana datasource UID or name (default: "InfluxDB")
+    /// * `template_path` - Optional custom template path (uses default if None)
+    ///
+    /// # Returns
+    /// * `Ok(String)` - Generated dashboard JSON
+    /// * `Err(TelegrafError)` - Generation error
+    pub fn generate_grafana_dashboard(
+        &self,
+        measurements: &[String],
+        bucket: Option<&str>,
+        datasource_uid: Option<&str>,
+        template_path: Option<&Path>,
+    ) -> Result<String, TelegrafError> {
+        if measurements.is_empty() {
+            return Err(TelegrafError::ConfigError(
+                "At least one measurement is required for dashboard generation".to_string(),
+            ));
+        }
+
+        // Use first measurement as primary for dashboard UID and title
+        let primary_measurement = &measurements[0];
+        let dashboard_uid = sanitize_uid(primary_measurement);
+
+        let config = DashboardConfig {
+            uid: dashboard_uid.clone(),
+            title: format!("{} Monitor", primary_measurement),
+            measurements: measurements.to_vec(),
+            bucket: bucket.unwrap_or("telegraf").to_string(),
+            datasource_uid: datasource_uid.unwrap_or("InfluxDB").to_string(),
+        };
+
+        let dashboard_json = generate_dashboard(&config, template_path)?;
+
+        // Write to config folder
+        let dashboard_path = self.config.folder.join("grafana_dashboard.json");
+        let mut dashboard_file = File::create(&dashboard_path).map_err(TelegrafError::IoError)?;
+        dashboard_file
+            .write_all(dashboard_json.as_bytes())
+            .map_err(TelegrafError::IoError)?;
+
+        Ok(dashboard_json)
+    }
+
+    /// Deploy Grafana dashboard via API
+    ///
+    /// # Arguments
+    /// * `dashboard_json` - Dashboard JSON string (from generate_grafana_dashboard)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Dashboard deployed successfully
+    /// * `Err(TelegrafError)` - Deployment error
+    pub fn deploy_grafana_dashboard(&self, dashboard_json: &str) -> Result<(), TelegrafError> {
+        ssh_utils::deploy_grafana_dashboard(
+            dashboard_json,
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,

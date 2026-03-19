@@ -1,4 +1,3 @@
-use sie_generate_config::backend::OutputFormat;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
@@ -105,13 +104,13 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Generate the configuration using the discovered XML files
-    let config = generator
+    let config_result = generator
         .generate_config(&xml_files, &[])
         .expect("Failed to generate configuration");
 
     // Verify the configuration is not empty
     assert!(
-        !config.is_empty(),
+        !config_result.config_content.is_empty(),
         "Generated configuration should not be empty"
     );
 
@@ -119,7 +118,7 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path("__snapshots__");
     settings.bind(|| {
-        insta::assert_snapshot!("cli_config_generation", &config);
+        insta::assert_snapshot!("cli_config_generation", &config_result.config_content);
     });
 
     println!(
@@ -630,31 +629,34 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         ConfigGenerator::new(config_with_nodes).expect("Failed to create ConfigGenerator");
 
     // Generate the configuration
-    let config = config_generator
+    let config_result = config_generator
         .generate_config(&[], &[])
         .expect("Failed to generate configuration");
 
     // Verify the configuration is not empty and contains expected sections
     assert!(
-        !config.is_empty(),
+        !config_result.config_content.is_empty(),
         "Generated configuration should not be empty"
     );
 
     // Check for common OPC UA configuration sections
     assert!(
-        config.contains("[[inputs.opcua]]") || config.contains("[[inputs.opcua_client]]"),
+        config_result.config_content.contains("[[inputs.opcua]]")
+            || config_result
+                .config_content
+                .contains("[[inputs.opcua_client]]"),
         "Configuration should contain OPC UA input section"
     );
 
     // Print the configuration for debugging
-    println!("Generated configuration:\n{}", config);
+    println!("Generated configuration:\n{}", config_result.config_content);
 
     // Create a snapshot of the generated configuration
     // This will create/update snapshots in tests/__snapshots__
     let mut settings = insta::Settings::clone_current();
     settings.set_snapshot_path("__snapshots__");
     settings.bind(|| {
-        insta::assert_snapshot!("opcua_config_generation", &config);
+        insta::assert_snapshot!("opcua_config_generation", &config_result.config_content);
     });
 
     println!(
@@ -672,7 +674,6 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
 
 #[test]
 fn test_cli_check_commands() -> Result<(), Box<dyn std::error::Error>> {
@@ -707,43 +708,76 @@ fn test_cli_check_commands() -> Result<(), Box<dyn std::error::Error>> {
         .output()
         .expect("Failed to execute check help command");
 
-    assert!(help_output.status.success(), "Check help command should succeed");
+    assert!(
+        help_output.status.success(),
+        "Check help command should succeed"
+    );
     let help_text = String::from_utf8_lossy(&help_output.stdout);
-    
+
     // Verify all our new check commands are listed in help
-    assert!(help_text.contains("influxdb"), "Help should mention influxdb command");
-    assert!(help_text.contains("prometheus"), "Help should mention prometheus command");
-    assert!(help_text.contains("telegraf-status"), "Help should mention telegraf-status command");
-    assert!(help_text.contains("telegraf-logs"), "Help should mention telegraf-logs command");
-    assert!(help_text.contains("telegraf-restart"), "Help should mention telegraf-restart command");
-    assert!(help_text.contains("grafana-backup"), "Help should mention grafana-backup command");
+    assert!(
+        help_text.contains("influxdb"),
+        "Help should mention influxdb command"
+    );
+    assert!(
+        help_text.contains("prometheus"),
+        "Help should mention prometheus command"
+    );
+    assert!(
+        help_text.contains("telegraf-status"),
+        "Help should mention telegraf-status command"
+    );
+    assert!(
+        help_text.contains("telegraf-logs"),
+        "Help should mention telegraf-logs command"
+    );
+    assert!(
+        help_text.contains("telegraf-restart"),
+        "Help should mention telegraf-restart command"
+    );
+    assert!(
+        help_text.contains("grafana-backup"),
+        "Help should mention grafana-backup command"
+    );
 
     // Test 2: Test invalid host scenarios (should fail gracefully)
     println!("Testing invalid host scenarios...");
-    
+
     // Test telegraf-status with invalid host (should fail but not crash)
     let invalid_host_output = Command::new(&binary_path)
         .args(&["check", "telegraf-status", "192.168.999.999"])
         .output()
         .expect("Failed to execute telegraf-status with invalid host");
-    
+
     // Should exit with error code but not crash
-    assert!(!invalid_host_output.status.success(), "Invalid host should fail");
+    assert!(
+        !invalid_host_output.status.success(),
+        "Invalid host should fail"
+    );
     let error_text = String::from_utf8_lossy(&invalid_host_output.stdout);
-    assert!(error_text.contains("Getting Telegraf status"), "Should show attempt message");
+    assert!(
+        error_text.contains("Getting Telegraf status"),
+        "Should show attempt message"
+    );
 
     // Test 3: Test InfluxDB and Prometheus check commands
     println!("Testing InfluxDB and Prometheus check commands...");
-    
+
     // Test InfluxDB check with invalid host (should fail gracefully)
     let influx_output = Command::new(&binary_path)
         .args(&["check", "influxdb", "192.168.999.999"])
         .output()
         .expect("Failed to execute influxdb check");
-    
-    assert!(!influx_output.status.success(), "Invalid InfluxDB host should fail");
+
+    assert!(
+        !influx_output.status.success(),
+        "Invalid InfluxDB host should fail"
+    );
     let influx_text = String::from_utf8_lossy(&influx_output.stdout);
-    assert!(influx_text.contains("Checking InfluxDB connectivity"), "Should show attempt message");
+    assert!(
+        influx_text.contains("Checking InfluxDB connectivity"),
+        "Should show attempt message"
+    );
 
     println!("✅ All CLI check command tests completed successfully!");
     println!("Commands tested:");
