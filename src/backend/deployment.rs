@@ -6,6 +6,29 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
+pub const GITHUB_REPO_OWNER: &str = "rlhf23";
+pub const GITHUB_REPO_NAME: &str = "iot2050-telegraf-config";
+pub const DEFAULT_BRANCH: &str = "master";
+
+/// Sanitize a branch name for use in GitHub tarball URLs
+/// GitHub replaces '/' with '-' in archive names
+pub fn sanitize_branch_name(branch: &str) -> String {
+    branch.replace('/', "-")
+}
+
+/// Generate the GitHub tarball URL for a given branch
+pub fn generate_repo_url(branch: &str) -> String {
+    format!(
+        "https://github.com/{}/{}/archive/refs/heads/{}.tar.gz",
+        GITHUB_REPO_OWNER, GITHUB_REPO_NAME, branch
+    )
+}
+
+/// Get the expected directory name after extracting a tarball for a branch
+pub fn get_extracted_dir_name(branch: &str) -> String {
+    format!("{}-{}", GITHUB_REPO_NAME, sanitize_branch_name(branch))
+}
+
 #[derive(Debug, Clone)]
 pub struct DeploymentConfig {
     pub host: String,
@@ -107,11 +130,8 @@ impl IoTDeployer {
         let branch = config
             .git_branch
             .clone()
-            .unwrap_or_else(|| "master".to_string());
-        let repo_url = format!(
-            "https://github.com/rlhf23/iot2050-telegraf-config/archive/refs/heads/{}.tar.gz",
-            branch
-        );
+            .unwrap_or_else(|| DEFAULT_BRANCH.to_string());
+        let repo_url = generate_repo_url(&branch);
 
         Self {
             config,
@@ -259,11 +279,10 @@ impl IoTDeployer {
                 self.branch
             );
 
-            // GitHub replaces '/' with '-' in branch names when creating tarballs
-            let sanitized_branch = self.branch.replace('/', "-");
             let download_cmd = format!(
-                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-                self.repo_url, sanitized_branch
+                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 {}/docker",
+                self.repo_url,
+                get_extracted_dir_name(&self.branch)
             );
 
             self.run_command(&session, &download_cmd, "Downloading docker configuration")?;
@@ -343,10 +362,8 @@ impl IoTDeployer {
                 ));
             }
 
-            // GitHub replaces '/' with '-' in branch names when creating tarballs
-            let sanitized_branch = self.branch.replace('/', "-");
             let docker_path = extract_dir
-                .join(format!("iot2050-telegraf-config-{}", sanitized_branch))
+                .join(get_extracted_dir_name(&self.branch))
                 .join("docker");
 
             println!("📤 Transferring files to device via SFTP...");
@@ -383,11 +400,10 @@ impl IoTDeployer {
                 ));
             }
 
-            // GitHub replaces '/' with '-' in branch names when creating tarballs
-            let sanitized_branch = self.branch.replace('/', "-");
             let download_cmd = format!(
-                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 iot2050-telegraf-config-{}/docker",
-                self.repo_url, sanitized_branch
+                "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 {}/docker",
+                self.repo_url,
+                get_extracted_dir_name(&self.branch)
             );
 
             self.run_command(&session, &download_cmd, "Downloading docker configuration")?;
@@ -614,8 +630,6 @@ impl IoTDeployer {
 
         // Extract tarball locally
         println!("📦 Extracting tarball locally...");
-        // GitHub replaces '/' with '-' in branch names when creating tarballs
-        let sanitized_branch = self.branch.replace('/', "-");
         let output = Command::new("tar")
             .args(&[
                 "-xzf",
@@ -623,7 +637,7 @@ impl IoTDeployer {
                 "-C",
                 extract_dir.to_str().unwrap(),
                 "--strip-components=2",
-                &format!("iot2050-telegraf-config-{}/docker", sanitized_branch),
+                &format!("{}/docker", get_extracted_dir_name(&self.branch)),
             ])
             .output()
             .map_err(|e| TelegrafError::ConfigError(format!("Failed to run tar: {}", e)))?;
