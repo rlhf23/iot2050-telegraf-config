@@ -3,9 +3,14 @@ use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 use std::fs::File;
 use std::io::Write;
 
+pub mod backup;
+#[cfg(test)]
+mod backup_test;
 #[cfg(test)]
 mod config_generator_test;
 pub mod deployment;
+#[cfg(test)]
+mod deployment_test;
 mod format;
 #[cfg(test)]
 mod format_test;
@@ -15,8 +20,6 @@ mod opcua_poller_test;
 pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
-#[cfg(test)]
-mod deployment_test;
 
 pub use format::OutputFormat;
 pub use ssh_utils::{check_service_status, ServiceType};
@@ -410,7 +413,7 @@ impl ConfigGenerator {
     }
 
     /// Generic method to check if a service is responding
-    /// 
+    ///
     /// # Returns
     /// A tuple containing a boolean indicating if the service is healthy and a status message string
     pub fn check_service_status(
@@ -430,7 +433,7 @@ impl ConfigGenerator {
     }
 
     /// Check if InfluxDB is responding
-    /// 
+    ///
     /// # Returns
     /// A tuple containing a boolean indicating if InfluxDB is healthy and a status message string
     pub fn check_influxdb_status(&self) -> Result<(bool, String), TelegrafError> {

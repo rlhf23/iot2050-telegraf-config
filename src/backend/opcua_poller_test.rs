@@ -557,20 +557,20 @@ mod tests {
             ) -> Result<HashMap<String, u16>, TelegrafError> {
                 // Simulate empty namespace result
                 let namespaces: Vec<(u16, String)> = Vec::new();
-                
+
                 if namespaces.is_empty() {
                     return Err(TelegrafError::OpcUaClientError(
                         "No namespaces found on OPC-UA server. The server may not have ServerInterfaces configured, or the browse operation failed. Check server logs for details.".to_string()
                     ));
                 }
-                
+
                 Ok(HashMap::new())
             }
         }
 
         let mock_poller = MockEmptyPoller::new(create_test_config());
         let result = mock_poller.get_namespace_info(&["test.xml".to_string()]);
-        
+
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("No namespaces found"));
@@ -598,26 +598,29 @@ mod tests {
                     (2, "SomeNamespace".to_string()),
                     (3, "AnotherNamespace".to_string()),
                 ];
-                
+
                 let mut namespace_map = HashMap::new();
-                
+
                 // Try to match files (will fail)
                 for file_path in xml_files {
                     let path = std::path::Path::new(file_path);
                     if let Some(file_name) = path.file_name() {
                         if let Some(base_name) = path.file_stem() {
                             let base_name_str = base_name.to_str().unwrap();
-                            
+
                             for (namespace_index, namespace_name) in &namespaces {
                                 if namespace_name.to_lowercase() == base_name_str.to_lowercase() {
-                                    namespace_map.insert(file_name.to_str().unwrap().to_string(), *namespace_index);
+                                    namespace_map.insert(
+                                        file_name.to_str().unwrap().to_string(),
+                                        *namespace_index,
+                                    );
                                     break;
                                 }
                             }
                         }
                     }
                 }
-                
+
                 // Check if no matches were found
                 if namespace_map.is_empty() {
                     return Err(TelegrafError::OpcUaClientError(
@@ -628,14 +631,14 @@ mod tests {
                         )
                     ));
                 }
-                
+
                 Ok(namespace_map)
             }
         }
 
         let mock_poller = MockNoMatchPoller::new(create_test_config());
         let result = mock_poller.get_namespace_info(&["UnmatchedFile.xml".to_string()]);
-        
+
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Could not match any XML files"));
@@ -664,32 +667,35 @@ mod tests {
                     (2, "MatchingNamespace".to_string()),
                     (3, "AnotherNamespace".to_string()),
                 ];
-                
+
                 let mut namespace_map = HashMap::new();
-                
+
                 for file_path in xml_files {
                     let path = std::path::Path::new(file_path);
                     if let Some(file_name) = path.file_name() {
                         if let Some(base_name) = path.file_stem() {
                             let base_name_str = base_name.to_str().unwrap();
-                            
+
                             for (namespace_index, namespace_name) in &namespaces {
                                 if namespace_name.to_lowercase() == base_name_str.to_lowercase() {
-                                    namespace_map.insert(file_name.to_str().unwrap().to_string(), *namespace_index);
+                                    namespace_map.insert(
+                                        file_name.to_str().unwrap().to_string(),
+                                        *namespace_index,
+                                    );
                                     break;
                                 }
                             }
                         }
                     }
                 }
-                
+
                 // Don't error if we have at least one match
                 if namespace_map.is_empty() {
                     return Err(TelegrafError::OpcUaClientError(
-                        "No matches found".to_string()
+                        "No matches found".to_string(),
                     ));
                 }
-                
+
                 Ok(namespace_map)
             }
         }
@@ -699,10 +705,10 @@ mod tests {
             "MatchingNamespace.xml".to_string(),
             "UnmatchedFile.xml".to_string(),
         ]);
-        
+
         assert!(result.is_ok());
         let namespace_map = result.unwrap();
-        
+
         // Should have one match
         assert_eq!(namespace_map.len(), 1);
         assert_eq!(namespace_map.get("MatchingNamespace.xml"), Some(&2));
@@ -738,7 +744,7 @@ mod tests {
         assert_eq!(mappings[0].filename, "device1.xml");
         assert_eq!(mappings[0].namespace, "2");
         assert_eq!(mappings[0].namespace_index, 2);
-        
+
         // Verify namespace is a string (as expected by frontend)
         assert_eq!(mappings[1].namespace, "3");
     }

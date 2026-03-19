@@ -24,8 +24,8 @@ pub struct OpcuaConfig<'a> {
     // Group settings
     pub group_name: &'a str,
     pub namespace_number: &'a str,
-    pub interval_ms: u64,         // Store as u64 and format when needed
-    pub identifier_type: &'a str, // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
+    pub interval_ms: u64,           // Store as u64 and format when needed
+    pub identifier_type: &'a str,   // Type of identifier: i=numeric, s=string, g=guid, b=bytestring
     pub use_source_timestamp: bool, // Use "source" instead of "gather" for timestamp
 }
 

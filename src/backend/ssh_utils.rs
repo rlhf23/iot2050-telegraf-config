@@ -12,11 +12,11 @@
 //! ```
 
 use crate::error::TelegrafError;
+use log::debug;
 use ssh2::Session;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use log::debug;
 
 /// Checks if a service is running in a Docker container
 fn is_service_containerized(session: &Session, service_name: &str) -> Result<bool, TelegrafError> {
@@ -448,20 +448,24 @@ fn execute_ssh_command(session: &Session, command: &str) -> Result<String, Teleg
 }
 
 /// Restarts Telegraf when running as a Docker container on the remote host
-pub fn restart_telegraf_docker_over_ssh(
-    session: &Session,
-) -> Result<String, TelegrafError> {
+pub fn restart_telegraf_docker_over_ssh(session: &Session) -> Result<String, TelegrafError> {
     debug!("Attempting to restart Telegraf Docker container...");
     let command = "docker restart telegraf";
     match execute_ssh_command(session, command) {
         Ok(output) => {
-            debug!("Telegraf Docker container restart command executed. Output: {}", output);
-            Ok(format!("Telegraf Docker container restarted successfully.\nOutput: {}", output))
+            debug!(
+                "Telegraf Docker container restart command executed. Output: {}",
+                output
+            );
+            Ok(format!(
+                "Telegraf Docker container restarted successfully.\nOutput: {}",
+                output
+            ))
         }
         Err(e) => {
             eprintln!("Failed to restart Telegraf Docker container: {:?}", e);
             // Propagate the error from execute_ssh_command, which is already a TelegrafError
-            Err(e) 
+            Err(e)
         }
     }
 }
@@ -478,7 +482,7 @@ pub fn restart_telegraf_over_ssh(
         stream_timeout: 15,
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
-    
+
     // Check if Telegraf is containerized
     if is_telegraf_containerized(&session)? {
         debug!("Telegraf is containerized. Using Docker restart logic.");
@@ -490,14 +494,14 @@ pub fn restart_telegraf_over_ssh(
     output.push("Detected system Telegraf".to_string());
     output.push("Restarting telegraf service on the remote host...".to_string());
     let start_time = Instant::now();
-    
+
     // Define commands for system service
     let (check_cmd, stop_cmd, start_cmd, status_cmd, log_path) = (
         "pgrep telegraf || echo 'not_running'",
         format!("echo '{}' | sudo -S service telegraf stop", password),
         format!("echo '{}' | sudo -S service telegraf start", password),
         "service telegraf status | head -n15",
-        "/var/log/telegraf/telegraf.log"
+        "/var/log/telegraf/telegraf.log",
     );
 
     // Step 1: Try graceful stop first with timeout
@@ -520,7 +524,8 @@ pub fn restart_telegraf_over_ssh(
         let mut stopped = false;
         for i in 0..10 {
             thread::sleep(Duration::from_secs(1));
-            let check_result = execute_ssh_command(&session, &format!("{} || echo 'stopped'", check_cmd))?;
+            let check_result =
+                execute_ssh_command(&session, &format!("{} || echo 'stopped'", check_cmd))?;
 
             if check_result.trim() == "stopped" {
                 output.push(format!(
@@ -538,7 +543,7 @@ pub fn restart_telegraf_over_ssh(
                 "Telegraf didn't stop gracefully within 10 seconds. Forcing stop...".to_string(),
             );
             let kill_cmd = format!("echo '{}' | sudo -S pkill -9 telegraf", password);
-            
+
             match execute_ssh_command(&session, &kill_cmd) {
                 Ok(_) => output.push("Telegraf process killed forcefully".to_string()),
                 Err(e) => output.push(format!("Warning: Error killing telegraf: {}", e)),
@@ -564,9 +569,10 @@ pub fn restart_telegraf_over_ssh(
     let elapsed_time = start_time.elapsed();
 
     // Check if the process is actually running
-    let process_check = execute_ssh_command(&session, &format!("{} || echo 'not_running'", check_cmd))?;
+    let process_check =
+        execute_ssh_command(&session, &format!("{} || echo 'not_running'", check_cmd))?;
     let is_running = process_check.trim() != "not_running";
-    
+
     // For containerized, we'll consider it successful if the container is running
     // For non-containerized, success is determined by the 'status' command output.
     // 'is_running' (from pgrep) is also implicitly checked by these status strings.
@@ -591,7 +597,7 @@ pub fn restart_telegraf_over_ssh(
         // Get recent logs if service failed
         output.push("\nRecent logs:".to_string());
         let logs_cmd = format!("tail -n 10 {}", log_path);
-        
+
         match execute_ssh_command(&session, &logs_cmd) {
             Ok(logs) => output.push(logs),
             Err(e) => output.push(format!("Could not retrieve logs: {}", e)),
@@ -601,7 +607,7 @@ pub fn restart_telegraf_over_ssh(
         output.push("\nRecent errors:".to_string());
         // Since we are in the non-containerized path, is_containerized is effectively false.
         let errors_cmd = format!("echo '{}' | sudo -S grep -E 'E!' {} 2>/dev/null | tail -n 10 || echo 'No error logs found'", password, log_path);
-        
+
         match execute_ssh_command(&session, &errors_cmd) {
             Ok(errors) => output.push(errors),
             Err(e) => output.push(format!("Could not retrieve error logs: {}", e)),
@@ -847,7 +853,7 @@ pub fn get_telegraf_status(
 
     // Check if Telegraf is running in a container
     let is_containerized = is_telegraf_containerized(&session).unwrap_or(false);
-    
+
     if is_containerized {
         debug!("Detected containerized Telegraf");
         let (is_healthy, status_msg) = check_containerized_telegraf_status(&session)?;
@@ -856,9 +862,12 @@ pub fn get_telegraf_status(
     } else {
         debug!("Checking non-containerized Telegraf service");
         // Use service command with non-interactive sudo for non-containerized Telegraf
-        let command = format!("echo '{}' | sudo -S service telegraf status || true", password);
+        let command = format!(
+            "echo '{}' | sudo -S service telegraf status || true",
+            password
+        );
         let status = execute_ssh_command(&session, &command)?;
-        
+
         if status.is_empty() {
             debug!("Warning: Empty status returned!");
             Ok("Telegraf service status unknown (empty response)".to_string())
@@ -869,27 +878,24 @@ pub fn get_telegraf_status(
 }
 
 /// Fetches logs from Telegraf when running as a Docker container
-fn get_telegraf_logs_docker(
-    session: &Session,
-    lines: usize,
-) -> Result<String, TelegrafError> {
+fn get_telegraf_logs_docker(session: &Session, lines: usize) -> Result<String, TelegrafError> {
     debug!("Fetching last {} lines from Telegraf container...", lines);
-    
+
     // Try with timestamps first, fall back to basic logs if that fails
     let command = format!("docker logs --tail={} --timestamps telegraf 2>&1 || docker logs --tail={} telegraf 2>&1 || true", lines, lines);
-    
+
     match execute_ssh_command(session, &command) {
         Ok(output) if !output.trim().is_empty() => {
             debug!("Successfully retrieved {} bytes of logs", output.len());
             Ok(output)
-        },
+        }
         Ok(_) => {
             let msg = "Received empty log output from container";
             eprintln!("{}", msg);
             Err(TelegrafError::SshError(crate::error::SshError::Other(
-                ssh2::Error::new(ssh2::ErrorCode::Session(-1), msg)
+                ssh2::Error::new(ssh2::ErrorCode::Session(-1), msg),
             )))
-        },
+        }
         Err(e) => {
             eprintln!("Failed to fetch Docker logs: {:?}", e);
             Err(e)
@@ -1017,7 +1023,10 @@ pub fn check_service_status(
         ServiceType::Prometheus => {
             // TODO: Implement proper Prometheus health check when needed
             // For now, return a failure status with a message
-            Ok((false, "Prometheus health check not yet implemented".to_string()))
+            Ok((
+                false,
+                "Prometheus health check not yet implemented".to_string(),
+            ))
         }
     }
 }
@@ -1060,12 +1069,11 @@ pub fn check_influxdb_status(
         Ok(output) if output.trim() == "OK" => {
             Ok((true, "InfluxDB is responding normally".to_string()))
         }
-        Ok(output) => {
-            Ok((false, format!("InfluxDB returned unexpected output: {}", output.trim())))
-        }
-        Err(e) => {
-            Ok((false, format!("Failed to check InfluxDB status: {}", e)))
-        }
+        Ok(output) => Ok((
+            false,
+            format!("InfluxDB returned unexpected output: {}", output.trim()),
+        )),
+        Err(e) => Ok((false, format!("Failed to check InfluxDB status: {}", e))),
     }
 }
 
@@ -1092,71 +1100,68 @@ fn check_container_status(
         container_name
     );
     let container_running = execute_ssh_command(session, &container_status_cmd)?;
-    
+
     if container_running.trim() != "true" {
         return Ok((false, format!("{} container is not running", service_name)));
     }
-    
+
     // Get container logs for debugging
-    let logs_cmd = format!("docker logs --tail 5 {} 2>&1 || echo 'Failed to get logs'", container_name);
+    let logs_cmd = format!(
+        "docker logs --tail 5 {} 2>&1 || echo 'Failed to get logs'",
+        container_name
+    );
     let logs = execute_ssh_command(session, &logs_cmd)
         .unwrap_or_else(|_| "Failed to retrieve logs".to_string());
-    
+
     // Run the health check command if provided
     let health_status = if !health_check_cmd.is_empty() {
         let full_cmd = format!("docker exec {} {}", container_name, health_check_cmd);
         match execute_ssh_command(session, &full_cmd) {
-            Ok(output) if output.trim() == "OK" => {
-                (true, format!("{} container is running and healthy", service_name))
-            }
-            Ok(output) => {
-                (false, format!("{} container is running but health check failed: {}", service_name, output))
-            }
+            Ok(output) if output.trim() == "OK" => (
+                true,
+                format!("{} container is running and healthy", service_name),
+            ),
+            Ok(output) => (
+                false,
+                format!(
+                    "{} container is running but health check failed: {}",
+                    service_name, output
+                ),
+            ),
             Err(e) => {
                 // If health check failed, get more detailed logs
                 let detailed_logs_cmd = format!("docker logs --tail 20 {} 2>&1", container_name);
                 let detailed_logs = execute_ssh_command(session, &detailed_logs_cmd)
                     .unwrap_or_else(|_| "Failed to retrieve detailed logs".to_string());
-                
-                (false, format!(
-                    "{} container health check error: {}\nRecent logs:\n{}",
-                    service_name, e, detailed_logs
-                ))
+
+                (
+                    false,
+                    format!(
+                        "{} container health check error: {}\nRecent logs:\n{}",
+                        service_name, e, detailed_logs
+                    ),
+                )
             }
         }
     } else {
         // If no health check command, just report the container is running
         (true, format!("{} container is running", service_name))
     };
-    
+
     // Always include the recent logs in the status
-    let status_message = format!(
-        "{}\nRecent logs:\n{}",
-        health_status.1,
-        logs
-    );
-    
+    let status_message = format!("{}\nRecent logs:\n{}", health_status.1, logs);
+
     Ok((health_status.0, status_message))
 }
 
 /// Checks the status of a containerized InfluxDB instance
 fn check_containerized_influxdb_status(session: &Session) -> Result<(bool, String), TelegrafError> {
-    check_container_status(
-        session,
-        "influxdb",
-        "influx ping",
-        "InfluxDB"
-    )
+    check_container_status(session, "influxdb", "influx ping", "InfluxDB")
 }
 
 /// Checks the status of a containerized Telegraf instance
 fn check_containerized_telegraf_status(session: &Session) -> Result<(bool, String), TelegrafError> {
-    check_container_status(
-        session,
-        "telegraf",
-        "pgrep -x telegraf",
-        "Telegraf"
-    )
+    check_container_status(session, "telegraf", "pgrep -x telegraf", "Telegraf")
 }
 
 /// Sync system time from local machine to remote device
@@ -1172,32 +1177,208 @@ pub fn sync_time_over_ssh(
         stream_timeout: 15,
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
-    
+
     // Get local time
     let local_time = chrono::Local::now();
     let time_str = local_time.format("%Y-%m-%d %H:%M:%S").to_string();
-    
+
     // Set time on device (requires sudo)
     let set_time_cmd = format!("echo '{}' | sudo -S date -s '{}'", password, time_str);
-    
+
     let mut channel = session.channel_session()?;
     channel.exec(&set_time_cmd)?;
-    
+
     let mut output = String::new();
-    channel.read_to_string(&mut output)
+    channel
+        .read_to_string(&mut output)
         .map_err(|e| TelegrafError::IoError(e))?;
-    
+
     channel.wait_close()?;
-    
+
     // Verify the time was set
     let mut verify_channel = session.channel_session()?;
     verify_channel.exec("date")?;
-    
+
     let mut device_time = String::new();
-    verify_channel.read_to_string(&mut device_time)
+    verify_channel
+        .read_to_string(&mut device_time)
         .map_err(|e| TelegrafError::IoError(e))?;
-    
+
     verify_channel.wait_close()?;
-    
-    Ok(format!("Local time: {}\nDevice time: {}", time_str, device_time.trim()))
+
+    Ok(format!(
+        "Local time: {}\nDevice time: {}",
+        time_str,
+        device_time.trim()
+    ))
+}
+
+/// Run a command on the remote device with sudo password support
+///
+/// Prints output to stdout/stderr in real-time and returns an error if the command fails.
+pub fn run_command(
+    session: &Session,
+    command: &str,
+    description: &str,
+    password: Option<&String>,
+) -> Result<(), TelegrafError> {
+    println!("🔧 {}", description);
+
+    let command = if command.contains("sudo ") && password.is_some() {
+        let pwd = password.unwrap();
+        format!("echo '{}' | sudo -S {}", pwd, command.replace("sudo ", ""))
+    } else {
+        command.to_string()
+    };
+
+    let mut channel = session.channel_session()?;
+    channel.exec(&command)?;
+
+    use std::io::{BufReader, Read, Write};
+    use std::thread;
+    use std::time::Instant;
+
+    let mut stdout = channel.stream(0);
+    let mut stderr = channel.stderr();
+    let mut stdout_reader = BufReader::new(&mut stdout);
+    let mut stderr_reader = BufReader::new(&mut stderr);
+    let start_time = Instant::now();
+    let timeout = std::time::Duration::from_secs(300);
+
+    let mut stdout_buf = [0u8; 1024];
+    let mut stderr_buf = [0u8; 1024];
+    loop {
+        if start_time.elapsed() > timeout {
+            println!("⏰ Command timed out after 5 minutes");
+            channel.close().ok();
+            return Err(TelegrafError::SshOperationError(format!(
+                "Command timed out: {}",
+                command
+            )));
+        }
+        match stdout_reader.read(&mut stdout_buf) {
+            Ok(n) if n > 0 => {
+                let s = String::from_utf8_lossy(&stdout_buf[..n]);
+                print!("{}", s);
+                std::io::stdout().flush().ok();
+            }
+            _ => {}
+        }
+        match stderr_reader.read(&mut stderr_buf) {
+            Ok(n) if n > 0 => {
+                let s = String::from_utf8_lossy(&stderr_buf[..n]);
+                eprint!("{}", s);
+                std::io::stderr().flush().ok();
+            }
+            _ => {}
+        }
+        if channel.eof() {
+            break;
+        }
+        thread::sleep(std::time::Duration::from_millis(100));
+    }
+    channel.wait_close()?;
+    let exit_status = channel.exit_status()?;
+    if exit_status != 0 {
+        return Err(TelegrafError::SshOperationError(format!(
+            "Command failed (exit code {}): {}",
+            exit_status, command
+        )));
+    }
+    Ok(())
+}
+
+/// Download a file from remote device to local machine via SFTP
+pub fn download_file(
+    session: &Session,
+    remote_path: &str,
+    local_path: &str,
+) -> Result<(), TelegrafError> {
+    use std::fs::File;
+
+    let (mut remote_file, _stat) = session.scp_recv(std::path::Path::new(remote_path))?;
+    let mut local_file = File::create(local_path)?;
+    std::io::copy(&mut remote_file, &mut local_file)?;
+    Ok(())
+}
+
+/// Download a directory from remote device to local machine via SFTP
+pub fn download_directory(
+    session: &Session,
+    remote_path: &str,
+    local_path: &str,
+) -> Result<(), TelegrafError> {
+    use std::fs::File;
+
+    // List files in remote directory
+    let mut channel = session.channel_session()?;
+    channel.exec(&format!("ls {}", remote_path))?;
+    let mut file_list = String::new();
+    channel.read_to_string(&mut file_list)?;
+    channel.wait_close()?;
+
+    // Create local directory
+    std::fs::create_dir_all(local_path)?;
+
+    // Download each file
+    for file_name in file_list.lines() {
+        let remote_file = format!("{}/{}", remote_path, file_name);
+        let local_file = format!("{}/{}", local_path, file_name);
+
+        let (mut remote, _stat) = session.scp_recv(std::path::Path::new(&remote_file))?;
+        let mut local = File::create(&local_file)?;
+        std::io::copy(&mut remote, &mut local)?;
+    }
+
+    Ok(())
+}
+
+/// Upload a file from local machine to remote device via SFTP
+pub fn upload_file(
+    session: &Session,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<(), TelegrafError> {
+    use std::fs::File;
+    use std::io::Read;
+    use std::io::Write;
+
+    let mut local_file = File::open(local_path)?;
+    let mut contents = Vec::new();
+    local_file.read_to_end(&mut contents)?;
+
+    let sftp = session.sftp()?;
+    let mut remote_file = sftp.create(std::path::Path::new(remote_path))?;
+    remote_file.write_all(&contents)?;
+
+    Ok(())
+}
+
+/// Upload a directory from local machine to remote device via SFTP
+pub fn upload_directory(
+    session: &Session,
+    local_path: &str,
+    remote_path: &str,
+    password: Option<&String>,
+) -> Result<(), TelegrafError> {
+    // Create remote directory first
+    run_command(
+        session,
+        &format!("mkdir -p {}", remote_path),
+        "Creating remote directory",
+        password,
+    )?;
+
+    // Upload each file in the directory
+    for entry in std::fs::read_dir(local_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_file() {
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            let remote_file = format!("{}/{}", remote_path, file_name);
+            upload_file(session, &path.to_string_lossy(), &remote_file)?;
+        }
+    }
+
+    Ok(())
 }
