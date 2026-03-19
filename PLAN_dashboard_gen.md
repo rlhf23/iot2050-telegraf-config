@@ -312,34 +312,50 @@ For multiple panels in one dashboard:
 4. Verify dashboard appears in Grafana UI
 5. Verify data is displayed correctly
 
-## Open Questions
+## Design Decisions
 
-1. **Panel type detection**: Should we auto-detect panel types based on XML data types?
-   - `REAL`, `INT` → `timeseries`
-   - `BOOL` → `state-timeline`
-   - Or always use `timeseries` for simplicity?
+1. **Dashboard Generation Trigger**: Separate button - user explicitly clicks "Generate Dashboard" after config generation
+2. **Measurement Extraction**: Measurements returned from config generation API (modify `generate_config` response to include measurements list)
+3. **Template Customization**: Use default template only - no user upload capability for now
+4. **Panel Type**: Always use `timeseries` for simplicity
+5. **Multiple XML Files**: One combined dashboard with all measurements
+6. **Dashboard Updates**: Always update existing (use measurement name as UID for consistency)
 
-2. **Multiple XML files**: How to handle dashboards when multiple XML files are processed?
-   - One dashboard per XML file?
-   - One combined dashboard?
-   - User choice?
+## Implementation Progress
 
-3. **Dashboard updates**: How to handle re-generation?
-   - Always update existing (use same UID)
-   - Create new (generate new UID)?
-   - Prompt user?
+### Phase 1: Dashboard Module ✅ COMPLETE
+- [x] Created `src/backend/dashboard.rs`
+- [x] Created `config/grafana/dashboard_template.json`
+- [x] Implemented `DashboardConfig` struct
+- [x] Implemented `generate_dashboard()`, `load_template()`, `fill_template()`, `sanitize_uid()`
+- [x] Unit tests passing (9 tests)
 
-4. **Template customization**: Should users be able to provide custom templates?
-   - Template path as parameter?
-   - UI for editing template?
+### Phase 2: ConfigGenerator Integration ✅ COMPLETE
+- [x] Added `generate_grafana_dashboard()` method to `ConfigGenerator`
+- [x] Added `deploy_grafana_dashboard()` function to `ssh_utils.rs`
+- [x] Exports in `mod.rs`: `DashboardConfig`, `generate_dashboard`, `sanitize_uid`
+- [x] All 205 tests passing
+
+### Phase 3: API Integration 🔄 IN PROGRESS
+- [ ] Modify `config.rs::generate_config` to return measurements list
+- [ ] Create `docker/api-service/src/dashboard.rs` module
+- [ ] Add routes in `lib.rs`:
+  - `/api/dashboard/generate` - Generate dashboard from measurements
+  - `/api/dashboard/deploy` - Deploy to Grafana
+- [ ] Measurements returned from config API response
+
+### Phase 4: WebUI Integration 📋 PENDING
+- [ ] Add "Generate Dashboard" button in Step 3
+- [ ] Add dashboard preview modal
+- [ ] Add "Deploy Dashboard" button
+- [ ] JavaScript API calls for dashboard flow
 
 ## Timeline
 
-| Phase | Task | Estimated Effort |
-|-------|------|------------------|
-| 1 | Dashboard module + template | 1-2 days |
-| 2 | ConfigGenerator integration | 1 day |
-| 3 | SSH/API deployment | 1 day |
-| 4 | GUI/CLI integration | 1 day |
-| - | Testing & refinement | 1 day |
-| **Total** | | **5-6 days** |
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | Dashboard module + template | ✅ Complete |
+| 2 | ConfigGenerator integration | ✅ Complete |
+| 3 | API integration | 🔄 In Progress |
+| 4 | WebUI integration | 📋 Pending |
+| - | Testing | 📋 Pending |
