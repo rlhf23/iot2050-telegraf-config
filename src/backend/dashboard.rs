@@ -51,27 +51,98 @@ pub fn sanitize_uid(name: &str) -> String {
         .to_lowercase()
 }
 
-/// Replace placeholders in template with actual values
+/// Generate a panel JSON from a template for a specific measurement
+fn generate_panel(
+    panel_template: &serde_json::Value,
+    measurement: &str,
+    bucket: &str,
+    datasource_uid: &str,
+    y_position: i64,
+) -> Result<serde_json::Value, TelegrafError> {
+    let mut panel = panel_template.clone();
+
+    // Replace placeholders in the panel
+    let panel_str = serde_json::to_string(&panel)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to serialize panel: {}", e)))?;
+
+    let panel_str = panel_str
+        .replace("{{MEASUREMENT}}", measurement)
+        .replace("{{BUCKET}}", bucket)
+        .replace("{{DATASOURCE_UID}}", datasource_uid);
+
+    panel = serde_json::from_str(&panel_str)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse panel JSON: {}", e)))?;
+
+    // Set grid position
+    if let Some(grid_pos) = panel.get_mut("gridPos") {
+        if let Some(grid_obj) = grid_pos.as_object_mut() {
+            grid_obj.insert("y".to_string(), serde_json::json!(y_position));
+        }
+    }
+
+    Ok(panel)
+}
+
+/// Replace placeholders in template with actual values and generate panels for each measurement
 pub fn fill_template(template: &str, config: &DashboardConfig) -> Result<String, TelegrafError> {
-    let mut result = template.to_string();
-
-    // Replace simple placeholders
-    result = result.replace("{{DASHBOARD_UID}}", &config.uid);
-    result = result.replace("{{DASHBOARD_TITLE}}", &config.title);
-    result = result.replace("{{DATASOURCE_UID}}", &config.datasource_uid);
-    result = result.replace("{{BUCKET}}", &config.bucket);
-
-    // For measurements, use the first measurement for single-panel template
-    // (Multi-panel templates would need more complex handling)
-    if let Some(measurement) = config.measurements.first() {
-        result = result.replace("{{MEASUREMENT}}", measurement);
-    } else {
+    if config.measurements.is_empty() {
         return Err(TelegrafError::ConfigError(
             "At least one measurement is required for dashboard generation".to_string(),
         ));
     }
 
-    Ok(result)
+    // Parse template as JSON
+    let mut template_json: serde_json::Value = serde_json::from_str(template)
+        .map_err(|e| TelegrafError::ConfigError(format!("Invalid template JSON: {}", e)))?;
+
+    // Extract the panel template
+    let panel_template = template_json
+        .get("__panel_template")
+        .cloned()
+        .ok_or_else(|| {
+            TelegrafError::ConfigError("Template missing __panel_template field".to_string())
+        })?;
+
+    // Remove the panel template from output
+    if let Some(obj) = template_json.as_object_mut() {
+        obj.remove("__panel_template");
+    }
+
+    // Get dashboard object
+    let dashboard = template_json.get_mut("dashboard").ok_or_else(|| {
+        TelegrafError::ConfigError("Template missing dashboard field".to_string())
+    })?;
+
+    let dashboard_obj = dashboard.as_object_mut().ok_or_else(|| {
+        TelegrafError::ConfigError("Dashboard field is not an object".to_string())
+    })?;
+
+    // Replace dashboard-level placeholders
+    dashboard_obj.insert("uid".to_string(), serde_json::json!(config.uid));
+    dashboard_obj.insert("title".to_string(), serde_json::json!(config.title));
+
+    // Generate panels for each measurement
+    let mut panels = Vec::new();
+    let mut y_position = 0;
+
+    for measurement in &config.measurements {
+        let panel = generate_panel(
+            &panel_template,
+            measurement,
+            &config.bucket,
+            &config.datasource_uid,
+            y_position,
+        )?;
+        panels.push(panel);
+        y_position += 8; // Each panel is 8 units high
+    }
+
+    // Insert panels array
+    dashboard_obj.insert("panels".to_string(), serde_json::json!(panels));
+
+    // Serialize back to JSON
+    serde_json::to_string_pretty(&template_json)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to serialize dashboard: {}", e)))
 }
 
 /// Generate a dashboard JSON from configuration
@@ -118,32 +189,11 @@ mod tests {
     fn test_load_default_template() {
         let template = load_template(None).unwrap();
         assert!(template.contains("{{DASHBOARD_UID}}"));
-        assert!(template.contains("{{MEASUREMENT}}"));
-        assert!(template.contains("{{BUCKET}}"));
+        assert!(template.contains("__panel_template"));
     }
 
     #[test]
-    fn test_fill_template_basic() {
-        let config = DashboardConfig {
-            uid: "sample_db".to_string(),
-            title: "Sample_DB Monitoring".to_string(),
-            measurements: vec!["Sample_DB".to_string()],
-            bucket: "telegraf".to_string(),
-            datasource_uid: "InfluxDB".to_string(),
-        };
-
-        let template = r#"{"dashboard":{"uid":"{{DASHBOARD_UID}}","title":"{{DASHBOARD_TITLE}}","panels":[{"title":"{{MEASUREMENT}}","targets":[{"query":"from(bucket: {{BUCKET}})"}]}]},"overwrite":true}"#;
-
-        let result = fill_template(template, &config).unwrap();
-
-        assert!(result.contains("\"uid\":\"sample_db\""));
-        assert!(result.contains("\"title\":\"Sample_DB Monitoring\""));
-        assert!(result.contains("Sample_DB"));
-        assert!(result.contains("telegraf"));
-    }
-
-    #[test]
-    fn test_fill_template_all_placeholders() {
+    fn test_fill_template_single_measurement() {
         let config = DashboardConfig {
             uid: "test_uid".to_string(),
             title: "Test Dashboard".to_string(),
@@ -155,9 +205,8 @@ mod tests {
         let template = load_template(None).unwrap();
         let result = fill_template(&template, &config).unwrap();
 
-        // Verify all placeholders are replaced
+        // Verify placeholders are replaced
         assert!(!result.contains("{{DASHBOARD_UID}}"));
-        assert!(!result.contains("{{DASHBOARD_TITLE}}"));
         assert!(!result.contains("{{MEASUREMENT}}"));
         assert!(!result.contains("{{BUCKET}}"));
         assert!(!result.contains("{{DATASOURCE_UID}}"));
@@ -168,6 +217,47 @@ mod tests {
         assert!(result.contains("TestMeasurement"));
         assert!(result.contains("my_bucket"));
         assert!(result.contains("MyDataSource"));
+
+        // Verify structure
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["dashboard"]["uid"], "test_uid");
+        assert_eq!(parsed["dashboard"]["title"], "Test Dashboard");
+        assert!(parsed["dashboard"]["panels"].as_array().unwrap().len() == 1);
+    }
+
+    #[test]
+    fn test_fill_template_multiple_measurements() {
+        let config = DashboardConfig {
+            uid: "multi_test".to_string(),
+            title: "Multi Measurement Dashboard".to_string(),
+            measurements: vec![
+                "FirstMetric".to_string(),
+                "SecondMetric".to_string(),
+                "ThirdMetric".to_string(),
+            ],
+            bucket: "telegraf".to_string(),
+            datasource_uid: "InfluxDB".to_string(),
+        };
+
+        let template = load_template(None).unwrap();
+        let result = fill_template(&template, &config).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let panels = parsed["dashboard"]["panels"].as_array().unwrap();
+
+        assert_eq!(panels.len(), 3);
+
+        // Check first panel
+        assert_eq!(panels[0]["title"], "FirstMetric");
+        assert_eq!(panels[0]["gridPos"]["y"], 0);
+
+        // Check second panel
+        assert_eq!(panels[1]["title"], "SecondMetric");
+        assert_eq!(panels[1]["gridPos"]["y"], 8);
+
+        // Check third panel
+        assert_eq!(panels[2]["title"], "ThirdMetric");
+        assert_eq!(panels[2]["gridPos"]["y"], 16);
     }
 
     #[test]
@@ -180,8 +270,8 @@ mod tests {
             datasource_uid: "InfluxDB".to_string(),
         };
 
-        let template = "{{MEASUREMENT}}";
-        let result = fill_template(template, &config);
+        let template = load_template(None).unwrap();
+        let result = fill_template(&template, &config);
 
         assert!(result.is_err());
         assert!(result
