@@ -2,6 +2,7 @@ use crate::{error::TelegrafError, SelectedOpcUaNode, TelegrafConfig};
 
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 pub mod backup;
 #[cfg(test)]
@@ -22,6 +23,7 @@ pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
 
+pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
 pub use ssh_utils::{check_service_status, ServiceType};
 
@@ -373,6 +375,71 @@ impl ConfigGenerator {
         ssh_utils::send_and_restart_telegraf(
             &config_path,
             "telegraf/telegraf.conf",
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+        )
+    }
+
+    /// Generate a Grafana dashboard from template
+    ///
+    /// # Arguments
+    /// * `measurements` - List of measurement names (from XML parsing or browser selection)
+    /// * `bucket` - InfluxDB bucket name (default: "telegraf")
+    /// * `datasource_uid` - Grafana datasource UID or name (default: "InfluxDB")
+    /// * `template_path` - Optional custom template path (uses default if None)
+    ///
+    /// # Returns
+    /// * `Ok(String)` - Generated dashboard JSON
+    /// * `Err(TelegrafError)` - Generation error
+    pub fn generate_grafana_dashboard(
+        &self,
+        measurements: &[String],
+        bucket: Option<&str>,
+        datasource_uid: Option<&str>,
+        template_path: Option<&Path>,
+    ) -> Result<String, TelegrafError> {
+        if measurements.is_empty() {
+            return Err(TelegrafError::ConfigError(
+                "At least one measurement is required for dashboard generation".to_string(),
+            ));
+        }
+
+        // Use first measurement as primary for dashboard UID and title
+        let primary_measurement = &measurements[0];
+        let dashboard_uid = sanitize_uid(primary_measurement);
+
+        let config = DashboardConfig {
+            uid: dashboard_uid.clone(),
+            title: format!("{} Monitor", primary_measurement),
+            measurements: measurements.to_vec(),
+            bucket: bucket.unwrap_or("telegraf").to_string(),
+            datasource_uid: datasource_uid.unwrap_or("InfluxDB").to_string(),
+        };
+
+        let dashboard_json = generate_dashboard(&config, template_path)?;
+
+        // Write to config folder
+        let dashboard_path = self.config.folder.join("grafana_dashboard.json");
+        let mut dashboard_file = File::create(&dashboard_path).map_err(TelegrafError::IoError)?;
+        dashboard_file
+            .write_all(dashboard_json.as_bytes())
+            .map_err(TelegrafError::IoError)?;
+
+        Ok(dashboard_json)
+    }
+
+    /// Deploy Grafana dashboard via API
+    ///
+    /// # Arguments
+    /// * `dashboard_json` - Dashboard JSON string (from generate_grafana_dashboard)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Dashboard deployed successfully
+    /// * `Err(TelegrafError)` - Deployment error
+    pub fn deploy_grafana_dashboard(&self, dashboard_json: &str) -> Result<(), TelegrafError> {
+        ssh_utils::deploy_grafana_dashboard(
+            dashboard_json,
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,
