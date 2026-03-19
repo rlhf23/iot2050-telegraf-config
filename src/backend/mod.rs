@@ -8,6 +8,7 @@ pub mod backup;
 mod backup_test;
 #[cfg(test)]
 mod config_generator_test;
+pub mod dashboard;
 pub mod deployment;
 #[cfg(test)]
 mod deployment_test;
