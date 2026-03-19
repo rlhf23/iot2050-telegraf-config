@@ -25,6 +25,7 @@ mod ssh_utils_test;
 
 pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
+pub use format::XmlParseResult;
 pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]
@@ -32,6 +33,15 @@ pub struct FileConfig {
     pub namespace: String,
     pub interval_ms: u64,
     pub ip: Option<String>,
+}
+
+/// Result of config generation
+#[derive(Debug)]
+pub struct ConfigResult {
+    /// The generated telegraf.conf content
+    pub config_content: String,
+    /// List of measurement names extracted from XML files
+    pub measurements: Vec<String>,
 }
 
 pub struct ConfigGenerator {
@@ -106,9 +116,10 @@ impl ConfigGenerator {
         &self,
         xml_files: &[String],
         listener_files: &[String],
-    ) -> Result<String, TelegrafError> {
+    ) -> Result<ConfigResult, TelegrafError> {
         let mut config_strings = Vec::new();
         let mut namespace_numbers = Vec::new();
+        let mut measurements = Vec::new();
 
         // Generate configuration strings for each XML file
         for file in xml_files {
@@ -151,9 +162,10 @@ impl ConfigGenerator {
                 use_source_timestamp: self.config.use_source_timestamp,
             };
 
-            let config_string = format::parse_xml(&config, file, &mut namespace_numbers)
+            let parse_result = format::parse_xml(&config, file, &mut namespace_numbers)
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
-            config_strings.push(config_string);
+            config_strings.push(parse_result.config_string);
+            measurements.push(parse_result.measurement_name);
         }
 
         // Generate configuration for selected OPC UA nodes from browser if available
@@ -250,6 +262,7 @@ impl ConfigGenerator {
 
                 let config_string = format::format_regular_config(&opcua_config, &nodes_str);
                 config_strings.push(config_string);
+                measurements.push(folder_name.clone());
             }
 
             // Now handle individual nodes (not part of a folder)
@@ -341,6 +354,7 @@ impl ConfigGenerator {
                     let config_string =
                         format::format_browsed_config(&opcua_config, &node_configs.join("\n"));
                     config_strings.push(config_string);
+                    measurements.push(format!("opcua_browser_ns{}", namespace));
                 }
             }
         }
@@ -361,7 +375,10 @@ impl ConfigGenerator {
             .write_all(config_content.as_bytes())
             .map_err(TelegrafError::IoError)?;
 
-        Ok(config_content)
+        Ok(ConfigResult {
+            config_content,
+            measurements,
+        })
     }
 
     pub fn send_config(&self) -> Result<String, TelegrafError> {

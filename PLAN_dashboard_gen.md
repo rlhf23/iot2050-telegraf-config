@@ -336,19 +336,24 @@ For multiple panels in one dashboard:
 - [x] Exports in `mod.rs`: `DashboardConfig`, `generate_dashboard`, `sanitize_uid`
 - [x] All 205 tests passing
 
-### Phase 3: API Integration 🔄 IN PROGRESS
-- [ ] Modify `config.rs::generate_config` to return measurements list
-- [ ] Create `docker/api-service/src/dashboard.rs` module
-- [ ] Add routes in `lib.rs`:
+### Phase 3: API Integration ✅ COMPLETE
+- [x] Modified `parse_xml` to return `XmlParseResult` (config_string + measurement_name)
+- [x] Modified `ConfigGenerator::generate_config` to return `ConfigResult` (config_content + measurements)
+- [x] Created `docker/api-service/src/dashboard.rs` module
+- [x] Added `reqwest` dependency for Grafana API calls
+- [x] Added routes in `lib.rs`:
   - `/api/dashboard/generate` - Generate dashboard from measurements
-  - `/api/dashboard/deploy` - Deploy to Grafana
-- [ ] Measurements returned from config API response
+  - `/api/dashboard/deploy` - Deploy to Grafana via HTTP API
+- [x] Updated `GenerateConfigResponse` to include `measurements` field
 
-### Phase 4: WebUI Integration 📋 PENDING
-- [ ] Add "Generate Dashboard" button in Step 3
-- [ ] Add dashboard preview modal
-- [ ] Add "Deploy Dashboard" button
-- [ ] JavaScript API calls for dashboard flow
+### Phase 4: WebUI Integration ✅ COMPLETE
+- [x] Added "Grafana Dashboard" section in Step 3
+- [x] Added "Generate Dashboard" button (disabled until config generated)
+- [x] Added "Deploy Dashboard" button
+- [x] Added "View Dashboard JSON" button
+- [x] JavaScript handlers for dashboard generation and deployment
+- [x] Measurements stored from config generation response
+- [x] Dashboard JSON preview modal
 
 ## Timeline
 

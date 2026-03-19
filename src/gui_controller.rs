@@ -124,13 +124,15 @@ impl GuiController {
     pub fn send_worker_command(&mut self, command: WorkerCommand, working_message: &str) {
         if let Some(worker) = &self.worker {
             if let Err(e) = worker.send_command(command) {
-                self.status_messages.push(format!("Failed to start operation: {}", e));
+                self.status_messages
+                    .push(format!("Failed to start operation: {}", e));
             } else {
                 self.is_working = true;
                 self.status_messages.push(working_message.to_string());
             }
         } else {
-            self.status_messages.push("Worker not initialized".to_string());
+            self.status_messages
+                .push("Worker not initialized".to_string());
         }
     }
 
@@ -149,19 +151,23 @@ impl GuiController {
                 // Process the response
                 match response {
                     WorkerResponse::DummyResponse => {
-                        self.status_messages.push("Dummy operation completed!".to_string());
+                        self.status_messages
+                            .push("Dummy operation completed!".to_string());
                     }
                     WorkerResponse::SshCommandOutput(output) => {
-                        self.status_messages.push(format!("SSH command output:\n{}", output));
+                        self.status_messages
+                            .push(format!("SSH command output:\n{}", output));
                     }
                     WorkerResponse::SshError(err) => {
                         self.status_messages.push(format!("SSH error: {}", err));
                     }
                     WorkerResponse::FileTransferComplete => {
-                        self.status_messages.push("File transfer completed successfully".to_string());
+                        self.status_messages
+                            .push("File transfer completed successfully".to_string());
                     }
                     WorkerResponse::FileTransferError(err) => {
-                        self.status_messages.push(format!("File transfer error: {}", err));
+                        self.status_messages
+                            .push(format!("File transfer error: {}", err));
                     }
                     WorkerResponse::ProgressUpdate(progress) => {
                         // Update or add progress message
@@ -200,16 +206,16 @@ impl GuiController {
                             }
                         }
                         if found_count > 0 {
-                            self.status_messages.push(
-                                format!("Found namespaces for {} XML files!", found_count)
-                            );
+                            self.status_messages
+                                .push(format!("Found namespaces for {} XML files!", found_count));
                         } else {
                             self.status_messages.push("No matching namespaces found. Check XML filenames match namespace names.".to_string());
                         }
                         self.opcua_browse_state = OpcUaBrowseState::GettingNamespacesComplete;
                     }
                     WorkerResponse::OpcUaError(err) => {
-                        self.status_messages.push(format!("OPC UA operation failed: {}", err));
+                        self.status_messages
+                            .push(format!("OPC UA operation failed: {}", err));
                         match self.opcua_browse_state {
                             OpcUaBrowseState::BrowsingNodes => {
                                 self.opcua_browse_state =
@@ -253,14 +259,20 @@ impl GuiController {
     pub fn validate_file_ip(&mut self, file: &str, ip: &str) {
         if !ip.is_empty() {
             let validation_result = self.config.validate_ip_for_file(ip);
-            self.form_state.ip_errors.insert(file.to_string(), validation_result.is_err());
+            self.form_state
+                .ip_errors
+                .insert(file.to_string(), validation_result.is_err());
         } else {
             self.form_state.ip_errors.insert(file.to_string(), false);
         }
     }
 
     /// Load children for an OPC UA node
-    pub fn load_node_children(&self, node: &OpcUaNode, indent_level: usize) -> Result<Vec<OpcUaNode>, Box<dyn std::error::Error>> {
+    pub fn load_node_children(
+        &self,
+        node: &OpcUaNode,
+        indent_level: usize,
+    ) -> Result<Vec<OpcUaNode>, Box<dyn std::error::Error>> {
         let poller = OpcUaPoller::new(self.config.connection_config())?;
         Ok(poller.load_node_children(node, indent_level)?)
     }
@@ -275,8 +287,9 @@ impl GuiController {
     /// Start OPC UA browsing
     pub fn start_opcua_browsing(&mut self) {
         self.show_opcua_browser = true;
-        if self.opcua_browse_state != OpcUaBrowseState::BrowsingNodes 
-            && self.opcua_browse_state != OpcUaBrowseState::BrowsingNodesComplete {
+        if self.opcua_browse_state != OpcUaBrowseState::BrowsingNodes
+            && self.opcua_browse_state != OpcUaBrowseState::BrowsingNodesComplete
+        {
             self.opcua_nodes.clear();
             self.opcua_browse_state = OpcUaBrowseState::BrowsingNodes;
             self.browse_status_message = "Requesting OPC UA structure...".to_string();
@@ -293,7 +306,8 @@ impl GuiController {
     pub fn start_getting_namespaces(&mut self) {
         if self.opcua_browse_state != OpcUaBrowseState::GettingNamespaces {
             self.opcua_browse_state = OpcUaBrowseState::GettingNamespaces;
-            self.status_messages.push("Requesting OPC UA namespaces...".to_string());
+            self.status_messages
+                .push("Requesting OPC UA namespaces...".to_string());
             let command = WorkerCommand::GetOpcUaNamespaces {
                 config: self.config.clone(),
                 xml_files: self.xml_files.clone(),
@@ -322,40 +336,45 @@ impl GuiController {
         self.form_state.show_iot_host_error = false;
 
         // Convert file_configs to XmlFileValidation for backend validation
-        let validation_configs: HashMap<String, XmlFileValidation> =
-            self.file_configs.iter().map(|(file, config)| {
-                (file.clone(), XmlFileValidation {
-                    namespace: config.namespace.clone(),
-                    interval_ms: config.interval_ms.clone(),
-                    ip: config.ip.clone(),
-                })
-            }).collect();
+        let validation_configs: HashMap<String, XmlFileValidation> = self
+            .file_configs
+            .iter()
+            .map(|(file, config)| {
+                (
+                    file.clone(),
+                    XmlFileValidation {
+                        namespace: config.namespace.clone(),
+                        interval_ms: config.interval_ms.clone(),
+                        ip: config.ip.clone(),
+                    },
+                )
+            })
+            .collect();
 
         // Perform comprehensive backend validation
         match self.config.validate_config(&validation_configs) {
             Ok(_) => {
                 // All validations passed
-            },
+            }
             Err(errors) => {
                 // Handle errors and update UI state
-                let error_messages: Vec<String> = errors.iter()
-                    .map(|e| e.to_string())
-                    .collect();
+                let error_messages: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
 
                 // Set appropriate error flags
                 for error in &errors {
                     match error {
                         TelegrafError::ValidationError(msg) if msg.contains("namespace") => {
                             self.form_state.show_namespace_error = true;
-                        },
+                        }
                         TelegrafError::HostFormatError(_) => {
                             self.form_state.show_iot_host_error = true;
-                        },
+                        }
                         _ => {}
                     }
                 }
 
-                self.status_messages.push(format!("Validation errors: {}", error_messages.join("; ")));
+                self.status_messages
+                    .push(format!("Validation errors: {}", error_messages.join("; ")));
                 return;
             }
         }
@@ -394,13 +413,12 @@ impl GuiController {
                         );
                     }
                 }
-                match generator
-                    .generate_config(&self.xml_files, &self.config.listener_files)
-                {
-                    Ok(output_path) => {
-                        self.status_messages.push(
-                            format!("Successfully generated config in {:?}", output_path)
-                        );
+                match generator.generate_config(&self.xml_files, &self.config.listener_files) {
+                    Ok(result) => {
+                        self.status_messages.push(format!(
+                            "Successfully generated config with {} measurement(s)",
+                            result.measurements.len()
+                        ));
                     }
                     Err(e) => {
                         let error_message = self.handle_error(&e, "generating config");
@@ -420,7 +438,7 @@ impl GuiController {
         let config = self.config.clone();
         self.send_worker_command(
             WorkerCommand::SendTelegrafConfig { config },
-            "Sending configuration..."
+            "Sending configuration...",
         );
     }
 
@@ -429,7 +447,7 @@ impl GuiController {
         let config = self.config.clone();
         self.send_worker_command(
             WorkerCommand::BackupInfluxDB { config },
-            "Backing up InfluxDB..."
+            "Backing up InfluxDB...",
         );
     }
 
@@ -438,7 +456,7 @@ impl GuiController {
         let config = self.config.clone();
         self.send_worker_command(
             WorkerCommand::BackupGrafana { config },
-            "Backing up Grafana..."
+            "Backing up Grafana...",
         );
     }
 
@@ -447,7 +465,7 @@ impl GuiController {
         let config = self.config.clone();
         self.send_worker_command(
             WorkerCommand::GetTelegrafStatus { config },
-            "Retrieving Telegraf status..."
+            "Retrieving Telegraf status...",
         );
     }
 
@@ -456,7 +474,7 @@ impl GuiController {
         let config = self.config.clone();
         self.send_worker_command(
             WorkerCommand::GetTelegrafLogs { config, lines: 30 },
-            "Retrieving Telegraf logs..."
+            "Retrieving Telegraf logs...",
         );
     }
 
@@ -469,10 +487,14 @@ impl GuiController {
             .unwrap_or_else(|| "influxdb".to_string())
             == "prometheus";
 
-        let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+        let service_name = if is_prometheus {
+            "Prometheus"
+        } else {
+            "InfluxDB"
+        };
         let service_url = self.config.iot_host.clone();
         let config = self.config.clone();
-        
+
         if is_prometheus {
             self.send_worker_command(
                 WorkerCommand::CheckServiceStatus {
@@ -481,12 +503,12 @@ impl GuiController {
                     service_type: ServiceType::Prometheus,
                     timeout_secs: 5,
                 },
-                &format!("Checking {} status at {}...", service_name, service_url)
+                &format!("Checking {} status at {}...", service_name, service_url),
             );
         } else {
             self.send_worker_command(
                 WorkerCommand::CheckInfluxDbStatus { config },
-                &format!("Checking InfluxDB status at {}...", service_url)
+                &format!("Checking InfluxDB status at {}...", service_url),
             );
         }
     }
@@ -509,10 +531,14 @@ impl GuiController {
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
-        
+
         self.send_worker_command(
-            WorkerCommand::RestartTelegraf { host, username, password },
-            "Restarting Telegraf service..."
+            WorkerCommand::RestartTelegraf {
+                host,
+                username,
+                password,
+            },
+            "Restarting Telegraf service...",
         );
     }
 
@@ -521,10 +547,14 @@ impl GuiController {
         let host = self.config.iot_host.clone();
         let username = self.config.iot_username.clone();
         let password = self.config.iot_password.clone();
-        
+
         self.send_worker_command(
-            WorkerCommand::SyncTime { host, username, password },
-            "Syncing system time to device..."
+            WorkerCommand::SyncTime {
+                host,
+                username,
+                password,
+            },
+            "Syncing system time to device...",
         );
     }
 }
