@@ -5,6 +5,8 @@ use std::io::Write;
 
 pub mod backup;
 #[cfg(test)]
+mod backup_test;
+#[cfg(test)]
 mod config_generator_test;
 pub mod deployment;
 #[cfg(test)]

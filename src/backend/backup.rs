@@ -13,6 +13,122 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
+/// Generate a backup name with timestamp
+pub fn generate_backup_name() -> String {
+    format!(
+        "monitoring_backup_{}",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+    )
+}
+
+/// Extract the backup directory name from an archive path
+/// e.g., "/path/to/monitoring_backup_20240101_120000.tar.gz" -> "monitoring_backup_20240101_120000"
+pub fn extract_backup_name_from_archive(archive_path: &str) -> Option<String> {
+    let path = Path::new(archive_path);
+    let filename = path.file_name()?.to_string_lossy();
+    filename.strip_suffix(".tar.gz").map(|s| s.to_string())
+}
+
+/// Parse Grafana credentials from environment output
+/// e.g., "GRAFANA_ADMIN_USER=admin\nGRAFANA_ADMIN_PASSWORD=secret" -> ("admin", "secret")
+pub fn parse_grafana_credentials(creds_output: &str) -> (String, String) {
+    let mut user = "admin".to_string();
+    let mut password = "admin".to_string();
+    for line in creds_output.lines() {
+        if line.starts_with("GRAFANA_ADMIN_USER=") {
+            user = line.splitn(2, '=').nth(1).unwrap_or("admin").to_string();
+        } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
+            password = line.splitn(2, '=').nth(1).unwrap_or("admin").to_string();
+        }
+    }
+    (user, password)
+}
+
+/// Parse InfluxDB credentials from environment output
+/// e.g., "INFLUXDB_TOKEN=xxx\nINFLUXDB_ORG=my-org" -> (Some("xxx"), Some("my-org"))
+pub fn parse_influxdb_credentials(env_output: &str) -> (Option<String>, Option<String>) {
+    let mut token: Option<String> = None;
+    let mut org: Option<String> = None;
+    for line in env_output.lines() {
+        if line.starts_with("INFLUXDB_TOKEN=") {
+            token = line.splitn(2, '=').nth(1).map(|s| s.to_string());
+        } else if line.starts_with("INFLUXDB_ORG=") {
+            org = line.splitn(2, '=').nth(1).map(|s| s.to_string());
+        }
+    }
+    (token, org)
+}
+
+/// Parse bucket names from InfluxDB bucket list output
+/// Input: "ID\tName\tRetention\nabc123\tmy_bucket\tinfinite\ndef456\t_buckets\t..."
+/// Returns: Vec of bucket names (excluding system buckets starting with _)
+pub fn parse_influxdb_bucket_list(bucket_output: &str) -> Vec<String> {
+    let mut buckets = Vec::new();
+    for line in bucket_output.lines().skip(1) {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let bucket_name = parts[1].to_string();
+            if !bucket_name.starts_with('_') {
+                buckets.push(bucket_name);
+            }
+        }
+    }
+    buckets
+}
+
+/// Extract datasource name from a JSON line
+/// e.g., {"id":1,"name":"InfluxDB","type":"influxdb"} -> Some("InfluxDB")
+pub fn parse_datasource_name(json_line: &str) -> Option<String> {
+    let line = json_line.trim();
+    if !line.starts_with('{') {
+        return None;
+    }
+    if let Some(start) = line.find("\"name\":\"") {
+        let start = start + 8;
+        if let Some(end) = line[start..].find('"') {
+            Some(line[start..start + end].to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+/// Transform Grafana dashboard export JSON to import format
+/// Grafana export: {"dashboard": {...}, "meta": {...}}
+/// Grafana import: {"dashboard": {...}, "overwrite": true}
+pub fn transform_grafana_dashboard_for_import(export_json: &str) -> String {
+    let json = export_json.trim();
+    if let Some(dash_key_pos) = json.find("\"dashboard\":") {
+        let rest = &json[dash_key_pos..];
+        if let Some(brace_start) = rest.find('{') {
+            let start_pos = dash_key_pos + brace_start;
+            let mut depth = 0;
+            let mut end_pos = start_pos;
+            for (i, c) in json[start_pos..].chars().enumerate() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end_pos = start_pos + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let dashboard_obj = &json[start_pos..end_pos];
+            format!("{{\"dashboard\": {}, \"overwrite\": true}}", dashboard_obj)
+        } else {
+            json.to_string()
+        }
+    } else {
+        json.to_string()
+    }
+}
+
 /// Create an SSH session from deployment configuration
 fn create_ssh_session(config: &DeploymentConfig) -> Result<Session, TelegrafError> {
     let tcp = TcpStream::connect((config.host.as_str(), config.port))
@@ -129,15 +245,7 @@ pub fn backup(
     channel.read_to_string(&mut creds)?;
     channel.wait_close()?;
 
-    let mut admin_user = "admin".to_string();
-    let mut admin_pass = "admin".to_string();
-    for line in creds.lines() {
-        if line.starts_with("GRAFANA_ADMIN_USER=") {
-            admin_user = line.split('=').nth(1).unwrap_or("admin").to_string();
-        } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
-            admin_pass = line.split('=').nth(1).unwrap_or("admin").to_string();
-        }
-    }
+    let (admin_user, admin_pass) = parse_grafana_credentials(&creds);
 
     let list_cmd = format!(
         "curl -s -u {}:'{}' 'http://localhost:3000/api/search?type=dash-db'",
@@ -179,37 +287,7 @@ pub fn backup(
         channel.read_to_string(&mut dashboard_json)?;
         channel.wait_close()?;
 
-        // Transform to import format
-        let import_json = {
-            let json = dashboard_json.trim();
-            if let Some(dash_key_pos) = json.find("\"dashboard\":") {
-                let rest = &json[dash_key_pos..];
-                if let Some(brace_start) = rest.find('{') {
-                    let start_pos = dash_key_pos + brace_start;
-                    let mut depth = 0;
-                    let mut end_pos = start_pos;
-                    for (i, c) in json[start_pos..].chars().enumerate() {
-                        match c {
-                            '{' => depth += 1,
-                            '}' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    end_pos = start_pos + i + 1;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    let dashboard_obj = &json[start_pos..end_pos];
-                    format!("{{\"dashboard\": {}, \"overwrite\": true}}", dashboard_obj)
-                } else {
-                    json.to_string()
-                }
-            } else {
-                json.to_string()
-            }
-        };
+        let import_json = transform_grafana_dashboard_for_import(&dashboard_json);
 
         let dashboard_file = format!("{}/{}.json", dashboards_dir, uid);
         fs::write(&dashboard_file, &import_json)?;
@@ -400,28 +478,19 @@ pub fn restore(
         channel.read_to_string(&mut env_vars)?;
         channel.wait_close()?;
 
-        let mut token = String::new();
-        let mut org = String::new();
-        for line in env_vars.lines() {
-            if line.starts_with("INFLUXDB_TOKEN=") {
-                token = line.split('=').nth(1).unwrap_or("").to_string();
-            } else if line.starts_with("INFLUXDB_ORG=") {
-                org = line.split('=').nth(1).unwrap_or("").to_string();
+        let (token_opt, org_opt) = parse_influxdb_credentials(&env_vars);
+        let token = match token_opt {
+            Some(t) if !t.trim().is_empty() => t,
+            _ => {
+                return Err(TelegrafError::ConfigError(
+                    "Could not find INFLUXDB_TOKEN in .env file".to_string(),
+                ));
             }
-        }
-
-        if token.trim().is_empty() {
-            return Err(TelegrafError::ConfigError(
-                "Could not find INFLUXDB_TOKEN in .env file".to_string(),
-            ));
-        }
-
-        let token = token.trim();
-        let org = if org.trim().is_empty() {
-            "my-org"
-        } else {
-            org.trim()
         };
+        let org = org_opt
+            .as_deref()
+            .filter(|o| !o.trim().is_empty())
+            .unwrap_or("my-org");
 
         if force {
             println!("🔧 Deleting existing buckets in org '{}'...", org);
