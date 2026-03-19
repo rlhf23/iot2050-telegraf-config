@@ -49,7 +49,7 @@ ConfigGenerator::generate_config()
 
 | File | Purpose |
 |------|---------|
-| `config/grafana/dashboard_template.json` | Default dashboard template with placeholders |
+| `docker/config/grafana/templates/dashboard_template.json` | Default dashboard template with placeholders |
 | `src/backend/dashboard.rs` | Dashboard generation logic |
 
 ### Dashboard Generation Flow
@@ -69,7 +69,7 @@ ConfigGenerator::generate_config()
     │   │
     │   ▼
     │   dashboard::generate_dashboard()
-    │       ├── Load template from config/grafana/dashboard_template.json
+    │       ├── Load template from docker/config/grafana/templates/dashboard_template.json
     │       ├── Replace placeholders with measurement names
     │       └── Write dashboard JSON to config folder
     │
@@ -88,13 +88,12 @@ User clicks "Send Config" button (or new "Send Dashboard" button)
 ### Template File Location
 
 ```
-config/
-├── grafana/
-│   └── dashboard_template.json
-├── xml/
-│   ├── sample_db.xml
-│   └── data_block_1.xml
-└── telegraf.conf (generated)
+docker/config/grafana/
+├── provisioning/           # Grafana auto-loaded configs
+│   ├── dashboards/
+│   └── datasources/
+└── templates/              # Our dashboard templates
+    └── dashboard_template.json
 ```
 
 ### Template Placeholders
@@ -178,7 +177,7 @@ Alternative: Use simple string replacement and build panels array programmatical
 ### Phase 2: Integrate with ConfigGenerator
 
 1. Add `generate_grafana_dashboard()` method to `ConfigGenerator`
-2. Load template from `config/grafana/dashboard_template.json`
+2. Load template from `docker/config/grafana/templates/dashboard_template.json`
 3. Extract measurements from parsed XML data
 4. Generate dashboard JSON alongside telegraf.conf
 5. Write dashboard to config folder
@@ -325,7 +324,7 @@ For multiple panels in one dashboard:
 
 ### Phase 1: Dashboard Module ✅ COMPLETE
 - [x] Created `src/backend/dashboard.rs`
-- [x] Created `config/grafana/dashboard_template.json`
+- [x] Created `docker/config/grafana/templates/dashboard_template.json`
 - [x] Implemented `DashboardConfig` struct
 - [x] Implemented `generate_dashboard()`, `load_template()`, `fill_template()`, `sanitize_uid()`
 - [x] Unit tests passing (9 tests)

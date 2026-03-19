@@ -8,7 +8,8 @@ use std::fs;
 use std::path::Path;
 
 /// Default embedded template for dashboards
-const DEFAULT_TEMPLATE: &str = include_str!("../../config/grafana/dashboard_template.json");
+const DEFAULT_TEMPLATE: &str =
+    include_str!("../../docker/config/grafana/templates/dashboard_template.json");
 
 /// Configuration for dashboard generation
 #[derive(Debug, Clone)]
