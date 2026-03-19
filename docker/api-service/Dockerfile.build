@@ -9,6 +9,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ ./src/
 COPY docker/api-service/ ./docker/api-service/
+COPY docker/config/ ./docker/config/
 
 # Build the api-service binary
 WORKDIR /build/docker/api-service
