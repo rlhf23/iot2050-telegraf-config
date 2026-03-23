@@ -6,13 +6,17 @@ cd "$(dirname "$0")/.."
 
 echo "🚀 Setting up monitoring stack..."
 
-# Install Telegraf configuration from example
+# Install Telegraf configuration from example (only if not already present)
 if [ -f config/telegraf/telegraf.conf.example ]; then
-    echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf/telegraf.conf..."
     mkdir -p ~/telegraf
-    cp config/telegraf/telegraf.conf.example ~/telegraf/telegraf.conf
-    chmod 644 ~/telegraf/telegraf.conf      # Ensure correct permissions
-    echo "✅ Telegraf configuration installed to ~/telegraf/telegraf.conf from example."
+    if [ -f ~/telegraf/telegraf.conf ]; then
+        echo "ℹ️  Telegraf config already exists at ~/telegraf/telegraf.conf - preserving existing configuration."
+    else
+        echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf/telegraf.conf..."
+        cp config/telegraf/telegraf.conf.example ~/telegraf/telegraf.conf
+        chmod 644 ~/telegraf/telegraf.conf
+        echo "✅ Telegraf configuration installed to ~/telegraf/telegraf.conf from example."
+    fi
 else
     echo "⚠️  WARNING: config/telegraf/telegraf.conf.example not found!"
     echo "Telegraf will likely use a default or no configuration."
@@ -49,9 +53,7 @@ if [ ! -f .env ]; then
             echo "Skipping volume removal. Existing data will be preserved."
             echo "If you experience issues with old credentials, manually remove the volumes and re-run setup."
         fi
-    fi
-    echo "⚠️  NOTE: .env is stored in the monitoring/ folder. If you re-pull or overwrite this folder, you will lose your configuration and credentials."
-    
+fi
     echo "Creating .env file with default values..."
     cat > .env <<EOL
 # InfluxDB
