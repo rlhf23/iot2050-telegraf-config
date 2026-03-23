@@ -304,6 +304,19 @@ impl IoTDeployer {
 
         let session = self.create_ssh_session()?;
 
+        // Backup .env and telegraf.conf before removing monitoring directory
+        println!("💾 Backing up configuration files...");
+        self.run_command(
+            &session,
+            "cp ~/monitoring/.env ~/monitoring.env.backup 2>/dev/null || true",
+            "Backing up .env file",
+        )?;
+        self.run_command(
+            &session,
+            "cp ~/telegraf/telegraf.conf ~/telegraf.conf.backup 2>/dev/null || true",
+            "Backing up telegraf.conf",
+        )?;
+
         // Remove existing monitoring directory
         self.run_command(
             &session,
@@ -415,6 +428,36 @@ impl IoTDeployer {
             "cd ~/monitoring && chmod +x scripts/*.sh config/nginx/scripts/*.sh",
             "Making scripts executable",
         )?;
+
+        // Restore backed up configuration files
+        println!("💾 Restoring configuration files...");
+        let env_backup_exists = self.check_command(&session, "test -f ~/monitoring.env.backup")?;
+        if env_backup_exists {
+            self.run_command(
+                &session,
+                "mv ~/monitoring.env.backup ~/monitoring/.env",
+                "Restoring .env file",
+            )?;
+            // Update TARGETARCH in .env for current device architecture
+            let targetarch = self.detect_architecture()?;
+            let update_arch_cmd = format!(
+                "cd ~/monitoring && grep -v '^TARGETARCH=' .env > .env.tmp && mv .env.tmp .env && echo 'TARGETARCH={}' >> .env",
+                targetarch
+            );
+            self.run_command(&session, &update_arch_cmd, "Updating architecture in .env")?;
+        } else {
+            println!("ℹ️  No .env backup found - run 'setup' to create one");
+        }
+
+        let telegraf_backup_exists =
+            self.check_command(&session, "test -f ~/telegraf.conf.backup")?;
+        if telegraf_backup_exists {
+            self.run_command(
+                &session,
+                "mkdir -p ~/telegraf && mv ~/telegraf.conf.backup ~/telegraf/telegraf.conf",
+                "Restoring telegraf.conf",
+            )?;
+        }
 
         println!("✅ Monitoring configuration updated successfully!");
         Ok(())
