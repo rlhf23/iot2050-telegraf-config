@@ -109,8 +109,9 @@ Click to flip the bool value (ON ↔ OFF). State persists until next toggle.
 9. [x] Update `docker-compose.yml`
 10. [x] Update nginx config for proxy
 11. [x] Add control panel to `index.html`
-12. [x] Create Dockerfile
-13. [ ] Test and debug
+12. [x] Create Dockerfile and Dockerfile.prebuilt
+13. [x] Create GitHub workflow for building binaries
+14. [ ] Test and debug
 
 ## Dependencies
 
@@ -140,3 +141,48 @@ thiserror = "2.0"
 - Only accessible via nginx proxy
 - No authentication required (as per requirements)
 - Future: Could add basic auth or API tokens if needed
+
+## Building Binaries
+
+### Via GitHub Actions (Recommended)
+
+1. Push changes to `docker/plc-service/` directory
+2. Go to Actions → "Build PLC Service Binary" → Run workflow
+3. Binaries are automatically committed to:
+   - `docker/plc-service/docker-plc-service-arm64`
+   - `docker/plc-service/docker-plc-service-amd64`
+
+### Local Build for Testing
+
+```bash
+# Install cross for cross-compilation
+cargo install cross --git https://github.com/cross-rs/cross
+
+# Build for AMD64 (x86_64)
+cd docker/plc-service
+cross build --release --target x86_64-unknown-linux-musl
+cp target/x86_64-unknown-linux-musl/release/plc-service docker-plc-service-amd64
+
+# Build for ARM64 (aarch64)
+cross build --release --target aarch64-unknown-linux-musl
+cp target/aarch64-unknown-linux-musl/release/plc-service docker-plc-service-arm64
+```
+
+### Docker Build Options
+
+**Development (from source):**
+```bash
+cd docker
+docker-compose build plc-service
+```
+
+**Production (prebuilt binary):**
+Update `docker-compose.yml` to use `Dockerfile.prebuilt`:
+```yaml
+plc-service:
+  build:
+    context: .
+    dockerfile: plc-service/Dockerfile.prebuilt
+    args:
+      - TARGETARCH=${TARGETARCH:-arm64}
+```
