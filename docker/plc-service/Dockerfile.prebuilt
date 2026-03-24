@@ -1,0 +1,27 @@
+# Simple Dockerfile using pre-built binary
+# No compilation needed - just copy and run!
+# Uses musl binaries for maximum portability
+# Use TARGETARCH build arg to select architecture: arm64 or amd64
+
+FROM alpine:3.19
+
+# Install runtime dependencies
+RUN apk add --no-cache ca-certificates libssl3
+
+WORKDIR /app
+
+# Accept TARGETARCH build argument (default to arm64 for backward compatibility)
+ARG TARGETARCH=arm64
+
+# Copy pre-built binary for the target architecture
+COPY plc-service/docker-plc-service-${TARGETARCH} /app/plc-service
+
+# Make it executable
+RUN chmod +x /app/plc-service
+
+# Expose port
+EXPOSE 8001
+
+ENV BUTTONS_CONFIG=/config/plc/buttons.toml
+
+CMD ["/app/plc-service"]

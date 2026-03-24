@@ -169,6 +169,28 @@ services:
       retries: 3
       start_period: 10s
 
+  plc-service:
+    build:
+      context: .
+      dockerfile: plc-service/Dockerfile
+    container_name: plc-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./config/plc:/config/plc:ro
+    environment:
+      - BUTTONS_CONFIG=/config/plc/buttons.toml
+      - PLC_SERVICE_ADDR=0.0.0.0:8001
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8001' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   nginx:
     image: nginx:alpine
     container_name: nginx-dashboard
@@ -188,6 +210,7 @@ services:
       - prometheus
       - telegraf
       - api-service
+      - plc-service
     networks:
       - monitoring
     restart: unless-stopped
