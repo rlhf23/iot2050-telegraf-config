@@ -49,6 +49,7 @@ pub struct ConfigGenerator {
     file_configs: std::collections::HashMap<String, FileConfig>,
     output_format: OutputFormat,
     include_test_inputs: bool,
+    include_diagnostics: bool,
 }
 
 impl ConfigGenerator {
@@ -65,6 +66,7 @@ impl ConfigGenerator {
 
         Ok(Self {
             include_test_inputs: config.include_test_inputs,
+            include_diagnostics: config.include_opcua_diagnostics,
             config,
             file_configs: std::collections::HashMap::new(),
             output_format,
@@ -77,6 +79,10 @@ impl ConfigGenerator {
 
     pub fn set_include_test_inputs(&mut self, include_test_inputs: bool) {
         self.include_test_inputs = include_test_inputs;
+    }
+
+    pub fn set_include_diagnostics(&mut self, include_diagnostics: bool) {
+        self.include_diagnostics = include_diagnostics;
     }
 
     pub fn set_file_config(
@@ -359,12 +365,31 @@ impl ConfigGenerator {
             }
         }
 
+        // Prepare OPC UA config for diagnostics if needed
+        let opcua_config = if self.include_diagnostics {
+            Some(format::OpcuaConfig {
+                ip: &self.config.ip,
+                username: &self.config.username,
+                password: &self.config.password,
+                is_listener: false,
+                group_name: "server_diagnostics",
+                namespace_number: "0",
+                interval_ms: 10000,
+                identifier_type: "i",
+                use_source_timestamp: false,
+            })
+        } else {
+            None
+        };
+
         // Generate the final config content
         let config_content = format::format_config_header(
             &config_strings,
             &namespace_numbers,
             self.output_format,
             self.include_test_inputs,
+            self.include_diagnostics,
+            opcua_config.as_ref(),
         );
 
         // Write to file

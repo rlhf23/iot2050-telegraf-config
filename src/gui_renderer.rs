@@ -1,8 +1,8 @@
-use eframe::egui;
 use crate::{
     backend::opcua_poller::OpcUaNode,
     gui_controller::{GuiController, OpcUaBrowseState},
 };
+use eframe::egui;
 
 /// Handles all GUI rendering logic
 pub struct GuiRenderer;
@@ -37,10 +37,7 @@ impl GuiRenderer {
                     let text_edit = egui::TextEdit::singleline(&mut controller.config.iot_host);
                     if controller.form_state.show_iot_host_error {
                         egui::Frame::NONE
-                            .stroke(egui::Stroke::new(
-                                1.0,
-                                egui::Color32::from_rgb(255, 0, 0),
-                            ))
+                            .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 0, 0)))
                             .show(ui, |ui| ui.add(text_edit));
                     } else {
                         ui.add(text_edit);
@@ -54,6 +51,15 @@ impl GuiRenderer {
                 ui.checkbox(
                     &mut controller.config.include_test_inputs,
                     "CPU, Disk, Memory, of the IOT device",
+                );
+            });
+
+            // OPC UA Diagnostics Toggle
+            ui.horizontal(|ui| {
+                ui.label("OPC-UA Diagnostics");
+                ui.checkbox(
+                    &mut controller.config.include_opcua_diagnostics,
+                    "Server health, sessions, subscriptions",
                 );
             });
 
@@ -76,7 +82,9 @@ impl GuiRenderer {
                     ui.end_row();
                     // OPC Password
                     ui.label("OPC Password:");
-                    ui.add(egui::TextEdit::singleline(&mut controller.config.password).password(true));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut controller.config.password).password(true),
+                    );
                     ui.end_row();
                     // IOT Username
                     ui.label("IOT Username:");
@@ -84,7 +92,10 @@ impl GuiRenderer {
                     ui.end_row();
                     // IOT Password
                     ui.label("IOT Password:");
-                    ui.add(egui::TextEdit::singleline(&mut controller.config.iot_password).password(true));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut controller.config.iot_password)
+                            .password(true),
+                    );
                     ui.end_row();
                 });
 
@@ -135,11 +146,11 @@ impl GuiRenderer {
             ui.label("No XML files found in the selected folder");
         } else {
             ui.label("Configure XML files (check for listeners/subscribers):");
-            
+
             // Clone the files list to avoid borrowing issues
             let xml_files = controller.xml_files.clone();
             let mut ip_changes = Vec::new(); // Store IP changes to apply later
-            
+
             for (i, file) in xml_files.iter().enumerate() {
                 ui.group(|ui| {
                     // File name and listener checkbox
@@ -229,7 +240,7 @@ impl GuiRenderer {
                 });
                 ui.add_space(4.0);
             }
-            
+
             // Apply IP changes after the loop
             for (file, ip) in ip_changes {
                 controller.validate_file_ip(&file, &ip);
@@ -245,12 +256,12 @@ impl GuiRenderer {
                 if ui.button("Browse OPC UA Structure").clicked() {
                     controller.start_opcua_browsing();
                 }
-            
+
                 if ui.button("Get OPC UA Namespaces").clicked() {
                     controller.start_getting_namespaces();
                 }
             });
-            
+
             if ui.button("Generate Config").clicked() {
                 controller.generate_config();
             }
@@ -282,7 +293,7 @@ impl GuiRenderer {
                 if ui.button("📋 Get Telegraf Logs").clicked() {
                     controller.get_telegraf_logs();
                 }
-                
+
                 if ui.button("🔄 Restart Telegraf").clicked() {
                     controller.restart_telegraf();
                 }
@@ -303,9 +314,16 @@ impl GuiRenderer {
                     .unwrap_or_else(|| "influxdb".to_string())
                     == "prometheus";
 
-                let service_name = if is_prometheus { "Prometheus" } else { "InfluxDB" };
+                let service_name = if is_prometheus {
+                    "Prometheus"
+                } else {
+                    "InfluxDB"
+                };
 
-                if ui.button(format!("✅ Check {} Status", service_name)).clicked() {
+                if ui
+                    .button(format!("✅ Check {} Status", service_name))
+                    .clicked()
+                {
                     controller.check_service_status();
                 }
             });
@@ -326,16 +344,16 @@ impl GuiRenderer {
                     controller.clear_status_messages();
                 }
             });
-            
+
             let frame = egui::Frame::dark_canvas(ui.style())
                 .stroke(egui::Stroke::new(1.0, egui::Color32::LIGHT_BLUE));
-                
+
             frame.show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .max_height(400.0)
                     .show(ui, |ui| {
                         ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                        
+
                         for (i, message) in controller.status_messages.iter().enumerate() {
                             if i > 0 {
                                 ui.separator();
@@ -344,7 +362,7 @@ impl GuiRenderer {
                                 ui.label(line);
                             }
                         }
-                        
+
                         if controller.should_scroll {
                             ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover())
                                 .on_hover_cursor(egui::CursorIcon::Default);
@@ -352,10 +370,13 @@ impl GuiRenderer {
                             controller.should_scroll = false;
                         }
                     });
-                
+
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label(format!("Showing {} message(s)", controller.status_messages.len()));
+                    ui.label(format!(
+                        "Showing {} message(s)",
+                        controller.status_messages.len()
+                    ));
                 });
             });
         }
@@ -435,17 +456,21 @@ impl GuiRenderer {
                 ui.add_space(indent);
 
                 let is_folder = node.is_folder_node();
-                
-                if (node.node_class == opcua::types::NodeClass::Variable || is_folder) && indent_level > 0 {
+
+                if (node.node_class == opcua::types::NodeClass::Variable || is_folder)
+                    && indent_level > 0
+                {
                     if ui.checkbox(&mut node.selected, "").changed() {
                         if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
                             node.deselect_children();
                         }
-                        
+
                         if node.selected && is_folder && !node.children_loaded {
                             let node_clone = node.clone();
-                            
-                            if let Ok(children) = controller.load_node_children(&node_clone, indent_level) {
+
+                            if let Ok(children) =
+                                controller.load_node_children(&node_clone, indent_level)
+                            {
                                 node.children = children;
                                 node.children_loaded = true;
                                 ui.ctx().request_repaint();
@@ -467,8 +492,9 @@ impl GuiRenderer {
                 };
 
                 if is_folder {
-                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
-                    
+                    let label =
+                        format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+
                     let header = ui.collapsing(label, |ui| {
                         if let Some(data_type) = &node.data_type {
                             ui.label(format!("Data Type: {}", data_type));
@@ -484,13 +510,20 @@ impl GuiRenderer {
                             });
 
                             let node_clone = node.clone();
-                            if let Ok(children) = controller.load_node_children(&node_clone, indent_level) {
+                            if let Ok(children) =
+                                controller.load_node_children(&node_clone, indent_level)
+                            {
                                 node.children = children;
                                 node.children_loaded = true;
                                 ui.ctx().request_repaint();
                             }
                         } else {
-                            Self::render_node_tree(ui, &mut node.children, indent_level + 1, controller);
+                            Self::render_node_tree(
+                                ui,
+                                &mut node.children,
+                                indent_level + 1,
+                                controller,
+                            );
                         }
                     });
 
@@ -508,7 +541,8 @@ impl GuiRenderer {
                         ));
                     }
                 } else {
-                    let label = format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
+                    let label =
+                        format!("{}{} ({:?})", node_icon, node.display_name, node.node_class);
                     ui.label(label).on_hover_text(format!(
                         "NodeId: {:?}\nNamespace: {}\nBrowse Name: {}{}",
                         node.node_id,
@@ -530,52 +564,59 @@ impl GuiRenderer {
         if !controller.config.selected_opcua_nodes.is_empty() {
             ui.heading("Selected Nodes");
             ui.push_id("selected_nodes_area", |ui| {
-                egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                    egui::Grid::new("selected_opcua_nodes_grid")
-                    .num_columns(5)
-                    .striped(true)
+                egui::ScrollArea::vertical()
+                    .max_height(200.0)
                     .show(ui, |ui| {
-                        ui.label("Node Name");
-                        ui.label("Namespace");
-                        ui.label("Measurement Name");
-                        ui.label("Interval (ms)");
-                        ui.label("Actions");
-                        ui.end_row();
-                        
-                        let mut nodes_to_remove = Vec::new();
-                        
-                        for (i, node) in controller.config.selected_opcua_nodes.iter_mut().enumerate() {
-                            ui.label(&node.display_name);
-                            ui.label(&node.namespace.to_string());
-                            
-                            // Allow editing the measurement name
-                            let mut measurement_name = node.measurement_name.clone();
-                            if ui.text_edit_singleline(&mut measurement_name).changed() {
-                                node.measurement_name = measurement_name;
-                            }
-                            
-                            // Allow editing the interval
-                            let mut interval_str = node.interval_ms.to_string();
-                            if ui.text_edit_singleline(&mut interval_str).changed() {
-                                if let Ok(interval) = interval_str.parse::<u32>() {
-                                    node.interval_ms = interval;
+                        egui::Grid::new("selected_opcua_nodes_grid")
+                            .num_columns(5)
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label("Node Name");
+                                ui.label("Namespace");
+                                ui.label("Measurement Name");
+                                ui.label("Interval (ms)");
+                                ui.label("Actions");
+                                ui.end_row();
+
+                                let mut nodes_to_remove = Vec::new();
+
+                                for (i, node) in controller
+                                    .config
+                                    .selected_opcua_nodes
+                                    .iter_mut()
+                                    .enumerate()
+                                {
+                                    ui.label(&node.display_name);
+                                    ui.label(&node.namespace.to_string());
+
+                                    // Allow editing the measurement name
+                                    let mut measurement_name = node.measurement_name.clone();
+                                    if ui.text_edit_singleline(&mut measurement_name).changed() {
+                                        node.measurement_name = measurement_name;
+                                    }
+
+                                    // Allow editing the interval
+                                    let mut interval_str = node.interval_ms.to_string();
+                                    if ui.text_edit_singleline(&mut interval_str).changed() {
+                                        if let Ok(interval) = interval_str.parse::<u32>() {
+                                            node.interval_ms = interval;
+                                        }
+                                    }
+
+                                    // Remove button
+                                    if ui.button("Remove").clicked() {
+                                        nodes_to_remove.push(i);
+                                    }
+
+                                    ui.end_row();
                                 }
-                            }
-                            
-                            // Remove button
-                            if ui.button("Remove").clicked() {
-                                nodes_to_remove.push(i);
-                            }
-                            
-                            ui.end_row();
-                        }
-                        
-                        // Remove nodes that were marked for removal
-                        for &index in nodes_to_remove.iter().rev() {
-                            controller.remove_selected_opcua_node(index);
-                        }
+
+                                // Remove nodes that were marked for removal
+                                for &index in nodes_to_remove.iter().rev() {
+                                    controller.remove_selected_opcua_node(index);
+                                }
+                            });
                     });
-                });
             });
         }
     }

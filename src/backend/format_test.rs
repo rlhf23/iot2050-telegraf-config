@@ -25,12 +25,15 @@ mod tests {
         ];
         let output_format = OutputFormat::InfluxDB;
         let include_test_inputs = false;
+        let include_diagnostics = false;
 
         let result = format_config_header(
             &config_strings,
             &namespace_infos,
             output_format,
             include_test_inputs,
+            include_diagnostics,
+            None,
         );
 
         assert!(result.contains("# Namespace for file test1.xml: 1"));
@@ -51,12 +54,15 @@ mod tests {
         }];
         let output_format = OutputFormat::Prometheus;
         let include_test_inputs = false;
+        let include_diagnostics = false;
 
         let result = format_config_header(
             &config_strings,
             &namespace_infos,
             output_format,
             include_test_inputs,
+            include_diagnostics,
+            None,
         );
 
         assert!(result.contains("# Namespace for file test1.xml: 1"));
@@ -74,12 +80,15 @@ mod tests {
         }];
         let output_format = OutputFormat::InfluxDB;
         let include_test_inputs = true;
+        let include_diagnostics = false;
 
         let result = format_config_header(
             &config_strings,
             &namespace_infos,
             output_format,
             include_test_inputs,
+            include_diagnostics,
+            None,
         );
 
         assert!(result.contains("[[inputs.cpu]]"));
@@ -87,6 +96,7 @@ mod tests {
         assert!(result.contains("[[inputs.mem]]"));
         assert!(result.contains("TEST INPUTS START"));
         assert!(result.contains("TEST INPUTS END"));
+        assert!(result.contains("INFLUXDB_DIAGNOSTICS_BUCKET"));
     }
 
     #[test]

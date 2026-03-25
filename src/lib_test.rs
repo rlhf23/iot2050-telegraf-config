@@ -1,4 +1,4 @@
-use crate::{backend::ConfigGenerator, TelegrafConfig, discover_xml_files};
+use crate::{backend::ConfigGenerator, discover_xml_files, TelegrafConfig};
 use std::path::PathBuf;
 use tempfile::TempDir;
 
@@ -21,6 +21,7 @@ mod tests {
             selected_opcua_nodes: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             use_source_timestamp: false,
         };
 
@@ -90,6 +91,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             use_source_timestamp: false,
         };
 
@@ -157,6 +159,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             use_source_timestamp: false,
             selected_opcua_nodes: Vec::new(),
         };
@@ -177,6 +180,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: None,
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             use_source_timestamp: false,
         };
 
@@ -249,16 +253,16 @@ mod tests {
 
         // Invalid intervals
         let invalid_intervals = vec![
-            "0",       // Zero
-            "-1",      // Negative
-            "abc",     // Non-numeric
-            "1.5",     // Decimal
-            "1a",      // Mixed alphanumeric
-            "a1",      // Mixed alphanumeric
-            "+1",      // Plus sign
-            "1 2",     // Space in middle
-            "1,000",   // Comma
-            "1000ms",  // With units
+            "0",      // Zero
+            "-1",     // Negative
+            "abc",    // Non-numeric
+            "1.5",    // Decimal
+            "1a",     // Mixed alphanumeric
+            "a1",     // Mixed alphanumeric
+            "+1",     // Plus sign
+            "1 2",    // Space in middle
+            "1,000",  // Comma
+            "1000ms", // With units
         ];
 
         for interval in invalid_intervals {
@@ -312,7 +316,7 @@ mod tests {
     fn test_validate_config_success() {
         let config = create_test_config();
         let mut file_configs = std::collections::HashMap::new();
-        
+
         // Add valid file configurations
         file_configs.insert(
             "file1.xml".to_string(),
@@ -322,7 +326,7 @@ mod tests {
                 ip: "".to_string(), // Use default IP
             },
         );
-        
+
         file_configs.insert(
             "file2.xml".to_string(),
             crate::error::XmlFileValidation {
@@ -340,7 +344,7 @@ mod tests {
     fn test_validate_config_duplicate_namespace() {
         let config = create_test_config();
         let mut file_configs = std::collections::HashMap::new();
-        
+
         // Add configurations with duplicate namespace on same IP
         file_configs.insert(
             "file1.xml".to_string(),
@@ -350,7 +354,7 @@ mod tests {
                 ip: "".to_string(), // Use default IP
             },
         );
-        
+
         file_configs.insert(
             "file2.xml".to_string(),
             crate::error::XmlFileValidation {
@@ -361,21 +365,27 @@ mod tests {
         );
 
         let result = config.validate_config(&file_configs);
-        assert!(result.is_err(), "Duplicate namespace should fail validation");
-        
+        assert!(
+            result.is_err(),
+            "Duplicate namespace should fail validation"
+        );
+
         let errors = result.unwrap_err();
         assert!(errors.len() > 0, "Should have validation errors");
-        
+
         // Check that the error mentions duplicate namespace
         let error_msg = format!("{:?}", errors[0]);
-        assert!(error_msg.contains("Duplicate namespace"), "Error should mention duplicate namespace");
+        assert!(
+            error_msg.contains("Duplicate namespace"),
+            "Error should mention duplicate namespace"
+        );
     }
 
     #[test]
     fn test_validate_config_missing_namespace() {
         let config = create_test_config();
         let mut file_configs = std::collections::HashMap::new();
-        
+
         // Add configuration with missing namespace
         file_configs.insert(
             "file1.xml".to_string(),
@@ -388,20 +398,23 @@ mod tests {
 
         let result = config.validate_config(&file_configs);
         assert!(result.is_err(), "Missing namespace should fail validation");
-        
+
         let errors = result.unwrap_err();
         assert!(errors.len() > 0, "Should have validation errors");
-        
+
         // Check that the error mentions missing namespace
         let error_msg = format!("{:?}", errors[0]);
-        assert!(error_msg.contains("Missing namespace"), "Error should mention missing namespace");
+        assert!(
+            error_msg.contains("Missing namespace"),
+            "Error should mention missing namespace"
+        );
     }
 
     #[test]
     fn test_validate_config_invalid_interval() {
         let config = create_test_config();
         let mut file_configs = std::collections::HashMap::new();
-        
+
         // Add configuration with invalid interval
         file_configs.insert(
             "file1.xml".to_string(),
@@ -414,7 +427,7 @@ mod tests {
 
         let result = config.validate_config(&file_configs);
         assert!(result.is_err(), "Invalid interval should fail validation");
-        
+
         let errors = result.unwrap_err();
         assert!(errors.len() > 0, "Should have validation errors");
     }
@@ -423,7 +436,7 @@ mod tests {
     fn test_validate_config_invalid_custom_ip() {
         let config = create_test_config();
         let mut file_configs = std::collections::HashMap::new();
-        
+
         // Add configuration with invalid custom IP
         file_configs.insert(
             "file1.xml".to_string(),
@@ -436,7 +449,7 @@ mod tests {
 
         let result = config.validate_config(&file_configs);
         assert!(result.is_err(), "Invalid custom IP should fail validation");
-        
+
         let errors = result.unwrap_err();
         assert!(errors.len() > 0, "Should have validation errors");
     }
@@ -492,7 +505,11 @@ mod tests {
         let xml_files = discover_xml_files(&temp_path);
 
         // Should find no files
-        assert_eq!(xml_files.len(), 0, "Should find no XML files in empty directory");
+        assert_eq!(
+            xml_files.len(),
+            0,
+            "Should find no XML files in empty directory"
+        );
     }
 
     #[test]
@@ -532,8 +549,15 @@ mod tests {
         // On case-sensitive systems (Unix), should only find .xml (lowercase)
         // On case-insensitive systems (Windows), behavior may vary
         if cfg!(unix) {
-            assert_eq!(xml_files.len(), 1, "Should only find lowercase .xml files on Unix");
-            assert!(xml_files[0].ends_with("test.xml"), "Should find the lowercase .xml file");
+            assert_eq!(
+                xml_files.len(),
+                1,
+                "Should only find lowercase .xml files on Unix"
+            );
+            assert!(
+                xml_files[0].ends_with("test.xml"),
+                "Should find the lowercase .xml file"
+            );
         } else {
             // On Windows, just verify we get at least one file
             assert!(xml_files.len() >= 1, "Should find at least one XML file");
@@ -553,6 +577,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             use_source_timestamp: false,
             selected_opcua_nodes: Vec::new(),
         }

@@ -19,7 +19,6 @@ pub enum TelegrafError {
     #[error("SSH operation error: {0}")]
     SshOperationError(String),
 
-
     #[error("Validation error: {0}")]
     ValidationError(String),
 

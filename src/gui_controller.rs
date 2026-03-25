@@ -70,6 +70,7 @@ impl GuiController {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: true,
+                include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false, // Default to "gather"
             },

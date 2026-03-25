@@ -262,7 +262,10 @@ impl WorkerHandle {
                                 })
                                 .map(|(status, message)| {
                                     let status_icon = if status { "✅" } else { "❌" };
-                                    WorkerResponse::SshCommandOutput(format!("{} {}", status_icon, message))
+                                    WorkerResponse::SshCommandOutput(format!(
+                                        "{} {}",
+                                        status_icon, message
+                                    ))
                                 })
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
@@ -281,7 +284,10 @@ impl WorkerHandle {
                                 .and_then(|generator| generator.check_influxdb_status())
                                 .map(|(status, message)| {
                                     let status_icon = if status { "✅" } else { "❌" };
-                                    WorkerResponse::SshCommandOutput(format!("{} {}", status_icon, message))
+                                    WorkerResponse::SshCommandOutput(format!(
+                                        "{} {}",
+                                        status_icon, message
+                                    ))
                                 })
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
@@ -302,10 +308,7 @@ impl WorkerHandle {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = ssh_utils::execute_command_over_ssh(
-                                &host,
-                                &username,
-                                &password,
-                                &command,
+                                &host, &username, &password, &command,
                             )
                             .map(|output| WorkerResponse::SshCommandOutput(output))
                             .unwrap_or_else(|e| {
@@ -342,7 +345,13 @@ impl WorkerHandle {
                         });
                         continue;
                     }
-                    WorkerCommand::SendFileOverSsh { host, username, password, local_path, remote_path } => {
+                    WorkerCommand::SendFileOverSsh {
+                        host,
+                        username,
+                        password,
+                        local_path,
+                        remote_path,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = ssh_utils::send_file_over_ssh(
@@ -354,29 +363,54 @@ impl WorkerHandle {
                             )
                             .map(|_| WorkerResponse::FileTransferComplete)
                             .unwrap_or_else(|e| {
-                                WorkerResponse::FileTransferError(format!("File transfer failed: {}", e))
+                                WorkerResponse::FileTransferError(format!(
+                                    "File transfer failed: {}",
+                                    e
+                                ))
                             });
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::RestartTelegraf { host, username, password } => {
+                    WorkerCommand::RestartTelegraf {
+                        host,
+                        username,
+                        password,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let result = ssh_utils::restart_telegraf_over_ssh(&host, &username, &password)
-                                .map(|output| WorkerResponse::SshCommandOutput(format!("Telegraf restarted successfully: {}", output)))
-                                .unwrap_or_else(|e| {
-                                    WorkerResponse::SshError(format!("Failed to restart Telegraf: {}", e))
-                                });
+                            let result =
+                                ssh_utils::restart_telegraf_over_ssh(&host, &username, &password)
+                                    .map(|output| {
+                                        WorkerResponse::SshCommandOutput(format!(
+                                            "Telegraf restarted successfully: {}",
+                                            output
+                                        ))
+                                    })
+                                    .unwrap_or_else(|e| {
+                                        WorkerResponse::SshError(format!(
+                                            "Failed to restart Telegraf: {}",
+                                            e
+                                        ))
+                                    });
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::SyncTime { host, username, password } => {
+                    WorkerCommand::SyncTime {
+                        host,
+                        username,
+                        password,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let result = ssh_utils::sync_time_over_ssh(&host, &username, &password)
-                                .map(|output| WorkerResponse::SshCommandOutput(format!("Time synced successfully: {}", output)))
+                                .map(|output| {
+                                    WorkerResponse::SshCommandOutput(format!(
+                                        "Time synced successfully: {}",
+                                        output
+                                    ))
+                                })
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!("Failed to sync time: {}", e))
                                 });
