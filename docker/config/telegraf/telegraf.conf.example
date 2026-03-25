@@ -10,12 +10,21 @@
   hostname = ""
   omit_hostname = false
 
-# Output to InfluxDB
+# Output to InfluxDB - Main bucket (process data)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${INFLUXDB_TOKEN}"  # Using influxdb admin token
+  token = "${INFLUXDB_TOKEN}"
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
+  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+
+# Output to InfluxDB - Diagnostics bucket (system metrics, internal)
+[[outputs.influxdb_v2]]
+  urls = ["http://influxdb:8086"]
+  token = "${INFLUXDB_TOKEN}"
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
+  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
 
 # Expose Prometheus metrics endpoint for health checks and monitoring
 # This allows the dashboard to check Telegraf health and Prometheus to scrape metrics

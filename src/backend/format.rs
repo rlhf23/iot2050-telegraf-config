@@ -79,15 +79,15 @@ pub fn format_config_header(
   token = "${{INFLUXDB_TOKEN}}"
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
-  namepass = ["opcua"]
+  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
 
-# Output to InfluxDB - Diagnostics data
+# Output to InfluxDB - Diagnostics data (system metrics, OPC-UA diagnostics)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${{INFLUXDB_TOKEN}}"
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_DIAGNOSTICS_BUCKET}}"
-  namepass = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
+  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
 "#,
                 );
 

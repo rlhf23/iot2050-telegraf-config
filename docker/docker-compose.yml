@@ -35,6 +35,27 @@ services:
       timeout: 5s
       retries: 3
 
+  influxdb-setup:
+    image: influxdb:2
+    container_name: influxdb-setup
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        influx bucket create -n "$${INFLUXDB_DIAGNOSTICS_BUCKET}" -o "$${INFLUXDB_ORG}" -r 0 --token "$${INFLUXDB_TOKEN}" 2>/dev/null || echo "Bucket '$${INFLUXDB_DIAGNOSTICS_BUCKET}' already exists or created"
+    networks:
+      - monitoring
+    restart: "no"
+
   telegraf:
     image: telegraf:1.30 # Using a specific version for stability
     env_file:
