@@ -1055,20 +1055,24 @@
         async function updatePlcStatus() {
             const statusEl = document.getElementById('plc-connection-status');
             const ipEl = document.getElementById('plc-ip-display');
+            const container = document.getElementById('plc-buttons-container');
             
             try {
                 const response = await fetch('/plc-api/status', { cache: 'no-cache' });
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.status) {
-                        statusEl.textContent = data.status.connected ? 'Connected' : 'Disconnected';
-                        statusEl.className = 'plc-status-value ' + (data.status.connected ? 'connected' : 'disconnected');
+                        const connected = data.status.connected;
+                        statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+                        statusEl.className = 'plc-status-value ' + (connected ? 'connected' : 'disconnected');
                         ipEl.textContent = data.status.ip || '-';
+                        container.style.display = connected ? 'grid' : 'none';
                     }
                 }
             } catch (error) {
                 statusEl.textContent = 'Unavailable';
                 statusEl.className = 'plc-status-value disconnected';
+                container.style.display = 'none';
             }
         }
 
@@ -1082,6 +1086,7 @@
                 const buttonsResponse = await fetch('/plc-api/buttons', { cache: 'no-cache' });
                 if (!buttonsResponse.ok) {
                     container.innerHTML = '<div class="plc-error">Failed to load button configuration</div>';
+                    container.style.display = 'none';
                     return;
                 }
                 const buttonsData = await buttonsResponse.json();
@@ -1092,9 +1097,11 @@
                 if (statusResponse.ok) {
                     const statusData = await statusResponse.json();
                     if (statusData.success && statusData.status) {
-                        statusEl.textContent = statusData.status.connected ? 'Connected' : 'Disconnected';
-                        statusEl.className = 'plc-status-value ' + (statusData.status.connected ? 'connected' : 'disconnected');
+                        const connected = statusData.status.connected;
+                        statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+                        statusEl.className = 'plc-status-value ' + (connected ? 'connected' : 'disconnected');
                         ipEl.textContent = statusData.status.ip || '-';
+                        container.style.display = connected ? 'grid' : 'none';
                     }
                 }
                 
@@ -1125,6 +1132,7 @@
             } catch (error) {
                 console.error('Error loading PLC buttons:', error);
                 container.innerHTML = '<div class="plc-error">PLC service unavailable</div>';
+                container.style.display = 'none';
                 statusEl.textContent = 'Unavailable';
                 statusEl.className = 'plc-status-value disconnected';
             }
