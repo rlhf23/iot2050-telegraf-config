@@ -49,6 +49,7 @@ services:
       - |
         echo "Creating diagnostics bucket: $$INFLUXDB_DIAGNOSTICS_BUCKET"
         influx bucket create \
+          --host http://influxdb:8086 \
           -n "$$INFLUXDB_DIAGNOSTICS_BUCKET" \
           -o "$$INFLUXDB_ORG" \
           -r 0 \
