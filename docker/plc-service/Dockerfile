@@ -5,11 +5,11 @@ FROM rust:1.75 as builder
 
 WORKDIR /app
 
-# Copy manifests
-COPY Cargo.toml ./
+# Copy manifests (paths relative to docker/ build context)
+COPY plc-service/Cargo.toml ./
 
 # Create src directory and copy source files
-COPY src ./src
+COPY plc-service/src ./src
 
 # Build release binary
 RUN cargo build --release

@@ -172,7 +172,9 @@ services:
   plc-service:
     build:
       context: .
-      dockerfile: plc-service/Dockerfile
+      dockerfile: plc-service/Dockerfile.prebuilt
+      args:
+        - TARGETARCH=${TARGETARCH:-arm64}
     container_name: plc-service
     ports:
       - "8001:8001"
