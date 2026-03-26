@@ -24,6 +24,7 @@ services:
       - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
+      - INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
       - INFLUXD_LOGGING_LEVEL=warn
     networks:
       - monitoring
@@ -33,6 +34,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  influxdb-setup:
+    image: influxdb:2
+    container_name: influxdb-setup
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    env_file:
+      - .env
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating diagnostics bucket: $$INFLUXDB_DIAGNOSTICS_BUCKET"
+        influx bucket create \
+          --host http://influxdb:8086 \
+          -n "$$INFLUXDB_DIAGNOSTICS_BUCKET" \
+          -o "$$INFLUXDB_ORG" \
+          -r 0 \
+          --token "$$INFLUXDB_TOKEN" \
+        && echo "✅ Bucket created" \
+        || echo "⚠️ Bucket may already exist or creation failed"
+    networks:
+      - monitoring
+    restart: "no"
 
   telegraf:
     image: telegraf:1.30 # Using a specific version for stability
@@ -54,6 +80,7 @@ services:
       - HOST_SYS=/host/sys
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
       - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
       - TELEGRAF_TOKEN=${TELEGRAF_TOKEN}
       - HOST_DOCKER_GID=${HOST_DOCKER_GID}

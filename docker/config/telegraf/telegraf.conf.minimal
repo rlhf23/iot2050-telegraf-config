@@ -13,12 +13,21 @@
   hostname = ""
   omit_hostname = false
 
-# Output to InfluxDB (using environment variables)
+# Output to InfluxDB - Main bucket (process data)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${INFLUXDB_TOKEN}"
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
+  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+
+# Output to InfluxDB - Diagnostics bucket (system metrics, internal)
+[[outputs.influxdb_v2]]
+  urls = ["http://influxdb:8086"]
+  token = "${INFLUXDB_TOKEN}"
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
+  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
 
 # Expose Prometheus metrics endpoint for health checks and monitoring
 [[outputs.prometheus_client]]

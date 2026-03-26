@@ -86,6 +86,10 @@ pub struct GenerateConfigRequest {
     pub file_configs: Vec<FileConfig>,
     #[serde(default)]
     pub use_source_timestamp: bool, // Use "source" instead of "gather" for timestamp
+    #[serde(default)]
+    pub include_test_inputs: bool, // Include system metrics (CPU, memory, disk)
+    #[serde(default)]
+    pub include_opcua_diagnostics: bool, // Include OPC UA server diagnostics
 }
 
 #[derive(Serialize)]
@@ -534,7 +538,8 @@ pub async fn generate_config(
             .map(|fc| fc.filename.clone())
             .collect(),
         output_format: Some(request.output_format.clone()),
-        include_test_inputs: false,
+        include_test_inputs: request.include_test_inputs,
+        include_opcua_diagnostics: request.include_opcua_diagnostics,
         selected_opcua_nodes: vec![],
         use_source_timestamp: request.use_source_timestamp,
     };

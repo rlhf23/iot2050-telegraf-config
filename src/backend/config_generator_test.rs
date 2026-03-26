@@ -44,6 +44,7 @@ mod tests {
             listener_files: Vec::new(),
             output_format: Some("influxdb".to_string()),
             include_test_inputs: false,
+            include_opcua_diagnostics: false,
             selected_opcua_nodes: Vec::new(),
             use_source_timestamp: false,
         }
