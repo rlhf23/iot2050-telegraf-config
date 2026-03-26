@@ -163,7 +163,7 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8000' || exit 1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -187,7 +187,7 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8001' || exit 1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/api/plc/status"]
       interval: 30s
       timeout: 10s
       retries: 3

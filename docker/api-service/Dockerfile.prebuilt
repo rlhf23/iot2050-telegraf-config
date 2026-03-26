@@ -6,7 +6,7 @@
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk add --no-cache ca-certificates libssl3
+RUN apk add --no-cache ca-certificates libssl3 wget
 
 WORKDIR /app
 
