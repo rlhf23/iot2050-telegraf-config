@@ -1046,10 +1046,31 @@
         setInterval(() => {
             checkAllServices();
             updateSystemInfo();
+            updatePlcStatus();
         }, 10000);
 
         // PLC Control Panel Functions
         let plcButtons = [];
+
+        async function updatePlcStatus() {
+            const statusEl = document.getElementById('plc-connection-status');
+            const ipEl = document.getElementById('plc-ip-display');
+            
+            try {
+                const response = await fetch('/plc-api/status', { cache: 'no-cache' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.status) {
+                        statusEl.textContent = data.status.connected ? 'Connected' : 'Disconnected';
+                        statusEl.className = 'plc-status-value ' + (data.status.connected ? 'connected' : 'disconnected');
+                        ipEl.textContent = data.status.ip || '-';
+                    }
+                }
+            } catch (error) {
+                statusEl.textContent = 'Unavailable';
+                statusEl.className = 'plc-status-value disconnected';
+            }
+        }
 
         async function loadPlcButtons() {
             const container = document.getElementById('plc-buttons-container');
