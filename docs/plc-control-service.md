@@ -111,7 +111,8 @@ Click to flip the bool value (ON ↔ OFF). State persists until next toggle.
 11. [x] Add control panel to `index.html`
 12. [x] Create Dockerfile and Dockerfile.prebuilt
 13. [x] Create GitHub workflow for building binaries
-14. [ ] Test and debug
+14. [x] Test and debug
+15. [x] Add HTML validation workflow
 
 ## Dependencies
 
