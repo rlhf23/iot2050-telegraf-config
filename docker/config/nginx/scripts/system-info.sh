@@ -39,8 +39,10 @@ DISK_TOTAL=$(df -h / 2>/dev/null | awk 'NR==2 {print $2}')
 DISK_USED=$(df -h / 2>/dev/null | awk 'NR==2 {print $3}')
 DISK_PERCENT=$(df -h / 2>/dev/null | awk 'NR==2 {print $5}')
 
-# Container count - not available from inside nginx container
-CONTAINER_COUNT="N/A"
+# Get running container count via Docker API
+CONTAINER_COUNT=$(curl -s --unix-socket /var/run/docker.sock \
+    "http://localhost/containers/json" 2>/dev/null | \
+    grep -o '"Id"' | wc -l 2>/dev/null || echo "N/A")
 
 # Get current system time (human readable)
 SYSTEM_TIME=$(date '+%Y-%m-%d %H:%M:%S')
