@@ -140,6 +140,26 @@ impl S7Client {
         // Note: CpuStatus enum is not publicly exported by the s7 crate
         Ok("Connected".to_string())
     }
+
+    /// Check if connection to PLC is actually alive by trying to get CPU status
+    pub fn check_connection(&mut self) -> bool {
+        // If we don't have a connection object, try to connect
+        if self.transport.is_none() {
+            if self.connect().is_err() {
+                return false;
+            }
+        }
+
+        // Try to communicate with PLC
+        match self.get_cpu_status() {
+            Ok(_) => true,
+            Err(_) => {
+                // Connection failed, clear the transport
+                self.transport = None;
+                false
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -183,8 +203,15 @@ impl PlcClientManager {
         client.connect()
     }
 
+    /// Check actual PLC connection by trying to communicate
+    pub async fn check_connection(&self) -> bool {
+        let mut client = self.inner.write().await;
+        client.check_connection()
+    }
+
     pub async fn status(&self) -> PlcStatus {
-        let connected = self.is_connected().await;
+        // Actually verify connection by trying to communicate with PLC
+        let connected = self.check_connection().await;
         PlcStatus {
             connected,
             ip: self.config.ip.clone(),
