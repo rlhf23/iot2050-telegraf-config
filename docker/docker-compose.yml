@@ -43,15 +43,18 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    environment:
-      - INFLUXDB_ORG=${INFLUXDB_ORG}
-      - INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
-      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
     entrypoint:
       - /bin/sh
       - -c
       - |
-        influx bucket create -n "$${INFLUXDB_DIAGNOSTICS_BUCKET}" -o "$${INFLUXDB_ORG}" -r 0 --token "$${INFLUXDB_TOKEN}" 2>/dev/null || echo "Bucket '$${INFLUXDB_DIAGNOSTICS_BUCKET}' already exists or created"
+        echo "Creating diagnostics bucket: $$INFLUXDB_DIAGNOSTICS_BUCKET"
+        influx bucket create \
+          -n "$$INFLUXDB_DIAGNOSTICS_BUCKET" \
+          -o "$$INFLUXDB_ORG" \
+          -r 0 \
+          --token "$$INFLUXDB_TOKEN" \
+        && echo "✅ Bucket created" \
+        || echo "⚠️ Bucket may already exist or creation failed"
     networks:
       - monitoring
     restart: "no"
