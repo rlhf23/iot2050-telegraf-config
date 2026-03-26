@@ -483,6 +483,26 @@
                     </p>
                 </div>
 
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="include-test-inputs">
+                        <label for="include-test-inputs" style="margin-bottom: 0;">Include System Inputs</label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        CPU, Disk, Memory metrics from the IoT device
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="include-opcua-diagnostics">
+                        <label for="include-opcua-diagnostics" style="margin-bottom: 0;">OPC-UA Diagnostics</label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Monitor OPC-UA server health (sessions, subscriptions, errors)
+                    </p>
+                </div>
+
             </div>
 
             <!-- Step 3: Generate & Deploy -->
@@ -822,7 +842,9 @@
                 iot_password: null,
                 output_format: document.getElementById('output-format').value || 'influxdb',
                 file_configs: file_configs,
-                use_source_timestamp: document.getElementById('use-source-timestamp').checked
+                use_source_timestamp: document.getElementById('use-source-timestamp').checked,
+                include_test_inputs: document.getElementById('include-test-inputs').checked,
+                include_opcua_diagnostics: document.getElementById('include-opcua-diagnostics').checked
             };
 
             try {

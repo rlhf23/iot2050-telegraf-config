@@ -69,6 +69,7 @@ enum OpcUaConfigField {
     OutputFormat,
     Anonymous,
     TestInputs,
+    OpcuaDiagnostics,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,7 +94,7 @@ enum ActionsField {
 
 impl OpcUaConfigField {
     fn count() -> usize {
-        6 // Ip, Username, Password, OutputFormat, Anonymous, TestInputs
+        7 // Ip, Username, Password, OutputFormat, Anonymous, TestInputs, OpcuaDiagnostics
     }
 
     fn from_index(index: usize) -> Self {
@@ -104,6 +105,7 @@ impl OpcUaConfigField {
             3 => Self::OutputFormat,
             4 => Self::Anonymous,
             5 => Self::TestInputs,
+            6 => Self::OpcuaDiagnostics,
             _ => Self::Ip, // Default fallback
         }
     }
@@ -211,6 +213,7 @@ impl App {
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
+                include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
             },
@@ -1127,6 +1130,9 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
                 OpcUaConfigField::TestInputs => {
                     app.config.include_test_inputs = !app.config.include_test_inputs
                 }
+                OpcUaConfigField::OpcuaDiagnostics => {
+                    app.config.include_opcua_diagnostics = !app.config.include_opcua_diagnostics
+                }
             }
         }
         // Keep some legacy hotkeys for now (can be removed later)
@@ -1144,6 +1150,9 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
         }
         KeyCode::Char('a') => app.toggle_anonymous_mode(),
         KeyCode::Char('t') => app.config.include_test_inputs = !app.config.include_test_inputs,
+        KeyCode::Char('d') => {
+            app.config.include_opcua_diagnostics = !app.config.include_opcua_diagnostics
+        }
         _ => {}
     }
 }
@@ -1533,6 +1542,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
+            Constraint::Length(3),
         ])
         .split(chunks[0]);
 
@@ -1625,6 +1635,21 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         matches!(selected_field, OpcUaConfigField::TestInputs),
     );
 
+    let opcua_diagnostics_status = if app.config.include_opcua_diagnostics {
+        "Enabled"
+    } else {
+        "Disabled"
+    };
+    render_config_field_with_selection(
+        f,
+        "OPC-UA Diagnostics",
+        opcua_diagnostics_status,
+        false,
+        "",
+        config_chunks[6],
+        matches!(selected_field, OpcUaConfigField::OpcuaDiagnostics),
+    );
+
     // Instructions
     let instructions = vec![
         Line::from("Controls:"),
@@ -1640,6 +1665,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from("o - Toggle output format"),
         Line::from("a - Toggle anonymous mode"),
         Line::from("t - Toggle test inputs"),
+        Line::from("d - Toggle OPC-UA diagnostics"),
     ];
 
     let help_block = Paragraph::new(instructions)

@@ -173,6 +173,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
     let anonymous = matches.get_flag("anonymous");
     let output_format = matches.get_one::<String>("output_format").unwrap();
     let test_inputs = matches.get_flag("test_inputs");
+    let opcua_diagnostics = matches.get_flag("opcua_diagnostics");
     let default_interval = matches
         .get_one::<String>("default_interval")
         .unwrap()
@@ -220,6 +221,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         listener_files: Vec::new(),
         output_format: Some(output_format.clone()),
         include_test_inputs: test_inputs,
+        include_opcua_diagnostics: opcua_diagnostics,
         selected_opcua_nodes: Vec::new(),
         use_source_timestamp: false,
     };
@@ -457,6 +459,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
+                include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
             };
@@ -499,6 +502,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 listener_files: Vec::new(),
                 output_format: Some("influxdb".to_string()),
                 include_test_inputs: false,
+                include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
             };
@@ -573,6 +577,7 @@ fn main() {
                 .arg(clap::Arg::new("anonymous").short('a').long("anonymous").action(clap::ArgAction::SetTrue).help("Use anonymous authentication (ignores username/password)"))
                 .arg(clap::Arg::new("output_format").short('o').long("output-format").default_value("influxdb").help("Output format (influxdb or prometheus)"))
                 .arg(clap::Arg::new("test_inputs").long("test-inputs").action(clap::ArgAction::SetTrue).help("Include test inputs (CPU, disk, memory)"))
+                .arg(clap::Arg::new("opcua_diagnostics").long("opcua-diagnostics").action(clap::ArgAction::SetTrue).help("Include OPC UA server diagnostics monitoring"))
                 .arg(clap::Arg::new("default_interval").long("default-interval").default_value("500").help("Default interval in milliseconds for active polling"))
                 .arg(clap::Arg::new("listener_interval").long("listener-interval").default_value("1000").help("Default interval in milliseconds for listeners/subscribers"))
                 .arg(clap::Arg::new("send").long("send").action(clap::ArgAction::SetTrue).help("Automatically send config to IoT device"))

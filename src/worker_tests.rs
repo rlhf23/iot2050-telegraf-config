@@ -2,10 +2,9 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
-
+use crate::backend::OutputFormat;
 use crate::worker::{WorkerCommand, WorkerHandle, WorkerResponse};
 use crate::TelegrafConfig;
-use crate::backend::OutputFormat;
 use std::path::Path;
 
 // Helper function to wait for a response with a timeout
@@ -38,6 +37,7 @@ fn create_test_config() -> TelegrafConfig {
         listener_files: vec![],
         output_format: Some("influxdb".to_string()),
         include_test_inputs: false,
+        include_opcua_diagnostics: false,
         selected_opcua_nodes: vec![],
         use_source_timestamp: false,
     }

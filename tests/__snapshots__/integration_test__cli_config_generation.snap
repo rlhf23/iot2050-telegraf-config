@@ -1,6 +1,6 @@
 ---
 source: tests/integration_test.rs
-expression: "&config"
+expression: "&config_result.config_content"
 ---
 # Namespace for file data_block_1.xml: 1
 # Namespace for file data_block_2.xml: 1
@@ -34,12 +34,21 @@ expression: "&config"
   omit_hostname = false
 
 # Configuration for sending metrics to InfluxDB 2.0
-# Output to InfluxDB
+# Output to InfluxDB - Main process data
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${INFLUXDB_TOKEN}"  # Using influxdb admin token
+  token = "${INFLUXDB_TOKEN}"
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
+  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+
+# Output to InfluxDB - Diagnostics data (system metrics, OPC-UA diagnostics)
+[[outputs.influxdb_v2]]
+  urls = ["http://influxdb:8086"]
+  token = "${INFLUXDB_TOKEN}"
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
+  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
 
 # Output to Prometheus
 [[outputs.prometheus_client]]
@@ -74,12 +83,13 @@ expression: "&config"
   # no configuration
 
 [[inputs.internal]]
-# Monitor Telegraf's internal performance
+  # Monitor Telegraf's internal performance
   collect_memstats = true
 
 #=================================================================================
 #                          TEST INPUTS END (੭｡╹▿╹｡)੭
 #=================================================================================
+
 
 
 
