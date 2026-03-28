@@ -9,7 +9,7 @@ use tracing::{error, info};
 use crate::{AppState, SessionDiscoveredData};
 
 // Import from main project
-use sie_generate_config::{TelegrafConfig, backend::opcua_poller::OpcUaPoller};
+use sie_generate_config::backend::opcua_poller::OpcUaPoller;
 
 /// Ensure OPC-UA IP has port appended (default 4840)
 fn ensure_opcua_port(ip: String) -> String {
@@ -179,7 +179,7 @@ pub async fn discover_namespaces(
 
     // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues
     let discovered_data = match tokio::task::spawn_blocking(move || {
-        letpoller = OpcUaPoller::new(config)?;
+        let poller = OpcUaPoller::new(config)?;
         poller.discover_all_namespaces()
     }).await {
         Ok(Ok(data)) => data,

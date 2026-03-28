@@ -752,6 +752,13 @@ pub async fn generate_from_discovery(
         ));
     }
 
+    // Get measurement names and counts before moving variables
+    let measurements: Vec<String> = discovered.namespaces.iter()
+        .map(|ns| ns.name.clone())
+        .collect();
+    let namespace_count = discovered.namespaces.len();
+    let variable_count = discovered.variables.len();
+
     // Create TelegrafConfig with discovered nodes
     let telegraf_config = TelegrafConfig {
         folder: session_dir.clone(),
@@ -824,8 +831,8 @@ pub async fn generate_from_discovery(
                 success: true,
                 message: format!(
                     "Configuration generated successfully from {} namespaces with {} variables",
-                    discovered.namespaces.len(),
-                    discovered.variables.len()
+                    namespace_count,
+                    variable_count
                 ),
                 config_path: Some(output_path.to_string_lossy().to_string()),
                 preview: Some(result.config_content),
