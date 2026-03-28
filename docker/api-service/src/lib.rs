@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use bollard::Docker;
+use dashmap::DashMap;
 use futures::stream::TryStreamExt;
 use serde::Serialize;
 use std::sync::Arc;
@@ -19,9 +20,20 @@ mod dashboard;
 mod deploy;
 mod opcua;
 
+/// Session data for storing discovered OPC-UA data
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionDiscoveredData {
+    pub discovered_data: sie_generate_config::DiscoveredData,
+    pub opcua_ip: String,
+}
+
+/// Global session storage for discovered data
+pub type SessionStore = DashMap<String, SessionDiscoveredData>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub docker: Arc<Docker>,
+    pub session_store: Arc<SessionStore>,
 }
 
 #[derive(Serialize)]
@@ -61,7 +73,9 @@ pub fn create_app() -> Router {
         }
     };
 
-    let state = AppState { docker };
+    let session_store = Arc::new(SessionStore::new());
+
+    let state = AppState { docker, session_store };
 
     // Configure CORS
     let cors = CorsLayer::new()
@@ -85,11 +99,13 @@ pub fn create_app() -> Router {
         .route("/api/config/files/:session_id/:filename", delete(config::delete_file))
         .route("/api/config/generate", post(config::generate_config))
         .route("/api/config/deploy", post(deploy::deploy_config))
+        .route("/api/config/generate-from-discovery", post(config::generate_from_discovery))
         // Dashboard endpoints
         .route("/api/dashboard/generate", post(dashboard::generate_dashboard))
         .route("/api/dashboard/deploy", post(dashboard::deploy_dashboard))
         // OPC-UA endpoints
         .route("/api/opcua/poll-namespaces", post(opcua::poll_namespaces))
+        .route("/api/opcua/discover", post(opcua::discover_namespaces))
         .layer(cors)
         .with_state(state)
 }

@@ -1,4 +1,5 @@
 use axum::{
+    extract::State,
     extract::{Multipart, Path},
     http::StatusCode,
     response::Json,
@@ -12,6 +13,9 @@ use uuid::Uuid;
 
 // Import from main project
 use sie_generate_config::{TelegrafConfig, backend::{ConfigGenerator, OutputFormat}};
+
+// Import session store
+use crate::{AppState, SessionDiscoveredData};
 
 const UPLOAD_DIR: &str = "/tmp/config-uploads";
 const MAX_FILE_SIZE: usize = 10 * 1024 * 1024; // 10MB
@@ -658,6 +662,174 @@ pub async fn generate_config(
                 config_path: Some(output_path.to_string_lossy().to_string()),
                 preview: Some(preview),
                 measurements: Some(result.measurements),
+            }))
+        }
+        Err(e) => {
+            error!("Failed to generate config: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: format!("Failed to generate configuration: {}", e),
+                    config_path: None,
+                    preview: None,
+                    measurements: None,
+                }),
+            ))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GenerateFromDiscoveryRequest {
+    pub session_id: String,
+    pub opcua_ip: Option<String>,
+    pub opcua_username: Option<String>,
+    pub opcua_password: Option<String>,
+    pub anonymous: bool,
+    pub output_format: String,
+    #[serde(default)]
+    pub use_source_timestamp: bool,
+    #[serde(default)]
+    pub include_test_inputs: bool,
+    #[serde(default)]
+    pub include_opcua_diagnostics: bool,
+}
+
+/// Generate Telegraf configuration from discovered namespaces
+pub async fn generate_from_discovery(
+    State(state): State<AppState>,
+    Json(request): Json<GenerateFromDiscoveryRequest>,
+) -> Result<Json<GenerateConfigResponse>, (StatusCode, Json<GenerateConfigResponse>)> {
+    info!("Generating config from discovery for session: {}", request.session_id);
+
+    // Get discovered data from session
+    let session_data = match state.session_store.get(&request.session_id) {
+        Some(data) => data,
+        None => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: "Session not found or no discovered data. Please run discovery first.".to_string(),
+                    config_path: None,
+                    preview: None,
+                    measurements: None,
+                }),
+            ));
+        }
+    };
+
+    let discovered = session_data.discovered_data.clone();
+    let opcua_ip = session_data.opcua_ip.clone();
+
+    // Determine OPC-UA credentials
+    let (username, password) = if request.anonymous {
+        ("".to_string(), "".to_string())
+    } else {
+        (
+            request.opcua_username.unwrap_or_default(),
+            request.opcua_password.unwrap_or_default(),
+        )
+    };
+
+    // Create session directory for generated config
+    let session_dir = PathBuf::from(UPLOAD_DIR)
+        .join(&request.session_id)
+        .join("generated");
+    
+    if let Err(e) = fs::create_dir_all(&session_dir).await {
+        error!("Failed to create session directory: {}", e);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(GenerateConfigResponse {
+                success: false,
+                message: "Failed to create output directory".to_string(),
+                config_path: None,
+                preview: None,
+                measurements: None,
+            }),
+        ));
+    }
+
+    // Create TelegrafConfig with discovered nodes
+    let telegraf_config = TelegrafConfig {
+        folder: session_dir.clone(),
+        ip: ensure_opcua_port(opcua_ip),
+        username,
+        password,
+        iot_host: "127.0.0.1:22".to_string(),
+        iot_username: "user".to_string(),
+        iot_password: "pass".to_string(),
+        listener_files: vec![],
+        output_format: Some(request.output_format.clone()),
+        include_test_inputs: request.include_test_inputs,
+        include_opcua_diagnostics: request.include_opcua_diagnostics,
+        selected_opcua_nodes: discovered.variables,
+        use_source_timestamp: request.use_source_timestamp,
+    };
+
+    // Create ConfigGenerator
+    let mut generator = match ConfigGenerator::new(telegraf_config) {
+        Ok(gen) => gen,
+        Err(e) => {
+            error!("Failed to create ConfigGenerator: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GenerateConfigResponse {
+                    success: false,
+                    message: format!("Failed to create ConfigGenerator: {}", e),
+                    config_path: None,
+                    preview: None,
+                    measurements: None,
+                }),
+            ));
+        }
+    };
+
+    // Set output format
+    let output_format = match request.output_format.as_str() {
+        "prometheus" => OutputFormat::Prometheus,
+        _ => OutputFormat::InfluxDB,
+    };
+    generator.set_output_format(output_format);
+
+    // Generate configuration from discovered nodes (no XML files needed)
+    let output_path = session_dir.join("telegraf.conf");
+    match generator.generate_config(&[], &[]) {
+        Ok(result) => {
+            // Write config to file
+            if let Err(e) = fs::write(&output_path, &result.config_content).await {
+                error!("Failed to write config file: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(GenerateConfigResponse {
+                        success: false,
+                        message: format!("Failed to write configuration file: {}", e),
+                        config_path: None,
+                        preview: None,
+                        measurements: None,
+                    }),
+                ));
+            }
+
+            info!("Successfully generated config from discovery for session: {}", request.session_id);
+
+            // Get measurement names from namespace names
+            let measurements: Vec<String> = discovered.namespaces.iter()
+                .map(|ns| ns.name.clone())
+                .collect();
+
+            Ok(Json(GenerateConfigResponse {
+                success: true,
+                message: format!(
+                    "Configuration generated successfully from {} namespaces with {} variables",
+                    discovered.namespaces.len(),
+                    discovered.variables.len()
+                ),
+                config_path: Some(output_path.to_string_lossy().to_string()),
+                preview: Some(result.config_content),
+                measurements: Some(measurements),
             }))
         }
         Err(e) => {

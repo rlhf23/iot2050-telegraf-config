@@ -1,9 +1,12 @@
 use axum::{
+    extract::State,
     extract::Json,
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
+
+use crate::{AppState, SessionDiscoveredData};
 
 // Import from main project
 use sie_generate_config::{TelegrafConfig, backend::opcua_poller::OpcUaPoller};
@@ -125,5 +128,121 @@ pub async fn poll_namespaces(
         success: true,
         message,
         mappings,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct DiscoverRequest {
+    pub session_id: String,
+    pub opcua_ip: String,
+    pub opcua_username: Option<String>,
+    pub opcua_password: Option<String>,
+    pub anonymous: bool,
+}
+
+#[derive(Serialize)]
+pub struct DiscoveredNamespaceInfo {
+    pub index: u16,
+    pub name: String,
+    pub variable_count: usize,
+}
+
+#[derive(Serialize)]
+pub struct DiscoverResponse {
+    pub success: bool,
+    pub message: String,
+    pub namespaces: Vec<DiscoveredNamespaceInfo>,
+    pub total_variables: usize,
+}
+
+/// Discover all namespaces and variables from an OPC-UA server's ServerInterfaces
+pub async fn discover_namespaces(
+    State(state): State<AppState>,
+    Json(request): Json<DiscoverRequest>,
+) -> Result<Json<DiscoverResponse>, (StatusCode, Json<DiscoverResponse>)> {
+    info!("Discovering namespaces from OPC-UA server: {}", request.opcua_ip);
+
+    // Create OpcUaConnectionConfig for discovery
+    let config = sie_generate_config::OpcUaConnectionConfig {
+        ip: ensure_opcua_port(request.opcua_ip.clone()),
+        username: if request.anonymous {
+            String::new()
+        } else {
+            request.opcua_username.unwrap_or_default()
+        },
+        password: if request.anonymous {
+            String::new()
+        } else {
+            request.opcua_password.unwrap_or_default()
+        },
+    };
+
+    // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues
+    let discovered_data = match tokio::task::spawn_blocking(move || {
+        letpoller = OpcUaPoller::new(config)?;
+        poller.discover_all_namespaces()
+    }).await {
+        Ok(Ok(data)) => data,
+        Ok(Err(e)) => {
+            error!("Failed to discover namespaces: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(DiscoverResponse {
+                    success: false,
+                    message: format!("Failed to discover namespaces: {}", e),
+                    namespaces: vec![],
+                    total_variables: 0,
+                }),
+            ));
+        }
+        Err(e) => {
+            error!("Task join error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(DiscoverResponse {
+                    success: false,
+                    message: format!("Internal error: {}", e),
+                    namespaces: vec![],
+                    total_variables: 0,
+                }),
+            ));
+        }
+    };
+
+    // Store discovered data in session
+    let session_data = SessionDiscoveredData {
+        discovered_data: discovered_data.clone(),
+        opcua_ip: request.opcua_ip.clone(),
+    };
+    state.session_store.insert(request.session_id.clone(), session_data);
+
+    // Convert to response format
+    let namespaces: Vec<DiscoveredNamespaceInfo> = discovered_data
+        .namespaces
+        .into_iter()
+        .map(|ns| DiscoveredNamespaceInfo {
+            index: ns.index,
+            name: ns.name,
+            variable_count: ns.variable_count,
+        })
+        .collect();
+
+    let total_variables = namespaces.iter().map(|ns| ns.variable_count).sum();
+
+    info!(
+        "Successfully discovered {} namespaces with {} total variables",
+        namespaces.len(),
+        total_variables
+    );
+
+    Ok(Json(DiscoverResponse {
+        success: true,
+        message: format!(
+            "Successfully discovered {} namespaces with {} variables",
+            namespaces.len(),
+            total_variables
+        ),
+        namespaces,
+        total_variables,
     }))
 }

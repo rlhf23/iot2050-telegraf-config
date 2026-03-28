@@ -1,7 +1,8 @@
 use opcua::types::NodeId;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SelectedOpcUaNode {
     pub node_id: NodeId,
     pub namespace: u16,
@@ -9,7 +10,22 @@ pub struct SelectedOpcUaNode {
     pub display_name: String,
     pub measurement_name: String,
     pub interval_ms: u32,
-    pub folder_name: Option<String>, // Optional folder name for grouping nodes
+    pub folder_name: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DiscoveredNamespace {
+    pub index: u16,
+    pub name: String,
+    pub variable_count: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DiscoveredData {
+    pub namespaces: Vec<DiscoveredNamespace>,
+    pub variables: Vec<SelectedOpcUaNode>,
+    pub namespace_names: HashMap<u16, String>,
+    pub plc_name: Option<String>,
 }
 
 /// Configuration for OPC-UA server connection
