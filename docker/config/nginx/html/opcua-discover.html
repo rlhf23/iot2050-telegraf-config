@@ -465,6 +465,20 @@
                     </button>
                 </div>
 
+                <!-- Dashboard section -->
+                <div id="dashboard-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Grafana Dashboard</h3>
+                    <button class="btn btn-primary" id="generate-dashboard-btn" disabled onclick="generateDashboard()">
+                        Generate Dashboard
+                    </button>
+                    <button class="btn btn-success" id="deploy-dashboard-btn" disabled onclick="deployDashboard()" style="margin-left: 10px;">
+                        Deploy Dashboard
+                    </button>
+                    <button class="btn" onclick="viewDashboard()" style="background: #6c757d; margin-left: 10px;" id="view-dashboard-btn" disabled>
+                        View Dashboard JSON
+                    </button>
+                </div>
+
                 <div class="loading" id="generate-loading">
                     <div class="spinner"></div>
                     <p id="loading-text" style="margin-top: 10px;">Generating configuration...</p>
@@ -666,6 +680,12 @@
                     
                     // Store config path for deployment
                     window.generatedConfigPath = data.config_path;
+                    
+                    // Store measurements for dashboard generation
+                    if (data.measurements && data.measurements.length > 0) {
+                        window.measurements = data.measurements;
+                        document.getElementById('generate-dashboard-btn').disabled = false;
+                    }
                 } else {
                     showNotification(data.message || 'Generation failed', 'error');
                 }
@@ -782,6 +802,113 @@
                 closePreviewModal();
             }
         });
+
+        // Generate Grafana dashboard
+        async function generateDashboard() {
+            if (!window.measurements || window.measurements.length === 0) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Generating dashboard...';
+
+            const requestData = {
+                measurements: window.measurements,
+                bucket: 'telegraf',
+                datasource_uid: 'InfluxDB'
+            };
+
+            try {
+                const response = await fetch('/api/dashboard/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Store dashboard JSON for deployment and viewing
+                    window.dashboardJson = data.dashboard_json;
+                    window.dashboardUid = data.dashboard_uid;
+                    
+                    // Enable buttons
+                    document.getElementById('deploy-dashboard-btn').disabled = false;
+                    document.getElementById('view-dashboard-btn').disabled = false;
+                    
+                    // Show preview
+                    if (data.dashboard_json) {
+                        const parsed = JSON.parse(data.dashboard_json);
+                        showPreviewModal(JSON.stringify(parsed, null, 2));
+                        document.getElementById('modal-title').textContent = 'Dashboard Preview';
+                    }
+                } else {
+                    showNotification(data.message || 'Dashboard generation failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Deploy dashboard to Grafana
+        async function deployDashboard() {
+            if (!window.dashboardJson) {
+                showNotification('Please generate dashboard first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy dashboard to Grafana?')) {
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Deploying dashboard...';
+
+            const requestData = {
+                dashboard_json: window.dashboardJson
+            };
+
+            try {
+                const response = await fetch('/api/dashboard/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message || 'Dashboard deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // View dashboard JSON
+        function viewDashboard() {
+            if (!window.dashboardJson) {
+                showNotification('Please generate dashboard first', 'error');
+                return;
+            }
+            
+            const parsed = JSON.parse(window.dashboardJson);
+            showPreviewModal(JSON.stringify(parsed, null, 2));
+            document.getElementById('modal-title').textContent = 'Dashboard JSON';
+        }
     </script>
 </body>
 </html>
