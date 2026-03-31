@@ -14,14 +14,14 @@ WORKDIR /app
 ARG TARGETARCH=arm64
 
 # Copy pre-built binary for the target architecture
-COPY plc-service/docker-plc-service-${TARGETARCH} /app/plc-service
+COPY control-service/docker-control-service-${TARGETARCH} /app/control-service
 
 # Make it executable
-RUN chmod +x /app/plc-service
+RUN chmod +x /app/control-service
 
 # Expose port
-EXPOSE 8001
+EXPOSE 8002
 
-ENV BUTTONS_CONFIG=/config/plc/buttons.toml
+ENV CONTROL_CONFIG=/config/control/config.toml
 
-CMD ["/app/plc-service"]
+CMD ["/app/control-service"]

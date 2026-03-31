@@ -6,10 +6,10 @@ FROM rust:1.75 as builder
 WORKDIR /app
 
 # Copy manifests (paths relative to docker/ build context)
-COPY plc-service/Cargo.toml ./
+COPY control-service/Cargo.toml ./
 
 # Create src directory and copy source files
-COPY plc-service/src ./src
+COPY control-service/src ./src
 
 # Build release binary
 RUN cargo build --release
@@ -24,13 +24,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy the built binary
-COPY --from=builder /app/target/release/plc-service /app/plc-service
+COPY --from=builder /app/target/release/control-service /app/control-service
 
 # Make it executable
-RUN chmod +x /app/plc-service
+RUN chmod +x /app/control-service
 
-EXPOSE 8001
+EXPOSE 8002
 
-ENV BUTTONS_CONFIG=/config/plc/buttons.toml
+ENV CONTROL_CONFIG=/config/control/config.toml
 
-CMD ["/app/plc-service"]
+CMD ["/app/control-service"]

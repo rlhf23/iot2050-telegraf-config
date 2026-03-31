@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PLC Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .back-link {
+            color: white;
+            text-decoration: none;
+            font-size: 0.9em;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        .status-bar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 100px;
+        }
+
+        .status-label {
+            font-size: 0.8em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .status-value {
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .status-value.connected {
+            color: #10b981;
+        }
+
+        .status-value.disconnected {
+            color: #ef4444;
+        }
+
+        .buttons-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+        }
+
+        .button-card {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .button-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .button-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+            font-size: 0.95em;
+        }
+
+        .button-address {
+            font-size: 0.75em;
+            color: #888;
+            margin-bottom: 8px;
+        }
+
+        .mode-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .mode-badge.toggle {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+
+        .mode-badge.momentary {
+            background: #fce7f3;
+            color: #be185d;
+        }
+
+        .control-btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .control-btn.toggle-off {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .control-btn.toggle-off:hover {
+            background: #d1d5db;
+        }
+
+        .control-btn.toggle-on {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }
+
+        .control-btn.toggle-on:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        }
+
+        .control-btn.momentary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .control-btn.momentary:hover {
+            opacity: 0.9;
+        }
+
+        .control-btn.momentary:active {
+            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+        }
+
+        .control-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .control-btn.loading {
+            opacity: 0.7;
+            cursor: wait;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+
+        .error {
+            text-align: center;
+            color: #ef4444;
+            padding: 20px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 2000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: #10b981;
+        }
+
+        .notification.error {
+            background: #ef4444;
+        }
+
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.5em;
+            }
+
+            .status-bar {
+                padding: 15px;
+            }
+
+            .buttons-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .control-btn {
+                padding: 10px 15px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="/" class="back-link">← Back to Dashboard</a>
+            <h1>PLC Control</h1>
+        </header>
+
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">Connection</span>
+                <span id="connection-status" class="status-value">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">PLC IP</span>
+                <span id="plc-ip" class="status-value">-</span>
+            </div>
+        </div>
+
+        <div id="buttons-container" class="buttons-grid">
+            <div class="loading">Loading buttons...</div>
+        </div>
+    </div>
+
+    <script>
+        let buttons = [];
+
+        async function loadButtons() {
+            const container = document.getElementById('buttons-container');
+            const statusEl = document.getElementById('connection-status');
+            const ipEl = document.getElementById('plc-ip');
+
+            try {
+                const response = await fetch('/api/control/buttons', {
+                    credentials: 'include',
+                    cache: 'no-cache'
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Auth required - browser will show basic auth dialog
+                        container.innerHTML = '<div class="error">Authentication required</div>';
+                    } else {
+                        container.innerHTML = '<div class="error">Failed to load buttons: ' + response.status + '</div>';
+                    }
+                    return;
+                }
+
+                const data = await response.json();
+                buttons = data.buttons || [];
+
+                // Update status
+                const statusResponse = await fetch('/api/control/status', {
+                    credentials: 'include',
+                    cache: 'no-cache'
+                });
+
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json();
+                    if (statusData.success && statusData.status) {
+                        const connected = statusData.status.connected;
+                        statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+                        statusEl.className = 'status-value ' + (connected ? 'connected' : 'disconnected');
+                        ipEl.textContent = statusData.status.ip || '-';
+                        container.style.display = connected ? 'grid' : 'none';
+                    }
+                }
+
+                if (buttons.length === 0) {
+                    container.innerHTML = '<div class="loading">No buttons configured</div>';
+                    return;
+                }
+
+                container.innerHTML = buttons.map((btn, i) => `
+                    <div class="button-card">
+                        <div class="button-name">${escapeHtml(btn.name)}</div>
+                        <div class="button-address">${escapeHtml(btn.address)}</div>
+                        <span class="mode-badge ${btn.mode}">${btn.mode}</span>
+                        <button class="control-btn ${btn.mode} ${btn.mode === 'toggle' ? 'toggle-off' : 'momentary'}"
+                                data-id="${i}" data-mode="${btn.mode}"
+                                onclick="handleButton(${i}, '${btn.mode}')">
+                            ${btn.mode === 'toggle' ? 'OFF' : 'PRESS'}
+                        </button>
+                    </div>
+                `).join('');
+
+                if (buttons.some(b => b.mode === 'toggle')) {
+                    updateToggleStates();
+                }
+            } catch (error) {
+                console.error('Error loading buttons:', error);
+                container.innerHTML = '<div class="error">Control service unavailable</div>';
+                statusEl.textContent = 'Unavailable';
+                statusEl.className = 'status-value disconnected';
+            }
+        }
+
+        async function updateToggleStates() {
+            for (let i = 0; i < buttons.length; i++) {
+                const btn = buttons[i];
+                if (btn.mode === 'toggle') {
+                    try {
+                        const response = await fetch(`/api/control/read/${i}`, {
+                            credentials: 'include',
+                            cache: 'no-cache'
+                        });
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.success && data.value !== null) {
+                                const btnEl = document.querySelector(`.control-btn[data-id="${i}"]`);
+                                if (btnEl) {
+                                    btnEl.textContent = data.value ? 'ON' : 'OFF';
+                                    btnEl.className = `control-btn toggle ${data.value ? 'toggle-on' : 'toggle-off'}`;
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error reading button ${i}:`, error);
+                    }
+                }
+            }
+        }
+
+        async function handleButton(id, mode) {
+            const btnEl = document.querySelector(`.control-btn[data-id="${id}"]`);
+
+            if (btnEl.disabled) return;
+
+            btnEl.classList.add('loading');
+            btnEl.disabled = true;
+
+            try {
+                let response;
+
+                if (mode === 'toggle') {
+                    response = await fetch(`/api/control/toggle/${id}`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        cache: 'no-cache'
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.success) {
+                            btnEl.textContent = data.new_value ? 'ON' : 'OFF';
+                            btnEl.className = `control-btn toggle ${data.new_value ? 'toggle-on' : 'toggle-off'}`;
+                            showNotification(`${buttons[id].name}: ${data.new_value ? 'ON' : 'OFF'}`, 'success');
+                        }
+                    }
+                } else {
+                    response = await fetch('/api/control/write', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                        body: JSON.stringify({ id: id, value: true })
+                    });
+
+                    if (response.ok) {
+                        showNotification(`${buttons[id].name}: Pressed`, 'success');
+
+                        const duration = buttons[id].momentary_duration_ms || 500;
+                        setTimeout(async () => {
+                            try {
+                                await fetch('/api/control/write', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    credentials: 'include',
+                                    cache: 'no-cache',
+                                    body: JSON.stringify({ id: id, value: false })
+                                });
+                            } catch (e) {
+                                console.error('Error releasing momentary button:', e);
+                            }
+                        }, duration);
+                    }
+                }
+
+                if (response && !response.ok) {
+                    const errorData = await response.json();
+                    showNotification(errorData.message || 'Operation failed', 'error');
+                }
+            } catch (error) {
+                showNotification(error.message, 'error');
+            } finally {
+                btnEl.classList.remove('loading');
+                btnEl.disabled = false;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showNotification(message, type) {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        // Load buttons on page load
+        loadButtons();
+
+        // Refresh status every 10 seconds
+        setInterval(loadButtons, 10000);
+    </script>
+</body>
+</html>

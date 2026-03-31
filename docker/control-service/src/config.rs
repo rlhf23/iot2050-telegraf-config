@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use std::fs;
-use std::net::Ipv4Addr;
 use std::path::Path;
 use thiserror::Error;
 
@@ -15,9 +14,16 @@ pub enum ConfigError {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ButtonsConfig {
+pub struct ControlConfig {
+    pub auth: AuthConfig,
     pub plc: PlcConfig,
     pub buttons: Vec<ButtonDef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthConfig {
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,7 +51,6 @@ fn default_write_timeout() -> u64 {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ButtonDef {
-    pub id: Option<String>,
     pub name: String,
     pub address: String,
     #[serde(default)]
@@ -80,13 +85,14 @@ pub struct ParsedAddress {
     pub bit: i32,
 }
 
-impl ButtonsConfig {
+impl ControlConfig {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let content = fs::read_to_string(path)?;
-        let config: ButtonsConfig = toml::from_str(&content)?;
+        let config: ControlConfig = toml::from_str(&content)?;
         Ok(config)
     }
-    pub fn get_plc_ip(&self) -> Result<Ipv4Addr, ConfigError> {
+
+    pub fn get_plc_ip(&self) -> Result<std::net::Ipv4Addr, ConfigError> {
         self.plc
             .ip
             .parse()

@@ -1,4 +1,4 @@
-use crate::buttons::{ParsedAddress, PlcConfig};
+use crate::config::{ParsedAddress, PlcConfig};
 use s7::{
     client::Client,
     field::{Bool, Field},

@@ -392,10 +392,20 @@
             min-width: 200px;
         }
 
-        @media (max-width: 768px) {
+@media (max-width: 768px) {
             h1 {
                 font-size: 2em;
             }
+            
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+            }
+        }
             
             .services-grid {
                 grid-template-columns: 1fr;
@@ -684,20 +694,6 @@
                     </div>
                 </div>
                 <a href="/config-upload.html" id="config-generator-link" class="service-link">Open Config Generator</a>
-            </div>
-        </div>
-
-        <!-- PLC Control Panel -->
-        <div class="info-panel" id="plc-control-panel" style="margin-bottom: 20px;">
-            <h2>🕹️ PLC Controls</h2>
-            <div class="plc-status-bar">
-                <span class="plc-status-label">Connection:</span>
-                <span id="plc-connection-status" class="plc-status-value">Checking...</span>
-                <span class="plc-status-label">PLC:</span>
-                <span id="plc-ip-display" class="plc-status-value">-</span>
-            </div>
-            <div id="plc-buttons-container" class="plc-buttons-grid">
-                <div class="plc-loading">Loading buttons...</div>
             </div>
         </div>
 
@@ -1037,202 +1033,15 @@
             }
         }
 
-        // Initial checks
+// Initial checks
         checkAllServices();
         updateSystemInfo();
-        loadPlcButtons();
 
         // Refresh every 10 seconds
         setInterval(() => {
             checkAllServices();
             updateSystemInfo();
-            updatePlcStatus();
         }, 10000);
-
-        // PLC Control Panel Functions
-        let plcButtons = [];
-
-        async function updatePlcStatus() {
-            const statusEl = document.getElementById('plc-connection-status');
-            const ipEl = document.getElementById('plc-ip-display');
-            const container = document.getElementById('plc-buttons-container');
-            
-            try {
-                const response = await fetch('/plc-api/status', { cache: 'no-cache' });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success && data.status) {
-                        const connected = data.status.connected;
-                        statusEl.textContent = connected ? 'Connected' : 'Disconnected';
-                        statusEl.className = 'plc-status-value ' + (connected ? 'connected' : 'disconnected');
-                        ipEl.textContent = data.status.ip || '-';
-                        container.style.display = connected ? 'grid' : 'none';
-                    }
-                }
-            } catch (error) {
-                statusEl.textContent = 'Unavailable';
-                statusEl.className = 'plc-status-value disconnected';
-                container.style.display = 'none';
-            }
-        }
-
-        async function loadPlcButtons() {
-            const container = document.getElementById('plc-buttons-container');
-            const statusEl = document.getElementById('plc-connection-status');
-            const ipEl = document.getElementById('plc-ip-display');
-            
-            try {
-                // Load button definitions
-                const buttonsResponse = await fetch('/plc-api/buttons', { cache: 'no-cache' });
-                if (!buttonsResponse.ok) {
-                    container.innerHTML = '<div class="plc-error">Failed to load button configuration</div>';
-                    container.style.display = 'none';
-                    return;
-                }
-                const buttonsData = await buttonsResponse.json();
-                plcButtons = buttonsData.buttons || [];
-                
-                // Get PLC status
-                const statusResponse = await fetch('/plc-api/status', { cache: 'no-cache' });
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json();
-                    if (statusData.success && statusData.status) {
-                        const connected = statusData.status.connected;
-                        statusEl.textContent = connected ? 'Connected' : 'Disconnected';
-                        statusEl.className = 'plc-status-value ' + (connected ? 'connected' : 'disconnected');
-                        ipEl.textContent = statusData.status.ip || '-';
-                        container.style.display = connected ? 'grid' : 'none';
-                    }
-                }
-                
-                // Render buttons
-                if (plcButtons.length === 0) {
-                    container.innerHTML = '<div class="plc-loading">No buttons configured</div>';
-                    return;
-                }
-                
-                container.innerHTML = plcButtons.map((btn, index) => `
-                    <div class="plc-button-card" data-id="${index}">
-                        <div class="plc-button-name">${escapeHtml(btn.name)}</div>
-                        <div class="plc-button-address">${escapeHtml(btn.address)}</div>
-                        <span class="plc-mode-badge ${btn.mode}">${btn.mode}</span>
-                        <button class="plc-button ${btn.mode} ${btn.mode === 'toggle' ? 'toggle-off' : 'momentary'}" 
-                                data-id="${index}" 
-                                data-mode="${btn.mode}"
-                                onclick="handlePlcButton(${index}, '${btn.mode}')">
-                            ${btn.mode === 'toggle' ? 'OFF' : 'PRESS'}
-                        </button>
-                    </div>
-                `).join('');
-                
-                // Update toggle states
-                if (plcButtons.some(b => b.mode === 'toggle')) {
-                    updateToggleStates();
-                }
-            } catch (error) {
-                console.error('Error loading PLC buttons:', error);
-                container.innerHTML = '<div class="plc-error">PLC service unavailable</div>';
-                container.style.display = 'none';
-                statusEl.textContent = 'Unavailable';
-                statusEl.className = 'plc-status-value disconnected';
-            }
-        }
-
-        async function updateToggleStates() {
-            for (let i = 0; i < plcButtons.length; i++) {
-                const btn = plcButtons[i];
-                if (btn.mode === 'toggle') {
-                    try {
-                        const response = await fetch(`/plc-api/read/${i}`, { cache: 'no-cache' });
-                        if (response.ok) {
-                            const data = await response.json();
-                            if (data.success && data.value !== null) {
-                                const buttonEl = document.querySelector(`.plc-button[data-id="${i}"]`);
-                                if (buttonEl) {
-                                    buttonEl.textContent = data.value ? 'ON' : 'OFF';
-                                    buttonEl.className = `plc-button toggle ${data.value ? 'toggle-on' : 'toggle-off'}`;
-                                }
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`Error reading button ${i}:`, error);
-                    }
-                }
-            }
-        }
-
-        async function handlePlcButton(id, mode) {
-            const buttonEl = document.querySelector(`.plc-button[data-id="${id}"]`);
-            const cardEl = buttonEl.closest('.plc-button-card');
-            
-            if (buttonEl.disabled) return;
-            
-            buttonEl.classList.add('loading');
-            buttonEl.disabled = true;
-            
-            try {
-                let response;
-                
-                if (mode === 'toggle') {
-                    // Toggle button
-                    response = await fetch(`/plc-api/toggle/${id}`, {
-                        method: 'POST',
-                        cache: 'no-cache'
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success) {
-                            const isOn = data.new_value;
-                            buttonEl.textContent = isOn ? 'ON' : 'OFF';
-                            buttonEl.className = `plc-button toggle ${isOn ? 'toggle-on' : 'toggle-off'}`;
-                            showNotification(`✓ ${plcButtons[id].name}: ${isOn ? 'ON' : 'OFF'}`, 'success');
-                        }
-                    }
-                } else {
-                    //Momentary button - send TRUE
-                    response = await fetch('/plc-api/write', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: id, value: true }),
-                        cache: 'no-cache'
-                    });
-                    
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.success) {
-                            showNotification(`✓ ${plcButtons[id].name}: Activated`, 'success');
-                        }
-                    }
-                    
-                    // Auto-release after duration
-                    const duration = plcButtons[id].momentary_duration_ms || 500;
-                    setTimeout(async () => {
-                        try {
-                            await fetch('/plc-api/write', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ id: id, value: false }),
-                                cache: 'no-cache'
-                            });
-                            showNotification(`✓ ${plcButtons[id].name}: Released`, 'success');
-                        } catch (e) {
-                            console.error('Error releasing momentary button:', e);
-                        }
-                    }, duration);
-                }
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    showNotification(`❌ ${errorData.message || 'Operation failed'}`, 'error');
-                }
-            } catch (error) {
-                showNotification(`❌ Error: ${error.message}`, 'error');
-            } finally {
-                buttonEl.classList.remove('loading');
-                buttonEl.disabled = false;
-            }
-        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');

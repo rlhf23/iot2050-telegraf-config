@@ -1,19 +1,21 @@
-use crate::buttons::ButtonsConfig;
+use crate::config::ControlConfig;
 use crate::s7_client::{PlcClientManager, PlcStatus};
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
     routing::{get, post},
     Router,
 };
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::warn;
 
 #[derive(Clone)]
 pub struct AppState {
     pub client: PlcClientManager,
-    pub config: Arc<ButtonsConfig>,
+    pub config: Arc<ControlConfig>,
 }
 
 #[derive(Debug, Serialize)]
@@ -69,13 +71,47 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
+/// Extract credentials from Basic Auth header
+fn extract_credentials(headers: &HeaderMap) -> Option<(String, String)> {
+    let auth_header = headers.get("Authorization")?;
+    let auth_str = auth_header.to_str().ok()?;
+
+    if !auth_str.starts_with("Basic ") {
+        return None;
+    }
+
+    let encoded = &auth_str[6..];
+    let decoded = STANDARD.decode(encoded).ok()?;
+    let decoded_str = String::from_utf8(decoded).ok()?;
+
+    let parts: Vec<&str> = decoded_str.splitn(2, ':').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    Some((parts[0].to_string(), parts[1].to_string()))
+}
+
+/// Check if request has valid credentials
+fn check_auth(headers: &HeaderMap, config: &crate::config::AuthConfig) -> Result<(), StatusCode> {
+    let (username, password) = extract_credentials(headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    if username == config.username && password == config.password {
+        Ok(())
+    } else {
+        warn!("Authentication failed for user: {}", username);
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
-        .route("/api/plc/buttons", get(list_buttons))
-        .route("/api/plc/status", get(get_status))
-        .route("/api/plc/read/:id", get(read_button))
-        .route("/api/plc/write", post(write_button))
-        .route("/api/plc/toggle/:id", post(toggle_button))
+        .route("/api/control/buttons", get(list_buttons))
+        .route("/api/control/status", get(get_status))
+        .route("/api/control/read/:id", get(read_button))
+        .route("/api/control/write", post(write_button))
+        .route("/api/control/toggle/:id", post(toggle_button))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware))
         .layer(
             tower_http::cors::CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)
@@ -83,6 +119,19 @@ pub fn create_routes(state: AppState) -> Router {
                 .allow_headers(tower_http::cors::Any),
         )
         .with_state(state)
+}
+
+async fn auth_middleware(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, StatusCode> {
+    let headers = request.headers().clone();
+    
+    match check_auth(&headers, &state.config.auth) {
+        Ok(()) => Ok(next.run(request).await),
+        Err(status) => Err(status),
+    }
 }
 
 async fn list_buttons(State(state): State<AppState>) -> Json<ButtonsResponse> {
@@ -96,10 +145,10 @@ async fn list_buttons(State(state): State<AppState>) -> Json<ButtonsResponse> {
             name: b.name.clone(),
             address: b.address.clone(),
             mode: match b.mode {
-                crate::buttons::ButtonMode::Toggle => "toggle".to_string(),
-                crate::buttons::ButtonMode::Momentary => "momentary".to_string(),
+                crate::config::ButtonMode::Toggle => "toggle".to_string(),
+                crate::config::ButtonMode::Momentary => "momentary".to_string(),
             },
-            momentary_duration_ms: if b.mode == crate::buttons::ButtonMode::Momentary {
+            momentary_duration_ms: if b.mode == crate::config::ButtonMode::Momentary {
                 Some(b.momentary_duration_ms)
             } else {
                 None

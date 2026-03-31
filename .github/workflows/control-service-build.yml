@@ -1,13 +1,11 @@
-name: Build PLC Service Binary
+name: Build Control Service Binary
 
 on:
-  # Manual trigger - run when you need to rebuild binaries
   workflow_dispatch:
-  # Also run on push to these paths
   push:
     branches: [main, master]
     paths:
-      - 'docker/plc-service/**'
+      - 'docker/control-service/**'
 
 jobs:
   build:
@@ -16,11 +14,9 @@ jobs:
     strategy:
       matrix:
         include:
-          # IoT2050 / Raspberry Pi (ARM64) - musl for maximum portability
           - target: aarch64-unknown-linux-musl
             arch: arm64
             needs_cross: true
-          # Standard Linux servers / VMs (x86_64) - musl for maximum portability
           - target: x86_64-unknown-linux-musl
             arch: amd64
             needs_cross: true
@@ -41,41 +37,41 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/registry
-          key: ${{ runner.os }}-${{ matrix.arch }}-plc-cargo-registry-${{ hashFiles('docker/plc-service/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-control-cargo-registry-${{ hashFiles('docker/control-service/Cargo.lock') }}
 
       - name: Cache cargo index
         uses: actions/cache@v4
         with:
           path: ~/.cargo/git
-          key: ${{ runner.os }}-${{ matrix.arch }}-plc-cargo-git-${{ hashFiles('docker/plc-service/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-control-cargo-git-${{ hashFiles('docker/control-service/Cargo.lock') }}
 
       - name: Cache target directory
         uses: actions/cache@v4
         with:
-          path: docker/plc-service/target
-          key: ${{ runner.os }}-${{ matrix.target }}-plc-target-${{ hashFiles('docker/plc-service/Cargo.lock') }}
+          path: docker/control-service/target
+          key: ${{ runner.os }}-${{ matrix.target }}-control-target-${{ hashFiles('docker/control-service/Cargo.lock') }}
 
-      - name: Build plc-service with cross
+      - name: Build control-service with cross
         run: |
-          cd docker/plc-service
+          cd docker/control-service
           cross build --release --target ${{ matrix.target }}
 
       - name: Verify binary
         run: |
-          ls -lh docker/plc-service/target/${{ matrix.target }}/release/plc-service
+          ls -lh docker/control-service/target/${{ matrix.target }}/release/control-service
 
       - name: Prepare binary for upload
         run: |
           mkdir -p artifacts
-          cp docker/plc-service/target/${{ matrix.target }}/release/plc-service \
-             artifacts/docker-plc-service-${{ matrix.arch }}
-          chmod +x artifacts/docker-plc-service-${{ matrix.arch }}
+          cp docker/control-service/target/${{ matrix.target }}/release/control-service \
+             artifacts/docker-control-service-${{ matrix.arch }}
+          chmod +x artifacts/docker-control-service-${{ matrix.arch }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: plc-service-${{ matrix.arch }}
-          path: artifacts/docker-plc-service-${{ matrix.arch }}
+          name: control-service-${{ matrix.arch }}
+          path: artifacts/docker-control-service-${{ matrix.arch }}
           retention-days: 90
 
   commit-binaries:
@@ -91,28 +87,28 @@ jobs:
       - name: Download arm64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: plc-service-arm64
+          name: control-service-arm64
           path: artifacts/arm64
 
       - name: Download amd64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: plc-service-amd64
+          name: control-service-amd64
           path: artifacts/amd64
 
       - name: Update binaries in repo
         run: |
-          cp artifacts/arm64/docker-plc-service-arm64 docker/plc-service/docker-plc-service-arm64
-          cp artifacts/amd64/docker-plc-service-amd64 docker/plc-service/docker-plc-service-amd64
-          chmod +x docker/plc-service/docker-plc-service-arm64
-          chmod +x docker/plc-service/docker-plc-service-amd64
+          cp artifacts/arm64/docker-control-service-arm64 docker/control-service/docker-control-service-arm64
+          cp artifacts/amd64/docker-control-service-amd64 docker/control-service/docker-control-service-amd64
+          chmod +x docker/control-service/docker-control-service-arm64
+          chmod +x docker/control-service/docker-control-service-amd64
 
       - name: Commit and push
         run: |
           git config user.email "action@github.com"
           git config user.name "GitHub Action"
-          git add docker/plc-service/docker-plc-service-arm64 docker/plc-service/docker-plc-service-amd64
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: Update pre-built plc-service binaries"
+          git add docker/control-service/docker-control-service-arm64 docker/control-service/docker-control-service-amd64
+          git diff --quiet && git diff --staged --quiet || git commit -m "chore: Update pre-built control-service binaries"
           git push
 
       - name: Create Release (on tag)
@@ -120,7 +116,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/arm64/docker-plc-service-arm64
-            artifacts/amd64/docker-plc-service-amd64
+            artifacts/arm64/docker-control-service-arm64
+            artifacts/amd64/docker-control-service-amd64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

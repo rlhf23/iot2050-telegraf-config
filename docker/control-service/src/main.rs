@@ -1,21 +1,21 @@
 use std::sync::Arc;
 use tracing::info;
 
-use plc_service::{AppState, ButtonsConfig, PlcClientManager};
+use control_service::{AppState, ControlConfig, PlcClientManager};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_env_filter("plc_service=debug,tower_http=debug")
+        .with_env_filter("control_service=debug,tower_http=debug")
         .init();
 
-    info!("Starting PLC Service...");
+    info!("Starting Control Service...");
 
-    let config_path = std::env::var("BUTTONS_CONFIG").unwrap_or_else(|_| "/config/plc/buttons.toml".to_string());
+    let config_path = std::env::var("CONTROL_CONFIG").unwrap_or_else(|_| "/config/control/config.toml".to_string());
 
     info!("Loading config from: {}", config_path);
 
-    let config = match ButtonsConfig::load(&config_path) {
+    let config = match ControlConfig::load(&config_path) {
         Ok(c) => {
             info!(
                 "Loaded {} button(s) for PLC at {}",
@@ -37,14 +37,14 @@ async fn main() {
         config: Arc::new(config),
     };
 
-    let app = plc_service::routes::create_routes(state);
+    let app = control_service::routes::create_routes(state);
 
-    let addr = std::env::var("PLC_SERVICE_ADDR").unwrap_or_else(|_| "0.0.0.0:8001".to_string());
+    let addr = std::env::var("CONTROL_SERVICE_ADDR").unwrap_or_else(|_| "0.0.0.0:8002".to_string());
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
         .expect("Failed to bind");
 
-    info!("PLC Service listening on {}", addr);
+    info!("Control Service listening on {}", addr);
 
     axum::serve(listener, app)
         .await
