@@ -16,3 +16,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2.0"
 base64 = "0.22"
+
+[dev-dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+tokio-test = "0.4"
+tower = { version = "0.5", features = ["util"] }
