@@ -24,7 +24,7 @@ jobs:
       
       - name: Validate HTML files
         run: |
-          html-validate --config - "docker/config/nginx/html/**/*.html" << 'EOF'
+          cat > .htmlvalidate.json << 'EOF'
           {
             "extends": ["html-validate:recommended"],
             "rules": {
@@ -34,10 +34,8 @@ jobs:
               "no-raw-characters": "off",
               "autocomplete-password": "off",
               "element-permitted-content": "off",
-              "element-required": "off",
-              "prefer-native-element": "off",
-              "no-missing-end-tag": "error",
-              "no-unclosed-tag": "error"
+              "prefer-native-element": "off"
             }
           }
           EOF
+          html-validate "docker/config/nginx/html/**/*.html"
