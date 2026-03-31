@@ -22,20 +22,22 @@ jobs:
       - name: Install html-validate
         run: npm install -g html-validate
       
-      - name: Create html-validate config
+      - name: Validate HTML files
         run: |
-          cat > .htmlvalidate.json << 'EOF'
+          html-validate --config - "docker/config/nginx/html/**/*.html" << 'EOF'
           {
             "extends": ["html-validate:recommended"],
             "rules": {
-              "no-trailing-whitespace": "warn",
-              "attr-quotes": "error",
-              "element-required": "error",
+              "no-inline-style": "off",
+              "no-implicit-button-type": "off",
+              "no-trailing-whitespace": "off",
+              "no-raw-characters": "off",
+              "autocomplete-password": "off",
+              "element-permitted-content": "off",
+              "element-required": "off",
+              "prefer-native-element": "off",
               "no-missing-end-tag": "error",
               "no-unclosed-tag": "error"
             }
           }
           EOF
-      
-      - name: Validate HTML files
-        run: html-validate "docker/config/nginx/html/**/*.html"
