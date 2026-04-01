@@ -955,6 +955,7 @@ impl OpcUaPoller {
             session,
             namespace_root,
             namespace_name,
+            "", // Start with empty path prefix at root
             namespace_index,
             0,
             MAX_DEPTH,
@@ -964,12 +965,22 @@ impl OpcUaPoller {
         Ok(variables)
     }
 
-    /// Recursively collect all variable nodes
+    /// Build a full hierarchical name from path prefix and browse name
+    fn build_full_name(path_prefix: &str, browse_name: &str) -> String {
+        if path_prefix.is_empty() {
+            browse_name.to_string()
+        } else {
+            format!("{}.{}", path_prefix, browse_name)
+        }
+    }
+
+    /// Recursively collect all variable nodes with hierarchical path tracking
     fn collect_variables_recursive(
         &self,
         session: &Arc<RwLock<Session>>,
         node_id: &NodeId,
         namespace_name: &str,
+        path_prefix: &str,
         namespace_index: u16,
         current_depth: usize,
         max_depth: usize,
@@ -988,8 +999,8 @@ impl OpcUaPoller {
             result_mask: BrowseDescriptionResultMask::all().bits() as u32,
         };
 
-        // Collect nodes to process (variables and objects to recurse into)
-        let mut objects_to_browse: Vec<NodeId> = Vec::new();
+        // Collect nodes to process: (NodeId, browse_name) for objects to recurse into
+        let mut objects_to_browse: Vec<(NodeId, String)> = Vec::new();
 
         {
             let session_read = session.read();
@@ -1007,19 +1018,23 @@ impl OpcUaPoller {
 
                             match node_class {
                                 NodeClass::Variable => {
+                                    // Build full hierarchical name
+                                    let full_name =
+                                        Self::build_full_name(path_prefix, &browse_name);
+
                                     variables.push(crate::SelectedOpcUaNode {
                                         node_id: child_node_id,
                                         namespace: namespace_index,
-                                        browse_name,
-                                        display_name,
+                                        browse_name: full_name.clone(),
+                                        display_name: full_name,
                                         measurement_name: namespace_name.to_string(),
                                         interval_ms: 1000,
                                         folder_name: Some(namespace_name.to_string()),
                                     });
                                 }
                                 NodeClass::Object | NodeClass::ObjectType => {
-                                    // Store objects for later recursion
-                                    objects_to_browse.push(child_node_id);
+                                    // Store objects with their browse_name for path tracking
+                                    objects_to_browse.push((child_node_id, browse_name));
                                 }
                                 _ => {}
                             }
@@ -1052,11 +1067,17 @@ impl OpcUaPoller {
 
                                             match node_class {
                                                 NodeClass::Variable => {
+                                                    // Build full hierarchical name
+                                                    let full_name = Self::build_full_name(
+                                                        path_prefix,
+                                                        &browse_name,
+                                                    );
+
                                                     variables.push(crate::SelectedOpcUaNode {
                                                         node_id: child_node_id,
                                                         namespace: namespace_index,
-                                                        browse_name,
-                                                        display_name,
+                                                        browse_name: full_name.clone(),
+                                                        display_name: full_name,
                                                         measurement_name: namespace_name
                                                             .to_string(),
                                                         interval_ms: 1000,
@@ -1066,7 +1087,9 @@ impl OpcUaPoller {
                                                     });
                                                 }
                                                 NodeClass::Object | NodeClass::ObjectType => {
-                                                    objects_to_browse.push(child_node_id);
+                                                    // Store objects with their browse_name for path tracking
+                                                    objects_to_browse
+                                                        .push((child_node_id, browse_name));
                                                 }
                                                 _ => {}
                                             }
@@ -1097,12 +1120,16 @@ impl OpcUaPoller {
         }
         // Session lock is released here
 
-        // Recursively browse objects (DataBlocks, folders, etc.)
-        for object_node_id in objects_to_browse {
+        // Recursively browse objects (DataBlocks, folders, etc.) with accumulated path
+        for (object_node_id, object_browse_name) in objects_to_browse {
+            // Build the path prefix for this object's children
+            let child_path = Self::build_full_name(path_prefix, &object_browse_name);
+
             self.collect_variables_recursive(
                 session,
                 &object_node_id,
                 namespace_name,
+                &child_path,
                 namespace_index,
                 current_depth + 1,
                 max_depth,
