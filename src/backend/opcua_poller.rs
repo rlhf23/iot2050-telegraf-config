@@ -995,40 +995,104 @@ impl OpcUaPoller {
             let session_read = session.read();
             let browse_results = session_read.browse(&[browse_desc]);
 
-            match browse_results {
-                Ok(Some(results)) => {
-                    for result in results {
-                        if let Some(refs) = &result.references {
-                            for reference in refs {
-                                let child_node_id = reference.node_id.node_id.clone();
-                                let browse_name = reference.browse_name.name.to_string();
-                                let display_name = reference.display_name.text.to_string();
-                                let node_class = reference.node_class;
+            // Process initial browse results
+            if let Ok(Some(results)) = browse_results {
+                for result in &results {
+                    if let Some(refs) = &result.references {
+                        for reference in refs {
+                            let child_node_id = reference.node_id.node_id.clone();
+                            let browse_name = reference.browse_name.name.to_string();
+                            let display_name = reference.display_name.text.to_string();
+                            let node_class = reference.node_class;
 
-                                match node_class {
-                                    NodeClass::Variable => {
-                                        variables.push(crate::SelectedOpcUaNode {
-                                            node_id: child_node_id,
-                                            namespace: namespace_index,
-                                            browse_name,
-                                            display_name,
-                                            measurement_name: namespace_name.to_string(),
-                                            interval_ms: 1000,
-                                            folder_name: Some(namespace_name.to_string()),
-                                        });
-                                    }
-                                    NodeClass::Object | NodeClass::ObjectType => {
-                                        // Store objects for later recursion
-                                        objects_to_browse.push(child_node_id);
-                                    }
-                                    _ => {}
+                            match node_class {
+                                NodeClass::Variable => {
+                                    variables.push(crate::SelectedOpcUaNode {
+                                        node_id: child_node_id,
+                                        namespace: namespace_index,
+                                        browse_name,
+                                        display_name,
+                                        measurement_name: namespace_name.to_string(),
+                                        interval_ms: 1000,
+                                        folder_name: Some(namespace_name.to_string()),
+                                    });
                                 }
+                                NodeClass::Object | NodeClass::ObjectType => {
+                                    // Store objects for later recursion
+                                    objects_to_browse.push(child_node_id);
+                                }
+                                _ => {}
                             }
                         }
                     }
+
+                    // Handle continuation points (paged results from server)
+                    if !result.continuation_point.is_empty() {
+                        let mut continuation_points = vec![result.continuation_point.clone()];
+                        let mut max_continuations = 5; // Limit to prevent infinite loops
+
+                        while !continuation_points.is_empty() && max_continuations > 0 {
+                            let browse_next_result = session_read.browse_next(
+                                false, // don't release continuation points yet
+                                &continuation_points,
+                            );
+
+                            continuation_points.clear();
+
+                            if let Ok(Some(next_results)) = browse_next_result {
+                                for next_result in next_results {
+                                    if let Some(refs) = &next_result.references {
+                                        for reference in refs {
+                                            let child_node_id = reference.node_id.node_id.clone();
+                                            let browse_name =
+                                                reference.browse_name.name.to_string();
+                                            let display_name =
+                                                reference.display_name.text.to_string();
+                                            let node_class = reference.node_class;
+
+                                            match node_class {
+                                                NodeClass::Variable => {
+                                                    variables.push(crate::SelectedOpcUaNode {
+                                                        node_id: child_node_id,
+                                                        namespace: namespace_index,
+                                                        browse_name,
+                                                        display_name,
+                                                        measurement_name: namespace_name
+                                                            .to_string(),
+                                                        interval_ms: 1000,
+                                                        folder_name: Some(
+                                                            namespace_name.to_string(),
+                                                        ),
+                                                    });
+                                                }
+                                                NodeClass::Object | NodeClass::ObjectType => {
+                                                    objects_to_browse.push(child_node_id);
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                    }
+
+                                    // Queue next continuation point if present
+                                    if !next_result.continuation_point.is_empty() {
+                                        continuation_points
+                                            .push(next_result.continuation_point.clone());
+                                    }
+                                }
+                            } else {
+                                // Error or no more results, stop processing
+                                break;
+                            }
+
+                            max_continuations -= 1;
+                        }
+
+                        // Release any remaining continuation points
+                        if !continuation_points.is_empty() {
+                            let _ = session_read.browse_next(true, &continuation_points);
+                        }
+                    }
                 }
-                Ok(None) => {}
-                Err(_) => {}
             }
         }
         // Session lock is released here
