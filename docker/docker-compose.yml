@@ -227,6 +227,7 @@ services:
     volumes:
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/nginx/html:/usr/share/nginx/html
+      - ./config/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - ./config/nginx/scripts/system-info.sh:/usr/local/bin/system-info.sh:ro
       - ./config/nginx/scripts/start-nginx.sh:/usr/local/bin/start-nginx.sh:ro
       - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro 

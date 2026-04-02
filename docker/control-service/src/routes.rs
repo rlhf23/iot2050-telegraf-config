@@ -2,15 +2,13 @@ use crate::config::ControlConfig;
 use crate::s7_client::{PlcClientManager, PlcStatus};
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::Json,
     routing::{get, post},
     Router,
 };
-use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::warn;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -71,39 +69,6 @@ pub struct ErrorResponse {
     pub message: String,
 }
 
-/// Extract credentials from Basic Auth header
-fn extract_credentials(headers: &HeaderMap) -> Option<(String, String)> {
-    let auth_header = headers.get("Authorization")?;
-    let auth_str = auth_header.to_str().ok()?;
-
-    if !auth_str.starts_with("Basic ") {
-        return None;
-    }
-
-    let encoded = &auth_str[6..];
-    let decoded = STANDARD.decode(encoded).ok()?;
-    let decoded_str = String::from_utf8(decoded).ok()?;
-
-    let parts: Vec<&str> = decoded_str.splitn(2, ':').collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    Some((parts[0].to_string(), parts[1].to_string()))
-}
-
-/// Check if request has valid credentials
-fn check_auth(headers: &HeaderMap, config: &crate::config::AuthConfig) -> Result<(), StatusCode> {
-    let (username, password) = extract_credentials(headers).ok_or(StatusCode::UNAUTHORIZED)?;
-
-    if username == config.username && password == config.password {
-        Ok(())
-    } else {
-        warn!("Authentication failed for user: {}", username);
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
-
 pub fn create_routes(state: AppState) -> Router {
     Router::new()
         .route("/api/control/buttons", get(list_buttons))
@@ -111,7 +76,6 @@ pub fn create_routes(state: AppState) -> Router {
         .route("/api/control/read/:id", get(read_button))
         .route("/api/control/write", post(write_button))
         .route("/api/control/toggle/:id", post(toggle_button))
-        .layer(axum::middleware::from_fn_with_state(state.clone(), auth_middleware))
         .layer(
             tower_http::cors::CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)
@@ -119,23 +83,6 @@ pub fn create_routes(state: AppState) -> Router {
                 .allow_headers(tower_http::cors::Any),
         )
         .with_state(state)
-}
-
-async fn auth_middleware(
-    State(state): State<AppState>,
-    request: axum::extract::Request,
-    next: axum::middleware::Next,
-) -> Result<axum::response::Response, axum::response::Response> {
-    let headers = request.headers().clone();
-    
-    match check_auth(&headers, &state.config.auth) {
-        Ok(()) => Ok(next.run(request).await),
-        Err(_) => Err(axum::response::IntoResponse::into_response((
-            axum::http::StatusCode::UNAUTHORIZED,
-            [(axum::http::header::WWW_AUTHENTICATE, "Basic realm=\"PLC Control\"")],
-            "",
-        ))),
-    }
 }
 
 async fn list_buttons(State(state): State<AppState>) -> Json<ButtonsResponse> {

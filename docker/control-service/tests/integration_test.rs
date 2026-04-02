@@ -44,12 +44,6 @@ fn create_test_app() -> Router {
     control_service::routes::create_routes(state)
 }
 
-fn auth_header(username: &str, password: &str) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    let credentials = format!("{}:{}", username, password);
-    format!("Basic {}", STANDARD.encode(credentials))
-}
-
 #[tokio::test]
 async fn test_config_loads_successfully() {
     let config = create_test_config();
@@ -60,7 +54,7 @@ async fn test_config_loads_successfully() {
 }
 
 #[tokio::test]
-async fn test_auth_required() {
+async fn test_buttons_endpoint_works() {
     use axum::http::StatusCode;
 
     let app = create_test_app();
@@ -69,46 +63,6 @@ async fn test_auth_required() {
         .oneshot(
             axum::http::Request::builder()
                 .uri("/api/control/buttons")
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn test_auth_invalid_credentials() {
-    use axum::http::StatusCode;
-
-    let app = create_test_app();
-
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/control/buttons")
-                .header("Authorization", auth_header("wrong", "credentials"))
-                .body(axum::body::Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-}
-
-#[tokio::test]
-async fn test_auth_valid_credentials_buttons_endpoint() {
-    use axum::http::StatusCode;
-
-    let app = create_test_app();
-
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .uri("/api/control/buttons")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -139,7 +93,6 @@ async fn test_status_endpoint_returns_connected_false_when_plc_unreachable() {
         .oneshot(
             axum::http::Request::builder()
                 .uri("/api/control/status")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -168,7 +121,6 @@ async fn test_read_endpoint_returns_error_when_plc_unreachable() {
         .oneshot(
             axum::http::Request::builder()
                 .uri("/api/control/read/0")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -198,7 +150,6 @@ async fn test_write_endpoint_returns_error_when_plc_unreachable() {
             axum::http::Request::builder()
                 .method("POST")
                 .uri("/api/control/write")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .header("Content-Type", "application/json")
                 .body(axum::body::Body::from(body_str.to_string()))
                 .unwrap(),
@@ -227,7 +178,6 @@ async fn test_toggle_endpoint_returns_error_when_plc_unreachable() {
             axum::http::Request::builder()
                 .method("POST")
                 .uri("/api/control/toggle/0")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -247,7 +197,6 @@ async fn test_read_invalid_button_id_returns_404() {
         .oneshot(
             axum::http::Request::builder()
                 .uri("/api/control/read/999")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -269,7 +218,6 @@ async fn test_write_invalid_button_id_returns_404() {
             axum::http::Request::builder()
                 .method("POST")
                 .uri("/api/control/write")
-                .header("Authorization", auth_header("testuser", "testpass"))
                 .header("Content-Type", "application/json")
                 .body(axum::body::Body::from(body_str.to_string()))
                 .unwrap(),
@@ -294,7 +242,6 @@ async fn test_multiple_requests_dont_hang() {
             .oneshot(
                 axum::http::Request::builder()
                     .uri("/api/control/status")
-                    .header("Authorization", auth_header("testuser", "testpass"))
                     .body(axum::body::Body::empty())
                     .unwrap(),
             )
