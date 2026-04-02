@@ -5,5 +5,11 @@ services:
   # Build api-service from source in CI (x86_64)
   api-service:
     build:
-      context: ..  # Use repo root as context
+      context: ..
       dockerfile: docker/api-service/Dockerfile.build
+
+  # Build control-service from source in CI (x86_64)
+  control-service:
+    build:
+      context: ..
+      dockerfile: docker/control-service/Dockerfile.build

@@ -1,0 +1,39 @@
+# Dockerfile for building from source (CI/local development)
+# Builds for the host architecture (x86_64 in CI, any arch locally)
+
+FROM rust:1.83 as builder
+
+WORKDIR /build
+
+# Copy control-service crate files (standalone crate, not in workspace)
+COPY docker/control-service/Cargo.toml docker/control-service/Cargo.lock ./docker/control-service/
+COPY docker/control-service/src ./docker/control-service/src/
+
+# Build the control-service binary
+WORKDIR /build/docker/control-service
+RUN cargo build --release
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy built binary from builder
+COPY --from=builder /build/docker/control-service/target/release/control-service /app/control-service
+
+# Make it executable
+RUN chmod +x /app/control-service
+
+# Expose port
+EXPOSE 8002
+
+ENV CONTROL_CONFIG=/config/control/config.toml
+
+# Run the binary
+CMD ["/app/control-service"]
