@@ -60,6 +60,7 @@ http://192.168.1.100/
 - **Prometheus** - Additional metrics and alerting
 - **Nginx** - Reverse proxy and web dashboard landing page
 - **API Service** - Lightweight Rust HTTP API for container management
+- **Control Service** - Web-based PLC control panel for Siemens S7
 
 ### Deployment Options
 - **Linux-native collectors** - Direct Telegraf deployment
@@ -84,6 +85,7 @@ Access your services:
 - **Grafana**: http://192.168.1.100:3000
 - **InfluxDB**: http://192.168.1.100:8086
 - **Prometheus**: http://192.168.1.100/prometheus
+- **PLC Control**: http://192.168.1.100/control (requires auth)
 
 ### Configure OPC-UA Data Collection
 
@@ -118,6 +120,7 @@ Use the built-in OPC-UA browser to click individual fields.
 - **Prometheus** - Metrics and alerting
 - **Nginx** - Reverse proxy and web dashboard
 - **Rust API Service** - Container management HTTP API
+- **Rust Control Service** - PLC control panel (S7comm)
 
 ### Infrastructure
 - **Docker Compose** - Multi-service orchestration

@@ -16,6 +16,7 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
 - **Telegraf**: Metrics collection (system, Docker, custom) (port 9273)
 - **Grafana**: Visualization dashboard (port 3000)
 - **Prometheus**: Monitoring system and time-series database (port 9090)
+- **Control Service**: PLC control panel for Siemens S7 (port 8002, accessible via /control)
 
 ## Prerequisites
 
@@ -44,6 +45,7 @@ A portable Docker-based monitoring stack for local development and ARM64 devices
    - InfluxDB: http://localhost:8086 (or via landing page at http://localhost/influxdb)
    - Prometheus: http://localhost:9090 (or via landing page at http://localhost/prometheus)
    - Telegraf Metrics: http://localhost:9273 (or via landing page at http://localhost/telegraf)
+   - **PLC Control**: http://localhost/control (requires auth, default: admin/admin)
    - Default credentials are in `.env`
 
 4. **Stop the stack**:
@@ -112,6 +114,7 @@ After deployment, access your services at:
 - **Grafana**: http://[device-ip]:3000 (or http://[device-ip]/grafana)
 - **InfluxDB**: http://[device-ip]:8086 (or http://[device-ip]/influxdb)
 - **Prometheus**: http://[device-ip]:9090 (or http://[device-ip]/prometheus)
+- **PLC Control**: http://[device-ip]/control (default: admin/admin)
 
 Credentials will be displayed after successful deployment.
 
