@@ -1,9 +1,6 @@
 # Control Service Configuration
 # Edit this file to configure your PLC connection and buttons
-
-[auth]
-username = "admin"
-password = "change_me"
+# Note: Authentication is handled by nginx (see docker/config/nginx/.htpasswd)
 
 [plc]
 ip = "192.168.1.10"

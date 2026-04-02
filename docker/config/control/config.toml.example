@@ -1,11 +1,8 @@
 # Control Service Configuration Example
 # Copy this file to config.toml and modify for your setup
 
-[auth]
-# Username and password for accessing the control interface
-# CHANGE THESE before deploying to production!
-username = "admin"
-password = "change_me"
+# Note: Authentication is handled by nginx (see docker/config/nginx/.htpasswd)
+# To change the credentials, update the .htpasswd file
 
 [plc]
 # PLC connection settings

@@ -5,10 +5,6 @@ use tower::util::ServiceExt;
 
 fn create_test_config() -> ControlConfig {
     ControlConfig {
-        auth: control_service::config::AuthConfig {
-            username: "testuser".to_string(),
-            password: "testpass".to_string(),
-        },
         plc: control_service::config::PlcConfig {
             ip: "127.0.0.1".to_string(),
             rack: 0,
@@ -47,7 +43,6 @@ fn create_test_app() -> Router {
 #[tokio::test]
 async fn test_config_loads_successfully() {
     let config = create_test_config();
-    assert_eq!(config.auth.username, "testuser");
     assert_eq!(config.buttons.len(), 2);
     assert_eq!(config.plc.ip, "127.0.0.1");
     assert_eq!(config.plc.read_timeout_ms, 10);

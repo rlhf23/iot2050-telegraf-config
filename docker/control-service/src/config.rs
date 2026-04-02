@@ -15,15 +15,8 @@ pub enum ConfigError {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ControlConfig {
-    pub auth: AuthConfig,
     pub plc: PlcConfig,
     pub buttons: Vec<ButtonDef>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct AuthConfig {
-    pub username: String,
-    pub password: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
