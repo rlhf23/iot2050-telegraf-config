@@ -1,0 +1,41 @@
+name: HTML Validation
+
+on:
+  push:
+    paths:
+      - '**/*.html'
+  pull_request:
+    paths:
+      - '**/*.html'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install html-validate
+        run: npm install -g html-validate
+      
+      - name: Validate HTML files
+        run: |
+          cat > .htmlvalidate.json << 'EOF'
+          {
+            "extends": ["html-validate:recommended"],
+            "rules": {
+              "no-inline-style": "off",
+              "no-implicit-button-type": "off",
+              "no-trailing-whitespace": "off",
+              "no-raw-characters": "off",
+              "autocomplete-password": "off",
+              "element-permitted-content": "off",
+              "prefer-native-element": "off"
+            }
+          }
+          EOF
+          html-validate "docker/config/nginx/html/**/*.html"

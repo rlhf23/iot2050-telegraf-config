@@ -1,0 +1,38 @@
+# Control Service Configuration
+# Edit this file to configure your PLC connection and buttons
+# Note: Authentication is handled by nginx (see docker/config/nginx/.htpasswd)
+
+[plc]
+ip = "192.168.1.10"
+rack = 0
+slot = 1
+connection_timeout_ms = 2000
+read_timeout_ms = 2000
+write_timeout_ms = 2000
+
+[[buttons]]
+name = "Pump Start"
+address = "DB2036.DBX0.0"
+mode = "toggle"
+
+[[buttons]]
+name = "Valve Open"
+address = "DB2036.DBX0.1"
+mode = "momentary"
+momentary_duration_ms = 500
+
+[[buttons]]
+name = "Motor Enable"
+address = "DB2036.DBX0.2"
+mode = "toggle"
+
+[[buttons]]
+name = "Lamp Test"
+address = "DB2036.DBX0.3"
+mode = "momentary"
+momentary_duration_ms = 1000
+
+[[buttons]]
+name = "Emergency Stop Reset"
+address = "DB2036.DBX0.4"
+mode = "toggle"

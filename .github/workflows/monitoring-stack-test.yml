@@ -143,7 +143,7 @@ jobs:
           
           # Check if all expected containers are running
           RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
-          EXPECTED_CONTAINERS=6  # influxdb, telegraf, grafana, prometheus, nginx, api-service
+          EXPECTED_CONTAINERS=7  # influxdb, telegraf, grafana, prometheus, nginx, api-service, control-service
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -214,7 +214,16 @@ jobs:
               API_SERVICE_HEALTHY=false
             fi
             
-            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ]; then
+            # Check Control Service health
+            if curl -f http://localhost:8002/api/control/status > /dev/null 2>&1; then
+              echo "✓ Control Service is healthy"
+              CONTROL_SERVICE_HEALTHY=true
+            else
+              echo "✗ Control Service not ready yet"
+              CONTROL_SERVICE_HEALTHY=false
+            fi
+            
+            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ] && [ "$CONTROL_SERVICE_HEALTHY" = true ]; then
               echo "All services are healthy!"
               break
             fi

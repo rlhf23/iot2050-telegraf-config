@@ -1,4 +1,6 @@
+# Rust build artifacts
 /target
+**/target/
 *.env
 /pki
 /pki-server

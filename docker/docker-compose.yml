@@ -190,7 +190,30 @@ services:
       - monitoring
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/8000' || exit 1"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  control-service:
+    build:
+      context: .
+      dockerfile: control-service/Dockerfile.prebuilt
+      args:
+        - TARGETARCH=${TARGETARCH:-arm64}
+    container_name: control-service
+    ports:
+      - "8002:8002"
+    volumes:      
+      - ./config/control:/config/control:ro
+    environment:
+      - CONTROL_CONFIG=/config/control/config.toml
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8002/api/control/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -204,6 +227,7 @@ services:
     volumes:
       - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./config/nginx/html:/usr/share/nginx/html
+      - ./config/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - ./config/nginx/scripts/system-info.sh:/usr/local/bin/system-info.sh:ro
       - ./config/nginx/scripts/start-nginx.sh:/usr/local/bin/start-nginx.sh:ro
       - ${HOME}/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro 
@@ -216,6 +240,7 @@ services:
       - prometheus
       - telegraf
       - api-service
+      - control-service
     networks:
       - monitoring
     restart: unless-stopped

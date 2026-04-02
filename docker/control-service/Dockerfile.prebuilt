@@ -14,13 +14,14 @@ WORKDIR /app
 ARG TARGETARCH=arm64
 
 # Copy pre-built binary for the target architecture
-COPY api-service/docker-api-service-${TARGETARCH} /app/docker-api-service
+COPY control-service/docker-control-service-${TARGETARCH} /app/control-service
 
 # Make it executable
-RUN chmod +x /app/docker-api-service
+RUN chmod +x /app/control-service
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8002
 
-# Run the binary
-CMD ["/app/docker-api-service"]
+ENV CONTROL_CONFIG=/config/control/config.toml
+
+CMD ["/app/control-service"]
