@@ -125,12 +125,16 @@ async fn auth_middleware(
     State(state): State<AppState>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
-) -> Result<axum::response::Response, StatusCode> {
+) -> Result<axum::response::Response, axum::response::Response> {
     let headers = request.headers().clone();
     
     match check_auth(&headers, &state.config.auth) {
         Ok(()) => Ok(next.run(request).await),
-        Err(status) => Err(status),
+        Err(_) => Err(axum::response::IntoResponse::into_response((
+            axum::http::StatusCode::UNAUTHORIZED,
+            [(axum::http::header::WWW_AUTHENTICATE, "Basic realm=\"PLC Control\"")],
+            "",
+        ))),
     }
 }
 
