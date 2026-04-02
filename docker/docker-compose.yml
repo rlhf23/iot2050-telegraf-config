@@ -205,7 +205,8 @@ services:
     container_name: control-service
     ports:
       - "8002:8002"
-    volumes:      - ./config/control:/config/control:ro
+    volumes:      
+      - ./config/control:/config/control:ro
     environment:
       - CONTROL_CONFIG=/config/control/config.toml
     networks:
