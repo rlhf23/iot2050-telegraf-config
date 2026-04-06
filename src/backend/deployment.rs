@@ -502,14 +502,15 @@ impl IoTDeployer {
 
         let session = self.create_ssh_session()?;
 
-        // Get local time in format suitable for `date` command
-        let local_time = chrono::Local::now();
-        let time_str = local_time.format("%Y-%m-%d %H:%M:%S").to_string();
+        // Get UTC time in format suitable for `date` command
+        let utc_time = chrono::Utc::now();
+        let time_str = utc_time.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        println!("📅 Local time: {}", time_str);
+        println!("📅 UTC time: {}", time_str);
 
         // Set time on device (requires sudo)
-        let set_time_cmd = format!("sudo date -s '{}'", time_str);
+        // Use -u flag to interpret time as UTC, avoiding timezone issues
+        let set_time_cmd = format!("sudo date -u -s '{}'", time_str);
 
         self.run_command(&session, &set_time_cmd, "Setting device time")?;
 

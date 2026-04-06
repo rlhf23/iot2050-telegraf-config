@@ -13,21 +13,23 @@
   hostname = ""
   omit_hostname = false
 
-# Output to InfluxDB - Main bucket (process data)
+# Output to InfluxDB - Main process data (user-defined OPC UA measurements)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${INFLUXDB_TOKEN}"
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_BUCKET}"
-  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+  # Drop diagnostics metrics - everything else goes to this bucket
+  namedrop = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
 
-# Output to InfluxDB - Diagnostics bucket (system metrics, internal)
+# Output to InfluxDB - Diagnostics data (system metrics)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${INFLUXDB_TOKEN}"
   organization = "${INFLUXDB_ORG}"
   bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
-  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+  # Only accept diagnostics metrics
+  namepass = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
 
 # Expose Prometheus metrics endpoint for health checks and monitoring
 [[outputs.prometheus_client]]

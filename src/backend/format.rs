@@ -73,21 +73,23 @@ pub fn format_config_header(
             if use_dual_bucket {
                 let mut config = format!(
                     r#"# Configuration for sending metrics to InfluxDB 2.0
-# Output to InfluxDB - Main process data
+# Output to InfluxDB - Main process data (user-defined OPC UA measurements)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${{INFLUXDB_TOKEN}}"
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_BUCKET}}"
-  namepass = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+  # Drop diagnostics metrics - everything else goes to this bucket
+  namedrop = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
 
-# Output to InfluxDB - Diagnostics data (system metrics, OPC-UA diagnostics)
+# Output to InfluxDB - Diagnostics data (system metrics, OPC-UA server diagnostics)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
   token = "${{INFLUXDB_TOKEN}}"
   organization = "${{INFLUXDB_ORG}}"
   bucket = "${{INFLUXDB_DIAGNOSTICS_BUCKET}}"
-  namedrop = ["opcua", "opcua_listener", "opcua_browser_ns*"]
+  # Only accept diagnostics metrics
+  namepass = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
 "#,
                 );
 
@@ -199,7 +201,7 @@ pub fn format_config_header(
   interval = "10s"
 
   [[inputs.opcua.group]]
-    name = "server_diagnostics"
+    name = "opcua_diagnostics"
     namespace = "0"
     identifier_type = "i"
     nodes = [

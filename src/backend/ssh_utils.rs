@@ -1178,12 +1178,13 @@ pub fn sync_time_over_ssh(
     };
     let session = connect_ssh_with_config(remote_host, username, password, &config)?;
 
-    // Get local time
-    let local_time = chrono::Local::now();
-    let time_str = local_time.format("%Y-%m-%d %H:%M:%S").to_string();
+    // Get UTC time (avoids timezone issues when device uses UTC)
+    let utc_time = chrono::Utc::now();
+    let time_str = utc_time.format("%Y-%m-%d %H:%M:%S").to_string();
 
     // Set time on device (requires sudo)
-    let set_time_cmd = format!("echo '{}' | sudo -S date -s '{}'", password, time_str);
+    // Use -u flag to interpret time as UTC, avoiding timezone issues
+    let set_time_cmd = format!("echo '{}' | sudo -S date -u -s '{}'", password, time_str);
 
     let mut channel = session.channel_session()?;
     channel.exec(&set_time_cmd)?;
@@ -1207,7 +1208,7 @@ pub fn sync_time_over_ssh(
     verify_channel.wait_close()?;
 
     Ok(format!(
-        "Local time: {}\nDevice time: {}",
+        "UTC time: {}\nDevice time: {}",
         time_str,
         device_time.trim()
     ))

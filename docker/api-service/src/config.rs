@@ -637,20 +637,12 @@ pub async fn generate_config(
                         measurements: None,
                     }),
                 ));
-            }
-
+}
+ 
             info!("Successfully generated config for session: {}", request.session_id);
             
-            // Limit preview to first 100 lines
-            let lines: Vec<&str> = result.config_content.lines().collect();
-            let total_lines = lines.len();
-            let preview = if total_lines > 100 {
-                let preview_lines = lines[..100].join("\n");
-                format!("{}...\n\n[Preview truncated - showing 100 of {} total lines]", 
-                    preview_lines, total_lines)
-            } else {
-                result.config_content
-            };
+            // Return full config content without truncation
+            let preview = result.config_content;
 
             Ok(Json(GenerateConfigResponse {
                 success: true,
