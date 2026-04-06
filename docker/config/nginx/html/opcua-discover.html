@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC-UA Direct Discovery</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .step {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .step h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 6px;
+            display: none;
+            z-index: 2000;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .notification.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .session-info {
+            background: #e7f3ff;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #004085;
+        }
+
+        .discovery-results {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .discovery-results.show {
+            display: block;
+        }
+
+        .namespace-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+
+        .namespace-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .namespace-item:last-child {
+            border-bottom: none;
+        }
+
+        .namespace-name {
+            font-weight: 500;
+        }
+
+        .namespace-count {
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .summary-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+
+        .summary-box strong {
+            color: #667eea;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6c757d;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OPC-UA Direct Discovery</h1>
+            <p class="subtitle">Browse PLC namespaces directly without XML files</p>
+        </div>
+
+        <div class="content">
+            <a href="/config-upload.html" class="back-link">← Back to XML Upload</a>
+
+            <div class="session-info">
+                Session ID: <strong id="session-id">Loading...</strong>
+            </div>
+
+            <!-- Step 1: Connection -->
+            <div class="step">
+                <h2>Step 1: Connect to OPC-UA Server</h2>
+
+                <div class="form-group">
+                    <label for="opcua-ip">IP Address</label>
+                    <input type="text" id="opcua-ip" placeholder="192.168.1.100">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-username">Username</label>
+                    <input type="text" id="opcua-username" placeholder="admin">
+                </div>
+
+                <div class="form-group">
+                    <label for="opcua-password">Password</label>
+                    <input type="password" id="opcua-password" placeholder="password">
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="anonymous-auth">
+                        <label for="anonymous-auth" style="margin-bottom: 0;">Anonymous Authentication</label>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="discover-btn" onclick="discoverNamespaces()">
+                    Discover Namespaces
+                </button>
+
+                <div class="loading" id="discover-loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px;">Discovering namespaces from PLC...</p>
+                </div>
+            </div>
+
+            <!-- Step 2: Discovered Namespaces -->
+            <div class="step">
+                <h2>Step 2: Discovered Namespaces</h2>
+
+                <div id="discovery-placeholder" style="color: #6c757d; font-style: italic;">
+                    Connect to a PLC to discover namespaces
+                </div>
+
+                <div class="discovery-results" id="discovery-results">
+                    <div class="namespace-list" id="namespace-list"></div>
+                    <div class="summary-box">
+                        <strong>Total:</strong> <span id="total-namespaces">0</span> namespaces,
+                        <span id="total-variables">0</span> variables
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Generate -->
+            <div class="step">
+                <h2>Step 3: Configure & Generate</h2>
+
+                <div class="form-group">
+                    <label for="output-format">Output Format</label>
+                    <select id="output-format">
+                        <option value="influxdb">InfluxDB</option>
+                        <option value="prometheus">Prometheus</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="use-source-timestamp">
+                        <label for="use-source-timestamp" style="margin-bottom: 0;">Use Source Timestamp</label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Use "source" instead of "gather" for timestamp mode
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="include-test-inputs">
+                        <label for="include-test-inputs" style="margin-bottom: 0;">Include System Inputs</label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        CPU, Disk, Memory metrics from the IoT device
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="include-opcua-diagnostics">
+                        <label for="include-opcua-diagnostics" style="margin-bottom: 0;">OPC-UA Diagnostics</label>
+                    </div>
+                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                        Monitor OPC-UA server health
+                    </p>
+                </div>
+
+                <button class="btn btn-primary" id="generate-btn" disabled onclick="generateConfig()">
+                    Generate Configuration
+                </button>
+
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-success" id="deploy-btn" disabled>
+                        Deploy to Telegraf
+                    </button>
+                    <button class="btn" onclick="viewCurrentConfig()" style="background: #6c757d;">
+                        View Current Config
+                    </button>
+                </div>
+
+                <!-- Dashboard section -->
+                <div id="dashboard-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Grafana Dashboard</h3>
+                    <button class="btn btn-primary" id="generate-dashboard-btn" disabled onclick="generateDashboard()">
+                        Generate Dashboard
+                    </button>
+                    <button class="btn btn-success" id="deploy-dashboard-btn" disabled onclick="deployDashboard()" style="margin-left: 10px;">
+                        Deploy Dashboard
+                    </button>
+                    <button class="btn" onclick="viewDashboard()" style="background: #6c757d; margin-left: 10px;" id="view-dashboard-btn" disabled>
+                        View Dashboard JSON
+                    </button>
+                </div>
+
+                <div class="loading" id="generate-loading">
+                    <div class="spinner"></div>
+                    <p id="loading-text" style="margin-top: 10px;">Generating configuration...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Configuration Preview</h2>
+                <button class="modal-close" onclick="closePreviewModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="preview-content"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closePreviewModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fixed notification toast -->
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // State
+        let sessionId = null;
+        let discoveredData = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await createSession();
+            setupEventListeners();
+        });
+
+        // Create session
+        async function createSession() {
+            try {
+                const response = await fetch('/api/session/create');
+                const data = await response.json();
+                
+                if (data.success) {
+                    sessionId = data.session_id;
+                    document.getElementById('session-id').textContent = sessionId;
+                } else {
+                    showNotification('Failed to create session', 'error');
+                }
+            } catch (error) {
+                showNotification('Error creating session: ' + error.message, 'error');
+            }
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            // Anonymous auth checkbox
+            document.getElementById('anonymous-auth').addEventListener('change', (e) => {
+                const username = document.getElementById('opcua-username');
+                const password = document.getElementById('opcua-password');
+                username.disabled = e.target.checked;
+                password.disabled = e.target.checked;
+            });
+
+            // Generate button
+            document.getElementById('generate-btn').addEventListener('click', generateConfig);
+
+            // Deploy button
+            document.getElementById('deploy-btn').addEventListener('click', deployConfig);
+        }
+
+        // Discover namespaces
+        async function discoverNamespaces() {
+            if (!sessionId) {
+                showNotification('Session not initialized', 'error');
+                return;
+            }
+
+            const opcuaIp = document.getElementById('opcua-ip').value;
+            if (!opcuaIp) {
+                showNotification('Please enter OPC-UA server IP address', 'error');
+                return;
+            }
+
+            showLoading('discover-loading', true);
+            document.getElementById('discover-btn').disabled = true;
+
+            const requestData = {
+                session_id: sessionId,
+                opcua_ip: opcuaIp,
+                opcua_username: document.getElementById('opcua-username').value || null,
+                opcua_password: document.getElementById('opcua-password').value || null,
+                anonymous: document.getElementById('anonymous-auth').checked
+            };
+
+            try {
+                const response = await fetch('/api/opcua/discover', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Display discovered namespaces
+                    displayNamespaces(data.namespaces, data.total_variables);
+                    
+                    // Enable generate button
+                    document.getElementById('generate-btn').disabled = false;
+                } else {
+                    showNotification(data.message || 'Discovery failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error discovering namespaces: ' + error.message, 'error');
+            } finally {
+                showLoading('discover-loading', false);
+                document.getElementById('discover-btn').disabled = false;
+            }
+        }
+
+        // Display discovered namespaces
+        function displayNamespaces(namespaces, totalVariables) {
+            const placeholder = document.getElementById('discovery-placeholder');
+            const results = document.getElementById('discovery-results');
+            const list = document.getElementById('namespace-list');
+
+            placeholder.style.display = 'none';
+            results.classList.add('show');
+
+            // Clear and populate list
+            list.innerHTML = namespaces.map(ns => `
+                <div class="namespace-item">
+                    <span class="namespace-name">${escapeHtml(ns.name)}</span>
+                    <span class="namespace-count">${ns.variable_count} variables (ns=${ns.index})</span>
+                </div>
+            `).join('');
+
+            document.getElementById('total-namespaces').textContent = namespaces.length;
+            document.getElementById('total-variables').textContent = totalVariables;
+
+            // Store for later use
+            discoveredData = { namespaces, totalVariables };
+        }
+
+        // Generate configuration
+        async function generateConfig() {
+            if (!sessionId) {
+                showNotification('Session not initialized', 'error');
+                return;
+            }
+
+            if (!discoveredData) {
+                showNotification('Please discover namespaces first', 'error');
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Generating configuration...';
+
+            const requestData = {
+                session_id: sessionId,
+                opcua_ip: document.getElementById('opcua-ip').value || null,
+                opcua_username: document.getElementById('opcua-username').value || null,
+                opcua_password: document.getElementById('opcua-password').value || null,
+                anonymous: document.getElementById('anonymous-auth').checked,
+                output_format: document.getElementById('output-format').value || 'influxdb',
+                use_source_timestamp: document.getElementById('use-source-timestamp').checked,
+                include_test_inputs: document.getElementById('include-test-inputs').checked,
+                include_opcua_diagnostics: document.getElementById('include-opcua-diagnostics').checked
+            };
+
+            try {
+                const response = await fetch('/api/config/generate-from-discovery', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Show preview
+                    if (data.preview) {
+                        showPreviewModal(data.preview);
+                    }
+                    
+                    // Enable deploy button
+                    document.getElementById('deploy-btn').disabled = false;
+                    
+                    // Store config path for deployment
+                    window.generatedConfigPath = data.config_path;
+                    
+                    // Store measurements for dashboard generation
+                    if (data.measurements && data.measurements.length > 0) {
+                        window.measurements = data.measurements;
+                        document.getElementById('generate-dashboard-btn').disabled = false;
+                    }
+                } else {
+                    showNotification(data.message || 'Generation failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating config: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Deploy configuration
+        async function deployConfig() {
+            if (!window.generatedConfigPath) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy configuration to Telegraf? This will restart the Telegraf container.')) {
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Deploying configuration...';
+
+            const requestData = {
+                session_id: sessionId,
+                config_path: window.generatedConfigPath
+            };
+
+            try {
+                const response = await fetch('/api/config/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message || 'Deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying config: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // View current Telegraf config
+        async function viewCurrentConfig() {
+            try {
+                const response = await fetch('/api/config/telegraf', {
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const text = await response.text();
+                    showPreviewModal(text);
+                    document.getElementById('modal-title').textContent = 'Current Telegraf Config';
+                } else {
+                    showNotification(`Error loading config: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                showNotification(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Helper functions
+        function showNotification(message, type) {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.className = `notification ${type} show`;
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 5000);
+        }
+
+        function showLoading(elementId, show) {
+            const element = document.getElementById(elementId);
+            if (show) {
+                element.classList.add('show');
+            } else {
+                element.classList.remove('show');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showPreviewModal(content) {
+            const modal = document.getElementById('preview-modal');
+            const previewContent = document.getElementById('preview-content');
+            previewContent.textContent = content;
+            modal.classList.add('show');
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('preview-modal');
+            modal.classList.remove('show');
+        }
+
+        // Close modal on background click
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('preview-modal');
+            if (e.target === modal) {
+                closePreviewModal();
+            }
+        });
+
+        // Generate Grafana dashboard
+        async function generateDashboard() {
+            if (!window.measurements || window.measurements.length === 0) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Generating dashboard...';
+
+            const requestData = {
+                measurements: window.measurements,
+                bucket: 'telegraf',
+                datasource_uid: 'InfluxDB'
+            };
+
+            try {
+                const response = await fetch('/api/dashboard/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    // Store dashboard JSON for deployment and viewing
+                    window.dashboardJson = data.dashboard_json;
+                    window.dashboardUid = data.dashboard_uid;
+                    
+                    // Enable buttons
+                    document.getElementById('deploy-dashboard-btn').disabled = false;
+                    document.getElementById('view-dashboard-btn').disabled = false;
+                    
+                    // Show preview
+                    if (data.dashboard_json) {
+                        const parsed = JSON.parse(data.dashboard_json);
+                        showPreviewModal(JSON.stringify(parsed, null, 2));
+                        document.getElementById('modal-title').textContent = 'Dashboard Preview';
+                    }
+                } else {
+                    showNotification(data.message || 'Dashboard generation failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Deploy dashboard to Grafana
+        async function deployDashboard() {
+            if (!window.dashboardJson) {
+                showNotification('Please generate dashboard first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy dashboard to Grafana?')) {
+                return;
+            }
+
+            showLoading('generate-loading', true);
+            document.getElementById('loading-text').textContent = 'Deploying dashboard...';
+
+            const requestData = {
+                dashboard_json: window.dashboardJson
+            };
+
+            try {
+                const response = await fetch('/api/dashboard/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message || 'Dashboard deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // View dashboard JSON
+        function viewDashboard() {
+            if (!window.dashboardJson) {
+                showNotification('Please generate dashboard first', 'error');
+                return;
+            }
+            
+            const parsed = JSON.parse(window.dashboardJson);
+            showPreviewModal(JSON.stringify(parsed, null, 2));
+            document.getElementById('modal-title').textContent = 'Dashboard JSON';
+        }
+    </script>
+</body>
+</html>

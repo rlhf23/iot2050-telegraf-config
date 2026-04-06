@@ -843,6 +843,211 @@ impl OpcUaPoller {
     pub fn is_load_more_node(node: &OpcUaNode) -> bool {
         node.has_more_children && node.browse_name == "__more_items__"
     }
+
+    /// Discover all namespaces and variables from ServerInterfaces
+    /// This browses the PLC's ServerInterfaces node and collects all variables
+    /// from each namespace, returning them as SelectedOpcUaNode objects.
+    pub fn discover_all_namespaces(&self) -> Result<crate::DiscoveredData, TelegrafError> {
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
+
+        // Check if the server is reachable
+        if let Err(e) = self.check_server_connectivity(&self.config.ip) {
+            return Err(e);
+        }
+
+        // Connect to the server
+        let session = self.connect_to_server(&discovery_url)?;
+
+        // Browse ServerInterfaces to get namespaces
+        let server_interfaces_id = NodeId::new(3, "ServerInterfaces");
+
+        eprintln!("Browsing ServerInterfaces node for namespaces...");
+
+        let browse_desc = BrowseDescription {
+            node_id: server_interfaces_id,
+            browse_direction: BrowseDirection::Forward,
+            reference_type_id: ReferenceTypeId::Organizes.into(),
+            include_subtypes: true,
+            node_class_mask: 0,
+            result_mask: BrowseDescriptionResultMask::all().bits() as u32,
+        };
+
+        let session_read = session.read();
+        let browse_results = session_read.browse(&[browse_desc]);
+
+        let mut namespaces = Vec::new();
+        let mut all_variables = Vec::new();
+        let mut namespace_names = std::collections::HashMap::new();
+
+        match browse_results {
+            Ok(Some(results)) => {
+                for result in results {
+                    if let Some(refs) = &result.references {
+                        for reference in refs {
+                            let namespace_index = reference.node_id.node_id.namespace;
+                            let namespace_name = reference.browse_name.name.to_string();
+
+                            eprintln!("  Found namespace {}: {}", namespace_index, namespace_name);
+
+                            namespace_names.insert(namespace_index, namespace_name.clone());
+
+                            // Browse all variables in this namespace
+                            let namespace_root = reference.node_id.node_id.clone();
+                            let variables = self.browse_namespace_variables(
+                                &session,
+                                &namespace_root,
+                                &namespace_name,
+                                namespace_index,
+                            )?;
+
+                            let variable_count = variables.len();
+
+                            namespaces.push(crate::DiscoveredNamespace {
+                                index: namespace_index,
+                                name: namespace_name,
+                                variable_count,
+                            });
+
+                            all_variables.extend(variables);
+                        }
+                    }
+                }
+            }
+            Ok(None) => {
+                return Err(TelegrafError::OpcUaClientError(
+                    "No namespaces found under ServerInterfaces".to_string(),
+                ));
+            }
+            Err(e) => {
+                return Err(TelegrafError::OpcUaClientError(format!(
+                    "Failed to browse ServerInterfaces: {}",
+                    e
+                )));
+            }
+        }
+
+        eprintln!(
+            "Discovered {} namespaces with {} total variables",
+            namespaces.len(),
+            all_variables.len()
+        );
+
+        Ok(crate::DiscoveredData {
+            namespaces,
+            variables: all_variables,
+            namespace_names,
+            plc_name: None,
+        })
+    }
+
+    /// Browse all variables under a namespace root node
+    fn browse_namespace_variables(
+        &self,
+        session: &Arc<RwLock<Session>>,
+        namespace_root: &NodeId,
+        namespace_name: &str,
+        namespace_index: u16,
+    ) -> Result<Vec<crate::SelectedOpcUaNode>, TelegrafError> {
+        let mut variables = Vec::new();
+        const MAX_DEPTH: usize = 10;
+
+        self.collect_variables_recursive(
+            session,
+            namespace_root,
+            namespace_name,
+            namespace_index,
+            0,
+            MAX_DEPTH,
+            &mut variables,
+        )?;
+
+        Ok(variables)
+    }
+
+    /// Recursively collect all variable nodes
+    fn collect_variables_recursive(
+        &self,
+        session: &Arc<RwLock<Session>>,
+        node_id: &NodeId,
+        namespace_name: &str,
+        namespace_index: u16,
+        current_depth: usize,
+        max_depth: usize,
+        variables: &mut Vec<crate::SelectedOpcUaNode>,
+    ) -> Result<(), TelegrafError> {
+        if current_depth >= max_depth {
+            return Ok(());
+        }
+
+        let browse_desc = BrowseDescription {
+            node_id: node_id.clone(),
+            browse_direction: BrowseDirection::Forward,
+            reference_type_id: ReferenceTypeId::HierarchicalReferences.into(),
+            include_subtypes: true,
+            node_class_mask: 0,
+            result_mask: BrowseDescriptionResultMask::all().bits() as u32,
+        };
+
+        // Collect nodes to process (variables and objects to recurse into)
+        let mut objects_to_browse: Vec<NodeId> = Vec::new();
+
+        {
+            let session_read = session.read();
+            let browse_results = session_read.browse(&[browse_desc]);
+
+            match browse_results {
+                Ok(Some(results)) => {
+                    for result in results {
+                        if let Some(refs) = &result.references {
+                            for reference in refs {
+                                let child_node_id = reference.node_id.node_id.clone();
+                                let browse_name = reference.browse_name.name.to_string();
+                                let display_name = reference.display_name.text.to_string();
+                                let node_class = reference.node_class;
+
+                                match node_class {
+                                    NodeClass::Variable => {
+                                        variables.push(crate::SelectedOpcUaNode {
+                                            node_id: child_node_id,
+                                            namespace: namespace_index,
+                                            browse_name,
+                                            display_name,
+                                            measurement_name: namespace_name.to_string(),
+                                            interval_ms: 1000,
+                                            folder_name: Some(namespace_name.to_string()),
+                                        });
+                                    }
+                                    NodeClass::Object | NodeClass::ObjectType => {
+                                        // Store objects for later recursion
+                                        objects_to_browse.push(child_node_id);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => {}
+            }
+        }
+        // Session lock is released here
+
+        // Recursively browse objects (DataBlocks, folders, etc.)
+        for object_node_id in objects_to_browse {
+            self.collect_variables_recursive(
+                session,
+                &object_node_id,
+                namespace_name,
+                namespace_index,
+                current_depth + 1,
+                max_depth,
+                variables,
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 // Node manipulation utilities
