@@ -729,7 +729,8 @@
                     fileConfigs[file.name] = {
                         namespace: 'default',
                         interval_ms: 1000,
-                        use_listener: false
+                        use_listener: false,
+                        custom_ip: ''
                     };
                 }
                 
@@ -753,6 +754,13 @@
                                        value="${config.namespace}" 
                                        onchange="updateFileConfig('${file.name}', 'namespace', this.value)"
                                        placeholder="e.g., my_namespace">
+                            </div>
+                            <div class="file-config-field">
+                                <label>Custom IP</label>
+                                <input type="text" 
+                                       value="${config.custom_ip || ''}" 
+                                       onchange="updateFileConfig('${file.name}', 'custom_ip', this.value)"
+                                       placeholder="Uses global IP if empty">
                             </div>
                             <div class="file-config-field">
                                 <label>Interval (ms)</label>
@@ -782,7 +790,8 @@
                 fileConfigs[filename] = {
                     namespace: 'default',
                     interval_ms: 1000,
-                    use_listener: false
+                    use_listener: false,
+                    custom_ip: ''
                 };
             }
             fileConfigs[filename][field] = value;
