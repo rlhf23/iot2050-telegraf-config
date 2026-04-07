@@ -44,8 +44,10 @@ print_error() {
 }
 
 cleanup() {
-    print_step "Cleaning up"
-    $COMPOSE_CMD down -v 2>/dev/null || true
+    print_step "Cleaning up with graceful shutdown"
+    # Stop containers with 30 second timeout for graceful shutdown
+    # This allows OPC UA connections and other resources to close properly
+    $COMPOSE_CMD down -v --timeout 30 2>/dev/null || true
     docker system prune -f 2>/dev/null || true
 }
 
