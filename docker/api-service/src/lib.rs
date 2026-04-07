@@ -253,14 +253,20 @@ async fn stop_container(
         ));
     }
 
-    info!("Stopping container: {}", name);
+    info!("Stopping container with graceful shutdown: {}", name);
 
-    match state.docker.stop_container(&name, None).await {
+    // Stop container with 30 second timeout for graceful shutdown
+    // This allows OPC UA connections and other resources to close properly
+    let stop_options = Some(StopContainerOptions {
+        t: 30, // 30 seconds timeout for graceful shutdown
+    });
+
+    match state.docker.stop_container(&name, stop_options).await {
         Ok(_) => {
             info!("Successfully stopped container: {}", name);
             Ok(Json(ApiResponse {
                 success: true,
-                message: format!("Container '{}' stopped successfully", name),
+                message: format!("Container '{}' stopped successfully (graceful shutdown completed)", name),
             }))
         }
         Err(e) => {
