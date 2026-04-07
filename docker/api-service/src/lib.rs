@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use bollard::Docker;
+use bollard::container::StopContainerOptions;
 use futures::stream::TryStreamExt;
 use serde::Serialize;
 use std::sync::Arc;
@@ -155,23 +156,46 @@ async fn restart_container(
         ));
     }
 
-    info!("Restarting container: {}", name);
+    info!("Restarting container with graceful shutdown: {}", name);
 
-    match state.docker.restart_container(&name, None).await {
+    // Stop container with 30 second timeout for graceful shutdown
+    // This allows OPC UA connections and other resources to close properly
+    let stop_options = Some(StopContainerOptions {
+        t: 30, // 30 seconds timeout for graceful shutdown
+    });
+
+    match state.docker.stop_container(&name, stop_options).await {
+        Ok(_) => {
+            info!("Container {} stopped gracefully", name);
+        }
+        Err(e) => {
+            error!("Failed to stop container {}: {}", name, e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse {
+                    success: false,
+                    message: format!("Failed to stop container gracefully: {}", e),
+                }),
+            ));
+        }
+    }
+
+    // Start the container again
+    match state.docker.start_container::<String>(&name, None).await {
         Ok(_) => {
             info!("Successfully restarted container: {}", name);
             Ok(Json(ApiResponse {
                 success: true,
-                message: format!("Container '{}' restarted successfully", name),
+                message: format!("Container '{}' restarted successfully (graceful shutdown completed)", name),
             }))
         }
         Err(e) => {
-            error!("Failed to restart container {}: {}", name, e);
+            error!("Failed to start container {}: {}", name, e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiResponse {
                     success: false,
-                    message: format!("Failed to restart container: {}", e),
+                    message: format!("Failed to start container after graceful shutdown: {}", e),
                 }),
             ))
         }
