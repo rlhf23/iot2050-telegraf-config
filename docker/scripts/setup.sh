@@ -1,61 +1,56 @@
 #!/usr/bin/env bash
 set -e
 
-# Change to the script's directory
+# Usage: setup.sh [--minimal]
+#   --minimal  Use minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)
+#              Also applies InfluxDB memory tuning for constrained devices (~320MB total)
+
 cd "$(dirname "$0")/.."
+
+MINIMAL=false
+if [ "$1" = "--minimal" ] || [ "$1" = "-m" ]; then
+    MINIMAL=true
+fi
 
 echo "🚀 Setting up monitoring stack..."
 
-# Install Telegraf configuration from example (only if not already present)
+# --- Telegraf config ---
 if [ -f config/telegraf/telegraf.conf.example ]; then
     mkdir -p ~/telegraf
-    if [ -f ~/telegraf/telegraf.conf ]; then
-        echo "ℹ️  Telegraf config already exists at ~/telegraf/telegraf.conf - preserving existing configuration."
-    else
-        echo "Found config/telegraf/telegraf.conf.example. Installing to ~/telegraf/telegraf.conf..."
+    if [ ! -f ~/telegraf/telegraf.conf ]; then
         cp config/telegraf/telegraf.conf.example ~/telegraf/telegraf.conf
         chmod 644 ~/telegraf/telegraf.conf
-        echo "✅ Telegraf configuration installed to ~/telegraf/telegraf.conf from example."
+        echo "✅ Telegraf configuration installed"
+    else
+        echo "ℹ️  Telegraf config already exists - preserving"
     fi
 else
     echo "⚠️  WARNING: config/telegraf/telegraf.conf.example not found!"
-    echo "Telegraf will likely use a default or no configuration."
 fi
 
-# Get Docker GID
-DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
+# --- Detect architecture ---
+case "$(uname -m)" in
+    x86_64|amd64) TARGETARCH="amd64" ;;
+    aarch64|arm64) TARGETARCH="arm64" ;;
+    *) TARGETARCH="arm64"; echo "⚠️  Unknown architecture, defaulting to arm64" ;;
+esac
+echo "🔧 Detected architecture: $TARGETARCH"
 
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "ℹ️ .env file not found. New credentials will be generated."
-    
-    # Detect non-interactive mode (no TTY)
-    if ! [ -t 0 ]; then
-        AUTO_DENY="yes"
+# --- .env file ---
+if [ -f .env ]; then
+    echo "ℹ️  .env file already exists - skipping"
+else
+    echo "ℹ️  Creating .env file with generated credentials..."
+
+    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null || echo "")
+
+    if [ "$MINIMAL" = true ]; then
+        PROFILE="minimal"
+    else
+        PROFILE="full"
     fi
-    # Only ask about removing volumes if they exist
-    if docker volume ls | grep -q 'influxdb_data\|grafana_data\|prometheus_data\|monitoring_influxdb_data\|monitoring_grafana_data\|monitoring_prometheus_data'; then
-        echo "To ensure new credentials (especially for InfluxDB, Grafana, and Prometheus) take effect,"
-        echo "it's recommended to remove existing data volumes."
-        if [ -n "$AUTO_DENY" ]; then
-            confirmation="no"
-            echo "⚠️  Non-interactive mode: Skipping volume removal to prevent data loss."
-        else
-            read -r -p "Do you want to remove influxdb_data, grafana_data, prometheus_data (with or without 'monitoring_' prefix) volumes? (yes/NO): " confirmation
-        fi
-        if [[ "$confirmation" =~ ^[Yy][Ee][Ss]$ ]]; then
-            for v in influxdb_data grafana_data prometheus_data monitoring_influxdb_data monitoring_grafana_data monitoring_prometheus_data; do
-                echo "Attempting to remove $v..."
-                docker volume rm "$v" 2>/dev/null || echo "$v not found or could not be removed."
-            done
-            echo "✅ Volumes removal process finished."
-        else
-            echo "Skipping volume removal. Existing data will be preserved."
-            echo "If you experience issues with old credentials, manually remove the volumes and re-run setup."
-        fi
-fi
-    echo "Creating .env file with default values..."
-    cat > .env <<EOL
+
+    cat > .env << EOL
 # InfluxDB
 INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
@@ -75,55 +70,13 @@ TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 HOST_DOCKER_GID=${DOCKER_GID}
 
 # Deployment profile: full (all services) or minimal (TICK stack only)
-COMPOSE_PROFILE=full
+COMPOSE_PROFILE=${PROFILE}
+
+TARGETARCH=${TARGETARCH}
 EOL
-    echo "✅ Created .env file"
-else
-    echo "ℹ️  .env file already exists"
-fi
 
-# Enable ARM emulation if not on ARM64
-if [ "$(uname -m)" != "aarch64" ]; then
-    echo "Enabling ARM emulation..."
-    if ! docker run --privileged --rm tonistiigi/binfmt --install all; then
-        echo "⚠️  Failed to enable ARM emulation (this might be expected in some environments)" >&2
-    fi
-fi
-
-# Detect and export architecture for api-service binary selection
-detect_architecture() {
-    local machine_arch
-    machine_arch=$(uname -m)
-    
-    case "$machine_arch" in
-        x86_64|amd64)
-            export TARGETARCH="amd64"
-            ;;
-        aarch64|arm64)
-            export TARGETARCH="arm64"
-            ;;
-        *)
-            echo "⚠️  WARNING: Unknown architecture '$machine_arch', defaulting to arm64"
-            export TARGETARCH="arm64"
-            ;;
-    esac
-}
-
-detect_architecture
-echo "🔧 Detected architecture: $TARGETARCH"
-
-# Write architecture and profile to .env file for docker-compose
-FINAL_PROFILE="${COMPOSE_PROFILE:-full}"
-
-if [ -f .env ]; then
-    grep -v "^TARGETARCH=" .env | grep -v "^COMPOSE_PROFILE=" > .env.tmp || true
-    mv .env.tmp .env
-fi
-echo "TARGETARCH=${TARGETARCH}" >> .env
-echo "COMPOSE_PROFILE=${FINAL_PROFILE}" >> .env
-
-if [ "$FINAL_PROFILE" = "minimal" ]; then
-    cat >> .env << 'EOF'
+    if [ "$MINIMAL" = true ]; then
+        cat >> .env << 'EOF'
 
 # InfluxDB memory tuning (minimal profile - constrained devices)
 INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE=134217728
@@ -132,7 +85,14 @@ INFLUXD_STORAGE_MAX_CONCURRENT_COMPACTIONS=2
 INFLUXD_NO_TASKS=true
 INFLUXD_REPORTING_DISABLED=true
 EOF
+    fi
+
+    echo "✅ Created .env file"
 fi
 
+PROFILE_DISPLAY="${PROFILE:-full}"
 echo "✅ Setup complete!"
-echo "   Target architecture: ${TARGETARCH}"
+echo "   Architecture: $TARGETARCH"
+echo "   Profile: $PROFILE_DISPLAY"
+echo ""
+echo "   Start the stack: ./scripts/start.sh"
