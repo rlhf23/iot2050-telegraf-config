@@ -166,6 +166,28 @@ services:
       retries: 3
       start_period: 15s
 
+  chronograf-setup:
+    image: chronograf:1.10
+    container_name: chronograf-setup
+    depends_on:
+      chronograf:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    env_file:
+      - .env
+    volumes:
+      - ./config/chronograf/dashboards:/dashboards:ro
+      - ./config/chronograf/chronograf-setup.sh:/usr/local/bin/chronograf-setup.sh:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sh /usr/local/bin/chronograf-setup.sh
+    networks:
+      - monitoring
+    restart: "no"
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
