@@ -112,15 +112,27 @@ detect_architecture() {
 detect_architecture
 echo "🔧 Detected architecture: $TARGETARCH"
 
-# Write architecture to .env file for docker-compose
+# Write architecture and profile to .env file for docker-compose
+FINAL_PROFILE="${COMPOSE_PROFILE:-full}"
+
 if [ -f .env ]; then
-    # Remove existing TARGETARCH and COMPOSE_PROFILE lines if present
     grep -v "^TARGETARCH=" .env | grep -v "^COMPOSE_PROFILE=" > .env.tmp || true
     mv .env.tmp .env
 fi
-# Add TARGETARCH to .env
 echo "TARGETARCH=${TARGETARCH}" >> .env
-echo "COMPOSE_PROFILE=full" >> .env
+echo "COMPOSE_PROFILE=${FINAL_PROFILE}" >> .env
+
+if [ "$FINAL_PROFILE" = "minimal" ]; then
+    cat >> .env << 'EOF'
+
+# InfluxDB memory tuning (minimal profile - constrained devices)
+INFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE=134217728
+INFLUXD_STORAGE_CACHE_SNAPSHOT_MEMORY_SIZE=67108864
+INFLUXD_STORAGE_MAX_CONCURRENT_COMPACTIONS=2
+INFLUXD_NO_TASKS=true
+INFLUXD_REPORTING_DISABLED=true
+EOF
+fi
 
 echo "✅ Setup complete!"
 echo "   Target architecture: ${TARGETARCH}"

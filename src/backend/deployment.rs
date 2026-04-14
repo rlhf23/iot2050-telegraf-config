@@ -503,6 +503,11 @@ impl IoTDeployer {
                 "cd ~/monitoring && sed -i 's/^COMPOSE_PROFILE=.*/COMPOSE_PROFILE=minimal/' .env 2>/dev/null || echo 'COMPOSE_PROFILE=minimal' >> .env",
                 "Setting minimal profile",
             )?;
+            self.run_command(
+                &session,
+                "cd ~/monitoring && cat >> .env << 'EOF'\n\n# InfluxDB memory tuning (minimal profile - constrained devices)\nINFLUXD_STORAGE_CACHE_MAX_MEMORY_SIZE=134217728\nINFLUXD_STORAGE_CACHE_SNAPSHOT_MEMORY_SIZE=67108864\nINFLUXD_STORAGE_MAX_CONCURRENT_COMPACTIONS=2\nINFLUXD_NO_TASKS=true\nINFLUXD_REPORTING_DISABLED=true\nEOF",
+                "Configuring InfluxDB memory tuning",
+            )?;
         }
 
         println!(
@@ -642,15 +647,6 @@ impl IoTDeployer {
         println!("🚀 Starting monitoring stack...");
 
         let session = self.create_ssh_session()?;
-
-        if self.minimal {
-            println!("📦 Using minimal profile (TICK stack only)");
-            self.run_command(
-                &session,
-                "cd ~/monitoring && sed -i 's/^COMPOSE_PROFILE=.*/COMPOSE_PROFILE=minimal/' .env 2>/dev/null || echo 'COMPOSE_PROFILE=minimal' >> .env",
-                "Setting minimal profile",
-            )?;
-        }
 
         self.run_command(
             &session,

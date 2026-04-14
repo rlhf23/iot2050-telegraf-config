@@ -84,8 +84,7 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         }
         Some(("start", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
-            let minimal = sub_matches.get_flag("minimal");
-            let deployer = IoTDeployer::new(config).with_minimal(minimal);
+            let deployer = IoTDeployer::new(config);
 
             if let Err(e) = deployer.start() {
                 exit_with_error(format!("Start failed: {}", e));
@@ -628,7 +627,6 @@ fn main() {
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
-                        .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Start minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)"))
                 )
                 .subcommand(
                     Command::new("stop")
