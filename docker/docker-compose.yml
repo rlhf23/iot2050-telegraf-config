@@ -141,6 +141,31 @@ services:
       - monitoring
     restart: unless-stopped
 
+  chronograf:
+    image: chronograf:1.10
+    container_name: chronograf
+    env_file:
+      - .env
+    ports:
+      - "8888:8888"
+    volumes:
+      - chronograf_data:/var/lib/chronograf
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - CHRONOGRAF_BASE_PATH=/chronograf
+    depends_on:
+      - influxdb
+    networks:
+      - monitoring
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8888/chronograf/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -235,6 +260,7 @@ services:
       - /sys:/host/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
+      - chronograf
       - grafana
       - influxdb
       - prometheus
@@ -260,3 +286,4 @@ volumes:
   influxdb_data:
   grafana_data:
   prometheus_data:
+  chronograf_data:
