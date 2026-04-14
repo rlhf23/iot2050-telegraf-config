@@ -1,15 +1,17 @@
 # Override for CI/CD environments
-# Use this with: docker compose -f docker-compose.yml -f docker-compose.ci.yml up
+# Use this with: docker compose --profile full -f docker-compose.yml -f docker-compose.ci.yml up
 
 services:
   # Build api-service from source in CI (x86_64)
   api-service:
+    profiles: ["full"]
     build:
       context: ..
       dockerfile: docker/api-service/Dockerfile.build
 
   # Build control-service from source in CI (x86_64)
   control-service:
+    profiles: ["full"]
     build:
       context: ..
       dockerfile: docker/control-service/Dockerfile.build

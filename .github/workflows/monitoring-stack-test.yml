@@ -37,6 +37,18 @@ jobs:
             fi
           done
 
+          echo "Validating Chronograf dashboard JSON files..."
+          for file in docker/config/chronograf/dashboards/*.json; do
+            if [ -f "$file" ]; then
+              echo "Validating $file"
+              python3 -m json.tool "$file" > /dev/null || {
+                echo "❌ JSON validation failed for $file"
+                exit 1
+              }
+              echo "✅ $file is valid JSON"
+            fi
+          done
+
       - name: Validate YAML files  
         run: |
           echo "Validating Grafana datasource YAML files..."
@@ -85,6 +97,7 @@ jobs:
           GRAFANA_ADMIN_USER=test
           GRAFANA_ADMIN_PASSWORD=test
           HOST_DOCKER_GID=999
+          COMPOSE_PROFILE=full
           EOF
 
       - name: Validate docker-compose.yml syntax
@@ -115,6 +128,7 @@ jobs:
           GRAFANA_ADMIN_USER=testadmin
           GRAFANA_ADMIN_PASSWORD=testgrafana123
           HOST_DOCKER_GID=999
+          COMPOSE_PROFILE=full
           EOF
 
       - name: Create required directories and configs
@@ -131,8 +145,8 @@ jobs:
       - name: Start monitoring stack
         run: |
           cd docker
-          # Use CI override to build api-service from source
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d
+          # Use CI override to build api-service from source, with full profile
+          docker compose --profile full -f docker-compose.yml -f docker-compose.ci.yml up -d
           echo "Waiting for services to start..."
           sleep 30
 
@@ -143,7 +157,7 @@ jobs:
           
           # Check if all expected containers are running
           RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
-          EXPECTED_CONTAINERS=7  # influxdb, telegraf, grafana, prometheus, nginx, api-service, control-service
+          EXPECTED_CONTAINERS=9  # influxdb, influxdb-setup, telegraf, chronograf, chronograf-setup, grafana, prometheus, nginx, api-service (full profile)
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -167,6 +181,15 @@ jobs:
             else
               echo "✗ InfluxDB not ready yet"
               INFLUXDB_HEALTHY=false
+            fi
+            
+            # Check Chronograf health
+            if curl -f http://localhost:8888/chronograf/health > /dev/null 2>&1; then
+              echo "✓ Chronograf is healthy"
+              CHRONOGRAF_HEALTHY=true
+            else
+              echo "✗ Chronograf not ready yet"
+              CHRONOGRAF_HEALTHY=false
             fi
             
             # Check Grafana health
@@ -223,7 +246,7 @@ jobs:
               CONTROL_SERVICE_HEALTHY=false
             fi
             
-            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ] && [ "$CONTROL_SERVICE_HEALTHY" = true ]; then
+            if [ "$INFLUXDB_HEALTHY" = true ] && [ "$CHRONOGRAF_HEALTHY" = true ] && [ "$GRAFANA_HEALTHY" = true ] && [ "$PROMETHEUS_HEALTHY" = true ] && [ "$TELEGRAF_HEALTHY" = true ] && [ "$NGINX_HEALTHY" = true ] && [ "$API_SERVICE_HEALTHY" = true ] && [ "$CONTROL_SERVICE_HEALTHY" = true ]; then
               echo "All services are healthy!"
               break
             fi
@@ -245,6 +268,11 @@ jobs:
           echo "Testing InfluxDB..."
           INFLUX_RESPONSE=$(curl -s http://localhost:8086/health)
           echo "InfluxDB health response: $INFLUX_RESPONSE"
+          
+          # Test Chronograf API
+          echo "Testing Chronograf..."
+          CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/chronograf/health)
+          echo "Chronograf health status: $CHRONOGRAF_STATUS"
           
           # Test Grafana API
           echo "Testing Grafana..."
@@ -294,6 +322,12 @@ jobs:
           else
             echo "✗ Prometheus not accessible via /prometheus proxy"
             exit 1
+          fi
+          
+          if curl -f http://localhost:80/chronograf/health > /dev/null 2>&1; then
+            echo "✓ Chronograf accessible via /chronograf proxy"
+          else
+            echo "✗ Chronograf not accessible via /chronograf proxy"
           fi
 
       - name: Test API Service endpoints
@@ -417,6 +451,8 @@ jobs:
           docker compose logs influxdb | tail -50
           echo "=== Telegraf Logs ==="
           docker compose logs telegraf | tail -50
+          echo "=== Chronograf Logs ==="
+          docker compose logs chronograf | tail -50
           echo "=== Grafana Logs ==="
           docker compose logs grafana | tail -50
           echo "=== Prometheus Logs ==="
@@ -545,7 +581,7 @@ jobs:
       - name: Test ARM64 build capability
         run: |
           cd docker
-          
+
           # Create test .env
           cat > .env << EOF
           INFLUXDB_USER=testadmin
@@ -557,6 +593,7 @@ jobs:
           GRAFANA_ADMIN_USER=testadmin
           GRAFANA_ADMIN_PASSWORD=testgrafana123
           HOST_DOCKER_GID=999
+          COMPOSE_PROFILE=full
           EOF
           
           # Test that we can at least build for ARM64 (don't run due to emulation overhead)
