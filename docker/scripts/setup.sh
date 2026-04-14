@@ -73,6 +73,9 @@ TELEGRAF_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 
 # Docker
 HOST_DOCKER_GID=${DOCKER_GID}
+
+# Deployment profile: full (all services) or minimal (TICK stack only)
+COMPOSE_PROFILE=full
 EOL
     echo "✅ Created .env file"
 else
@@ -111,12 +114,13 @@ echo "🔧 Detected architecture: $TARGETARCH"
 
 # Write architecture to .env file for docker-compose
 if [ -f .env ]; then
-    # Remove existing TARGETARCH line if present
-    grep -v "^TARGETARCH=" .env > .env.tmp || true
+    # Remove existing TARGETARCH and COMPOSE_PROFILE lines if present
+    grep -v "^TARGETARCH=" .env | grep -v "^COMPOSE_PROFILE=" > .env.tmp || true
     mv .env.tmp .env
 fi
 # Add TARGETARCH to .env
 echo "TARGETARCH=${TARGETARCH}" >> .env
+echo "COMPOSE_PROFILE=full" >> .env
 
 echo "✅ Setup complete!"
 echo "   Target architecture: ${TARGETARCH}"

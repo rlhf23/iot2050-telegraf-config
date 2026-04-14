@@ -77,6 +77,7 @@ pub struct IoTDeployer {
     config: DeploymentConfig,
     repo_url: String,
     branch: String,
+    minimal: bool,
 }
 
 impl IoTDeployer {
@@ -137,7 +138,13 @@ impl IoTDeployer {
             config,
             repo_url,
             branch,
+            minimal: false,
         }
+    }
+
+    pub fn with_minimal(mut self, minimal: bool) -> Self {
+        self.minimal = minimal;
+        self
     }
 
     /// Test SSH connectivity to the device
@@ -489,6 +496,15 @@ impl IoTDeployer {
             "Running setup",
         )?;
 
+        if self.minimal {
+            println!("📦 Configuring minimal profile (TICK stack only)");
+            self.run_command(
+                &session,
+                "cd ~/monitoring && sed -i 's/^COMPOSE_PROFILE=.*/COMPOSE_PROFILE=minimal/' .env 2>/dev/null || echo 'COMPOSE_PROFILE=minimal' >> .env",
+                "Setting minimal profile",
+            )?;
+        }
+
         println!(
             "✅ Setup completed successfully! (Architecture: {})",
             targetarch
@@ -567,8 +583,22 @@ impl IoTDeployer {
         }
 
         println!("\n🔗 Access URLs:");
-        println!("  - Grafana: http://{}:3000", self.config.host);
         println!("  - InfluxDB: http://{}:8086", self.config.host);
+        println!("  - Chronograf: http://{}:8888", self.config.host);
+
+        // Check which profile is active by looking for COMPOSE_PROFILE in .env
+        let mut profile_channel = session.channel_session()?;
+        profile_channel.exec("cd ~/monitoring && grep -q '^COMPOSE_PROFILE=minimal' .env 2>/dev/null && echo minimal || echo full")?;
+
+        let mut profile_output = String::new();
+        profile_channel.read_to_string(&mut profile_output)?;
+        profile_channel.wait_close()?;
+
+        let is_minimal = profile_output.trim() == "minimal";
+
+        if !is_minimal {
+            println!("  - Grafana: http://{}:3000", self.config.host);
+        }
 
         Ok(())
     }
@@ -612,6 +642,15 @@ impl IoTDeployer {
         println!("🚀 Starting monitoring stack...");
 
         let session = self.create_ssh_session()?;
+
+        if self.minimal {
+            println!("📦 Using minimal profile (TICK stack only)");
+            self.run_command(
+                &session,
+                "cd ~/monitoring && sed -i 's/^COMPOSE_PROFILE=.*/COMPOSE_PROFILE=minimal/' .env 2>/dev/null || echo 'COMPOSE_PROFILE=minimal' >> .env",
+                "Setting minimal profile",
+            )?;
+        }
 
         self.run_command(
             &session,

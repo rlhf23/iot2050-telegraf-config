@@ -304,8 +304,15 @@ CREDENTIALS=$($SSH_CMD "cd ~/monitoring && cat .env | grep -E '(GRAFANA_ADMIN_|I
 print_success "🎉 Deployment completed successfully!"
 echo
 echo -e "${BLUE}📋 Service URLs:${NC}"
-echo "  - Grafana: http://$DEVICE_IP:3000"
 echo "  - InfluxDB: http://$DEVICE_IP:8086"
+echo "  - Chronograf: http://$DEVICE_IP:8888"
+
+# Check if full profile is active by checking if Grafana is running
+FULL_PROFILE=$($SSH_CMD "cd ~/monitoring && grep -q '^COMPOSE_PROFILE=full' .env 2>/dev/null && echo 'yes' || echo 'no'" 2>/dev/null || echo "unknown")
+if [ "$FULL_PROFILE" = "yes" ]; then
+echo "  - Grafana: http://$DEVICE_IP:3000"
+fi
+
 echo
 echo -e "${BLUE}🔑 Credentials:${NC}"
 echo "$CREDENTIALS"

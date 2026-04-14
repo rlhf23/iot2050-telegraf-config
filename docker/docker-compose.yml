@@ -5,6 +5,11 @@
 #   - arm64 (default): For ARM64 devices (IoT2050, Raspberry Pi, etc.)
 #   - amd64: For x86_64 devices (servers, VMs, etc.)
 # Example: TARGETARCH=amd64 docker-compose up -d
+#
+# COMPOSE_PROFILE: Controls which services are started
+#   - Unset or "full": All services (default)
+#   - "minimal": InfluxDB + Telegraf + Chronograf + Nginx only (for constrained devices)
+# Example: COMPOSE_PROFILE=minimal docker-compose up -d
 
 services:
   influxdb:
@@ -119,6 +124,7 @@ services:
         hard: 65536
 
   grafana:
+    profiles: ["full"]
     image: grafana/grafana:latest
     container_name: grafana
     env_file:
@@ -189,6 +195,7 @@ services:
     restart: "no"
 
   prometheus:
+    profiles: ["full"]
     image: prom/prometheus:latest
     container_name: prometheus
     user: root
@@ -217,6 +224,7 @@ services:
       start_period: 30s
 
   api-service:
+    profiles: ["full"]
     build:
       context: .
       dockerfile: api-service/Dockerfile.prebuilt
@@ -244,6 +252,7 @@ services:
       start_period: 10s
 
   control-service:
+    profiles: ["full"]
     build:
       context: .
       dockerfile: control-service/Dockerfile.prebuilt
@@ -283,12 +292,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       - chronograf
-      - grafana
       - influxdb
-      - prometheus
       - telegraf
-      - api-service
-      - control-service
     networks:
       - monitoring
     restart: unless-stopped
