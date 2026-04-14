@@ -11,7 +11,7 @@ echo "=== Chronograf Setup ==="
 echo "Waiting for Chronograf to be ready..."
 MAX_RETRIES=60
 RETRY=0
-until wget -q -O /dev/null "${CHRONOGRAF_URL}/chronograf/health" 2>/dev/null; do
+until wget -q -O /dev/null "${CHRONOGRAF_URL}/health" 2>/dev/null; do
     RETRY=$((RETRY + 1))
     if [ $RETRY -ge $MAX_RETRIES ]; then
         echo "ERROR: Chronograf did not become ready within ${MAX_RETRIES} seconds"

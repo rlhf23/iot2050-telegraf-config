@@ -184,7 +184,7 @@ jobs:
             fi
             
             # Check Chronograf health
-            if curl -f http://localhost:8888/chronograf/health > /dev/null 2>&1; then
+            if curl -f http://localhost:8888/health > /dev/null 2>&1; then
               echo "✓ Chronograf is healthy"
               CHRONOGRAF_HEALTHY=true
             else
@@ -271,7 +271,7 @@ jobs:
           
           # Test Chronograf API
           echo "Testing Chronograf..."
-          CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/chronograf/health)
+          CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/health)
           echo "Chronograf health status: $CHRONOGRAF_STATUS"
           
           # Test Grafana API

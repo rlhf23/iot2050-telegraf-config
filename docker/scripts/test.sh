@@ -132,7 +132,7 @@ check_service_health() {
 check_service_health "InfluxDB" "http://localhost:8086/health" &
 INFLUXDB_PID=$!
 
-check_service_health "Chronograf" "http://localhost:8888/chronograf/health" &
+check_service_health "Chronograf" "http://localhost:8888/health" &
 CHRONOGRAF_PID=$!
 
 check_service_health "Grafana" "http://localhost:3000/api/health" &
@@ -162,7 +162,7 @@ print_step "Testing service endpoints"
 print_success "InfluxDB health: $(curl -s http://localhost:8086/health)"
 
 # Test Chronograf
-CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/chronograf/health)
+CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/health)
 if [ "$CHRONOGRAF_STATUS" = "200" ]; then
     print_success "Chronograf is healthy"
 else
