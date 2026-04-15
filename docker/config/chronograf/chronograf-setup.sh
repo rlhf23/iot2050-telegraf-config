@@ -11,7 +11,7 @@ echo "=== Chronograf Setup ==="
 echo "Waiting for Chronograf to be ready..."
 MAX_RETRIES=60
 RETRY=0
-until wget -q -O /dev/null "${CHRONOGRAF_URL}/health" 2>/dev/null; do
+until curl -sf -o /dev/null "${CHRONOGRAF_URL}/health" 2>/dev/null; do
     RETRY=$((RETRY + 1))
     if [ $RETRY -ge $MAX_RETRIES ]; then
         echo "ERROR: Chronograf did not become ready within ${MAX_RETRIES} seconds"
@@ -23,14 +23,14 @@ done
 echo "Chronograf is healthy."
 
 echo "Checking for existing InfluxDB source..."
-EXISTING_SOURCES=$(wget -q -O - "${CHRONOGRAF_URL}/chronograf/v1/sources" 2>/dev/null || echo '{"sources":[]}')
+EXISTING_SOURCES=$(curl -sf "${CHRONOGRAF_URL}/chronograf/v1/sources" 2>/dev/null || echo '{"sources":[]}')
 
 if echo "$EXISTING_SOURCES" | grep -q "\"id\""; then
     SOURCE_ID=$(echo "$EXISTING_SOURCES" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"\([^"]*\)"/\1/')
     echo "Found existing source with id: ${SOURCE_ID}"
 else
     echo "Creating InfluxDB v2 source..."
-    SOURCE_RESPONSE=$(wget -q -O - --post-data="{
+    SOURCE_RESPONSE=$(curl -sf -X POST -d "{
         \"name\": \"InfluxDB v2\",
         \"type\": \"influx-v2\",
         \"url\": \"${INFLUXDB_URL}\",
@@ -39,7 +39,7 @@ else
         \"token\": \"${INFLUXDB_TOKEN}\",
         \"organization\": \"${INFLUXDB_ORG}\",
         \"default\": true
-    }" --header="Content-Type: application/json" "${CHRONOGRAF_URL}/chronograf/v1/sources" 2>/dev/null || echo '{}')
+    }" -H "Content-Type: application/json" "${CHRONOGRAF_URL}/chronograf/v1/sources" 2>/dev/null || echo '{}')
 
     SOURCE_ID=$(echo "$SOURCE_RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"\([^"]*\)"/\1/')
 
@@ -81,8 +81,8 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
         DASHBOARD_JSON=$(echo "$DASHBOARD_JSON" | sed "s|\"source\":\"\"|\"source\":\"${SOURCE_URL}\"|g")
     fi
 
-    RESPONSE=$(echo "$DASHBOARD_JSON" | wget -q -O - --post-data=@- \
-        --header="Content-Type: application/json" \
+    RESPONSE=$(echo "$DASHBOARD_JSON" | curl -sf -X POST -d @- \
+        -H "Content-Type: application/json" \
         "${CHRONOGRAF_URL}/chronograf/v1/dashboards" 2>/dev/null || echo '{}')
 
     if echo "$RESPONSE" | grep -q '"id"'; then
