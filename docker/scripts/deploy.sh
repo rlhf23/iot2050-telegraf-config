@@ -141,9 +141,23 @@ if [ "$BUILD_ONLY" = true ]; then
     exit 0
 fi
 
-# Start the stack
+# Start the stack (with profile if set)
 print_status "Starting the monitoring stack..."
-docker-compose up -d || {
+
+if [ -f .env ]; then
+    # Load COMPOSE_PROFILE if defined
+    COMPOSE_PROFILE=$(grep -E '^COMPOSE_PROFILE=' .env 2>/dev/null | cut -d'=' -f2 || echo "")
+fi
+
+PROFILE_ARGS=""
+if [ -n "$COMPOSE_PROFILE" ]; then
+    for profile in $COMPOSE_PROFILE; do
+        PROFILE_ARGS="$PROFILE_ARGS --profile $profile"
+    done
+    print_status "Using profile(s): $COMPOSE_PROFILE"
+fi
+
+docker-compose $PROFILE_ARGS up -d || {
     print_error "Failed to start the monitoring stack"
     exit 1
 }
@@ -171,8 +185,12 @@ done
 
 print_success "Deployment completed successfully!"
 echo ""
-echo "📊 Grafana: http://localhost:3000"
-echo "📈 InfluxDB: http://localhost:8086"
+echo "📊 InfluxDB: http://localhost:8086"
+echo "📊 Chronograf: http://localhost:8888"
+if echo "$COMPOSE_PROFILE" | grep -qw "full"; then
+    echo "📊 Grafana: http://localhost:3000"
+    echo "📊 Prometheus: http://localhost:9090"
+fi
 echo ""
 echo "To stop the stack, run: ./stop.sh"
 echo "To view logs, run: docker-compose logs -f"

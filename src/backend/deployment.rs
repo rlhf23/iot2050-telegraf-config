@@ -77,6 +77,7 @@ pub struct IoTDeployer {
     config: DeploymentConfig,
     repo_url: String,
     branch: String,
+    minimal: bool,
 }
 
 impl IoTDeployer {
@@ -137,7 +138,13 @@ impl IoTDeployer {
             config,
             repo_url,
             branch,
+            minimal: false,
         }
+    }
+
+    pub fn with_minimal(mut self, minimal: bool) -> Self {
+        self.minimal = minimal;
+        self
     }
 
     /// Test SSH connectivity to the device
@@ -481,13 +488,15 @@ impl IoTDeployer {
         // Detect device architecture
         let targetarch = self.detect_architecture()?;
 
-        // Run setup script (this will also export TARGETARCH via .env)
-        println!("⚙️  Running setup script...");
-        self.run_command(
-            &session,
-            "cd ~/monitoring && ./scripts/setup.sh",
-            "Running setup",
-        )?;
+        // Run setup script with optional --minimal flag
+        let setup_cmd = if self.minimal {
+            println!("📦 Using minimal profile (TICK stack only)");
+            "cd ~/monitoring && ./scripts/setup.sh --minimal"
+        } else {
+            "cd ~/monitoring && ./scripts/setup.sh"
+        };
+
+        self.run_command(&session, setup_cmd, "Running setup")?;
 
         println!(
             "✅ Setup completed successfully! (Architecture: {})",
@@ -567,8 +576,22 @@ impl IoTDeployer {
         }
 
         println!("\n🔗 Access URLs:");
-        println!("  - Grafana: http://{}:3000", self.config.host);
         println!("  - InfluxDB: http://{}:8086", self.config.host);
+        println!("  - Chronograf: http://{}:8888", self.config.host);
+
+        // Check which profile is active by looking for COMPOSE_PROFILE in .env
+        let mut profile_channel = session.channel_session()?;
+        profile_channel.exec("cd ~/monitoring && grep -q '^COMPOSE_PROFILE=minimal' .env 2>/dev/null && echo minimal || echo full")?;
+
+        let mut profile_output = String::new();
+        profile_channel.read_to_string(&mut profile_output)?;
+        profile_channel.wait_close()?;
+
+        let is_minimal = profile_output.trim() == "minimal";
+
+        if !is_minimal {
+            println!("  - Grafana: http://{}:3000", self.config.host);
+        }
 
         Ok(())
     }

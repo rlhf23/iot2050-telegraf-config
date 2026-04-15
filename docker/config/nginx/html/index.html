@@ -440,6 +440,30 @@
                 <button class="restart-btn" id="restart-grafana" onclick="confirmRestart('grafana', 'Grafana')">🔄 Restart</button>
             </div>
 
+            <!-- Chronograf -->
+            <div class="service-card" id="chronograf-card">
+                <div class="service-header">
+                    <div class="service-name">Chronograf</div>
+                    <div class="status-indicator checking" id="chronograf-status"></div>
+                </div>
+                <div class="service-description">
+                    Lightweight data exploration and visualization
+                </div>
+                <div class="service-info">
+                    <div class="info-row">
+                        <span class="info-label">Port:</span>
+                        <span class="info-value">8888</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <span class="info-value" id="chronograf-status-text">Checking...</span>
+                    </div>
+                </div>
+                <a href="javascript:void(0)" onclick="window.open(window.location.protocol + '//' + window.location.hostname + ':8888', '_blank')" class="service-link" id="chronograf-link">Open Chronograf</a>
+                <button class="view-btn" onclick="viewContainerLogs('chronograf')">📝 View Logs</button>
+                <button class="restart-btn" id="restart-chronograf" onclick="confirmRestart('chronograf', 'Chronograf')">🔄 Restart</button>
+            </div>
+
             <!-- InfluxDB -->
             <div class="service-card" id="influxdb-card">
                 <div class="service-header">
@@ -619,6 +643,10 @@
     <script>
         // Service configuration
         const services = {
+            chronograf: {
+                healthUrl: '/chronograf/health',
+                port: 8888
+            },
             grafana: {
                 healthUrl: '/grafana/api/health',
                 port: 3000

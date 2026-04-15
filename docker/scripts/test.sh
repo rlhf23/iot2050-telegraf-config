@@ -76,6 +76,7 @@ TELEGRAF_TOKEN=telegraf_test_token_123
 GRAFANA_ADMIN_USER=testadmin
 GRAFANA_ADMIN_PASSWORD=testgrafana123
 HOST_DOCKER_GID=$(id -g docker 2>/dev/null || echo "999")
+COMPOSE_PROFILE=full
 EOF
 
 # Create telegraf config
@@ -84,9 +85,9 @@ cp config/telegraf/telegraf.conf.example "$HOME/telegraf/telegraf.conf"
 
 print_success "Test environment created"
 
-# Test 3: Start the stack
-print_step "Starting monitoring stack"
-$COMPOSE_CMD up -d
+# Test 3: Start the stack (with full profile)
+print_step "Starting monitoring stack (full profile)"
+COMPOSE_PROFILE=full $COMPOSE_CMD up -d
 
 print_success "Stack started, waiting for services..."
 sleep 30
@@ -96,7 +97,7 @@ print_step "Checking container status"
 $COMPOSE_CMD ps
 
 RUNNING_CONTAINERS=$($COMPOSE_CMD ps --services --filter "status=running" | wc -l)
-EXPECTED_CONTAINERS=4  # influxdb, telegraf, grafana, prometheus
+EXPECTED_CONTAINERS=9  # influxdb, influxdb-setup, telegraf, chronograf, chronograf-setup, grafana, prometheus, nginx, api-service (full profile)
 
 if [ "$RUNNING_CONTAINERS" -ne "$EXPECTED_CONTAINERS" ]; then
     print_error "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -131,6 +132,9 @@ check_service_health() {
 check_service_health "InfluxDB" "http://localhost:8086/health" &
 INFLUXDB_PID=$!
 
+check_service_health "Chronograf" "http://localhost:8888/health" &
+CHRONOGRAF_PID=$!
+
 check_service_health "Grafana" "http://localhost:3000/api/health" &
 GRAFANA_PID=$!
 
@@ -139,6 +143,7 @@ PROMETHEUS_PID=$!
 
 # Wait for all health checks
 wait $INFLUXDB_PID || exit 1
+wait $CHRONOGRAF_PID || exit 1
 wait $GRAFANA_PID || exit 1
 wait $PROMETHEUS_PID || exit 1
 
@@ -155,6 +160,14 @@ print_step "Testing service endpoints"
 
 # Test InfluxDB
 print_success "InfluxDB health: $(curl -s http://localhost:8086/health)"
+
+# Test Chronograf
+CHRONOGRAF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8888/health)
+if [ "$CHRONOGRAF_STATUS" = "200" ]; then
+    print_success "Chronograf is healthy"
+else
+    print_warning "Chronograf health check returned HTTP $CHRONOGRAF_STATUS"
+fi
 
 # Test Grafana
 print_success "Grafana health: $(curl -s http://localhost:3000/api/health)"
@@ -198,6 +211,9 @@ fi
 print_step "Service logs summary"
 echo "Recent logs from each service:"
 
+echo -e "\n${YELLOW}Chronograf logs:${NC}"
+$COMPOSE_CMD logs --tail=5 chronograf
+
 echo -e "\n${YELLOW}InfluxDB logs:${NC}"
 $COMPOSE_CMD logs --tail=5 influxdb
 
@@ -214,8 +230,9 @@ print_step "Test Summary"
 print_success "All monitoring stack tests passed!"
 echo
 echo "Services are accessible at:"
-echo "- Grafana: http://localhost:3000 (testadmin/testgrafana123)"
+echo "- Chronograf: http://localhost:8888"
 echo "- InfluxDB: http://localhost:8086"
+echo "- Grafana: http://localhost:3000 (testadmin/testgrafana123)"
 echo "- Prometheus: http://localhost:9090"
 echo
 echo "Run '$COMPOSE_CMD logs -f' to view live logs"
