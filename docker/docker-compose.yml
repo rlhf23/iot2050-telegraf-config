@@ -224,7 +224,6 @@ services:
       start_period: 30s
 
   api-service:
-    profiles: ["full"]
     build:
       context: .
       dockerfile: api-service/Dockerfile.prebuilt
@@ -252,7 +251,6 @@ services:
       start_period: 10s
 
   control-service:
-    profiles: ["full"]
     build:
       context: .
       dockerfile: control-service/Dockerfile.prebuilt
