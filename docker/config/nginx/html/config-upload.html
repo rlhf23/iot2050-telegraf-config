@@ -536,6 +536,20 @@
                     </button>
                 </div>
 
+                <!-- Chronograf Dashboard section -->
+                <div id="chronograf-dashboard-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">Chronograf Dashboard</h3>
+                    <button class="btn btn-primary" id="generate-chronograf-btn" disabled>
+                        Generate Dashboard
+                    </button>
+                    <button class="btn btn-success" id="deploy-chronograf-btn" disabled style="margin-left: 10px;">
+                        Deploy Dashboard
+                    </button>
+                    <button class="btn" onclick="viewChronografDashboard()" style="background: #6c757d; margin-left: 10px;" id="view-chronograf-btn" disabled>
+                        📊 View Dashboard JSON
+                    </button>
+                </div>
+
                 <div class="loading" id="generate-loading">
                     <div class="spinner"></div>
                     <p id="loading-text" style="margin-top: 10px;">Generating configuration...</p>
@@ -631,6 +645,10 @@
             // Dashboard buttons
             document.getElementById('generate-dashboard-btn').addEventListener('click', generateDashboard);
             document.getElementById('deploy-dashboard-btn').addEventListener('click', deployDashboard);
+
+            // Chronograf dashboard buttons
+            document.getElementById('generate-chronograf-btn').addEventListener('click', generateChronografDashboard);
+            document.getElementById('deploy-chronograf-btn').addEventListener('click', deployChronografDashboard);
 
             // Anonymous auth checkbox
             document.getElementById('anonymous-auth').addEventListener('change', (e) => {
@@ -885,6 +903,7 @@
                     if (data.measurements && data.measurements.length > 0) {
                         window.measurements = data.measurements;
                         document.getElementById('generate-dashboard-btn').disabled = false;
+                        document.getElementById('generate-chronograf-btn').disabled = false;
                     }
                 } else {
                     showNotification(data.message || 'Generation failed', 'error');
@@ -1219,6 +1238,110 @@
             const parsed = JSON.parse(window.dashboardJson);
             showPreviewModal(JSON.stringify(parsed, null, 2));
             document.getElementById('modal-title').textContent = 'Dashboard JSON';
+        }
+
+        // Generate Chronograf dashboard
+        async function generateChronografDashboard() {
+            if (!window.measurements || window.measurements.length === 0) {
+                showNotification('Please generate configuration first', 'error');
+                return;
+            }
+
+            document.getElementById('loading-text').textContent = 'Generating Chronograf dashboard...';
+            showLoading('generate-loading', true);
+
+            const requestData = {
+                measurements: window.measurements,
+                bucket: 'telegraf',
+                organization: 'default'
+            };
+
+            try {
+                const response = await fetch('/api/chronograf/dashboard/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    
+                    window.chronografDashboardJson = data.dashboard_json;
+                    window.chronografDashboardName = data.dashboard_name;
+                    
+                    document.getElementById('deploy-chronograf-btn').disabled = false;
+                    document.getElementById('view-chronograf-btn').disabled = false;
+                    
+                    if (data.dashboard_json) {
+                        const parsed = JSON.parse(data.dashboard_json);
+                        showPreviewModal(JSON.stringify(parsed, null, 2));
+                        document.getElementById('modal-title').textContent = 'Chronograf Dashboard Preview';
+                    }
+                } else {
+                    showNotification(data.message || 'Chronograf dashboard generation failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error generating Chronograf dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // Deploy Chronograf dashboard
+        async function deployChronografDashboard() {
+            if (!window.chronografDashboardJson) {
+                showNotification('Please generate Chronograf dashboard first', 'error');
+                return;
+            }
+
+            if (!confirm('Deploy dashboard to Chronograf?')) {
+                return;
+            }
+
+            document.getElementById('loading-text').textContent = 'Deploying Chronograf dashboard...';
+            showLoading('generate-loading', true);
+
+            const requestData = {
+                dashboard_json: window.chronografDashboardJson
+            };
+
+            try {
+                const response = await fetch('/api/chronograf/dashboard/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message || 'Chronograf dashboard deployment failed', 'error');
+                }
+            } catch (error) {
+                showNotification('Error deploying Chronograf dashboard: ' + error.message, 'error');
+            } finally {
+                showLoading('generate-loading', false);
+            }
+        }
+
+        // View Chronograf dashboard JSON
+        function viewChronografDashboard() {
+            if (!window.chronografDashboardJson) {
+                showNotification('Please generate Chronograf dashboard first', 'error');
+                return;
+            }
+            
+            const parsed = JSON.parse(window.chronografDashboardJson);
+            showPreviewModal(JSON.stringify(parsed, null, 2));
+            document.getElementById('modal-title').textContent = 'Chronograf Dashboard JSON';
         }
     </script>
 </body>
