@@ -171,8 +171,6 @@ pub struct GenerateChronografDashboardRequest {
     pub measurements: Vec<String>,
     #[serde(default = "default_bucket")]
     pub bucket: String,
-    #[serde(default = "default_organization")]
-    pub organization: String,
 }
 
 fn default_organization() -> String {
@@ -210,7 +208,6 @@ pub async fn generate_chronograf_dashboard(
 
     let config = ChronografDashboardConfig {
         name: dashboard_name.clone(),
-        organization: request.organization.clone(),
         measurements: request.measurements.clone(),
         bucket: request.bucket,
     };

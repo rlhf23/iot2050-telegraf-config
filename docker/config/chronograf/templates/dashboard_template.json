@@ -5,7 +5,7 @@
   },
   "dashboard": {
     "name": "{{DASHBOARD_NAME}}",
-    "organization": "{{ORGANIZATION}}",
+    "organization": "default",
     "cells": [],
     "templates": []
   },
@@ -18,7 +18,7 @@
     "name": "{{MEASUREMENT}}",
     "queries": [
       {
-        "query": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")",
+        "query": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)",
         "queryConfig": {
           "database": "",
           "measurement": "",
@@ -30,7 +30,7 @@
             "tags": []
           },
           "areTagsAccepted": false,
-          "rawText": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")",
+          "rawText": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)",
           "range": null,
           "shifts": null
         },

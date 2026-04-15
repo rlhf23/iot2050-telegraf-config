@@ -495,7 +495,6 @@ impl ConfigGenerator {
     /// # Arguments
     /// * `measurements` - List of measurement names (from XML parsing or browser selection)
     /// * `bucket` - InfluxDB bucket name (default: "telegraf")
-    /// * `organization` - Chronograf organization (default: "default")
     /// * `template_path` - Optional custom template path (uses default if None)
     ///
     /// # Returns
@@ -505,7 +504,6 @@ impl ConfigGenerator {
         &self,
         measurements: &[String],
         bucket: Option<&str>,
-        organization: Option<&str>,
         template_path: Option<&Path>,
     ) -> Result<String, TelegrafError> {
         if measurements.is_empty() {
@@ -518,7 +516,6 @@ impl ConfigGenerator {
         let primary_measurement = &measurements[0];
         let config = ChronografDashboardConfig {
             name: format!("{} Dashboard", primary_measurement),
-            organization: organization.unwrap_or("default").to_string(),
             measurements: measurements.to_vec(),
             bucket: bucket.unwrap_or("telegraf").to_string(),
         };

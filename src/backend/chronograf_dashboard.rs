@@ -14,12 +14,10 @@ const DEFAULT_TEMPLATE: &str =
 const CELLS_PER_ROW: i64 = 3;
 const CELL_WIDTH: i64 = 4;
 const CELL_HEIGHT: i64 = 4;
-const DASHBOARD_WIDTH: i64 = 12;
 
 #[derive(Debug, Clone)]
 pub struct ChronografDashboardConfig {
     pub name: String,
-    pub organization: String,
     pub measurements: Vec<String>,
     pub bucket: String,
 }
@@ -121,10 +119,7 @@ pub fn fill_template(
     })?;
 
     dashboard_obj.insert("name".to_string(), serde_json::json!(config.name));
-    dashboard_obj.insert(
-        "organization".to_string(),
-        serde_json::json!(config.organization),
-    );
+    dashboard_obj.insert("organization".to_string(), serde_json::json!("default"));
 
     let mut cells = Vec::new();
     for (index, measurement) in config.measurements.iter().enumerate() {
@@ -157,13 +152,13 @@ mod tests {
         let template = load_template(None).unwrap();
         assert!(template.contains("{{DASHBOARD_NAME}}"));
         assert!(template.contains("__cell_template"));
+        assert!(!template.contains("{{ORGANIZATION}}"));
     }
 
     #[test]
     fn test_fill_template_single_measurement() {
         let config = ChronografDashboardConfig {
             name: "Test Dashboard".to_string(),
-            organization: "default".to_string(),
             measurements: vec!["cpu".to_string()],
             bucket: "telegraf".to_string(),
         };
@@ -189,7 +184,6 @@ mod tests {
     fn test_fill_template_multiple_measurements() {
         let config = ChronografDashboardConfig {
             name: "Multi Dashboard".to_string(),
-            organization: "default".to_string(),
             measurements: vec![
                 "cpu".to_string(),
                 "mem".to_string(),
@@ -230,7 +224,6 @@ mod tests {
     fn test_fill_template_empty_measurements() {
         let config = ChronografDashboardConfig {
             name: "Empty".to_string(),
-            organization: "default".to_string(),
             measurements: vec![],
             bucket: "telegraf".to_string(),
         };
@@ -249,7 +242,6 @@ mod tests {
     fn test_generate_chronograf_dashboard_valid_json() {
         let config = ChronografDashboardConfig {
             name: "OPC UA Monitor".to_string(),
-            organization: "default".to_string(),
             measurements: vec!["Sample_DB".to_string()],
             bucket: "telegraf".to_string(),
         };
@@ -266,7 +258,6 @@ mod tests {
     fn test_cell_positions_wrap_correctly() {
         let config = ChronografDashboardConfig {
             name: "Grid Test".to_string(),
-            organization: "default".to_string(),
             measurements: vec![
                 "m1".to_string(),
                 "m2".to_string(),
@@ -310,7 +301,6 @@ mod tests {
     fn test_flux_queries_reference_bucket_and_measurement() {
         let config = ChronografDashboardConfig {
             name: "Query Test".to_string(),
-            organization: "default".to_string(),
             measurements: vec!["opcua_diagnostics".to_string()],
             bucket: "telegraf_diagnostics".to_string(),
         };
@@ -322,5 +312,7 @@ mod tests {
         assert!(result.contains("opcua_diagnostics"));
         assert!(result.contains("from(bucket:"));
         assert!(result.contains("|> filter(fn: (r) => r._measurement =="));
+        assert!(result.contains("v.timeRangeStop"));
+        assert!(result.contains("aggregateWindow"));
     }
 }
