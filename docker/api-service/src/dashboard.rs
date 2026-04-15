@@ -7,8 +7,10 @@ use tracing::{error, info};
 
 use sie_generate_config::backend::{
     generate_dashboard as generate_dashboard_json,
+    generate_chronograf_dashboard as generate_chronograf_dashboard_json,
     sanitize_uid,
     DashboardConfig,
+    ChronografDashboardConfig,
 };
 
 #[derive(Deserialize)]
@@ -158,6 +160,147 @@ pub async fn deploy_dashboard(
                 Json(DeployDashboardResponse {
                     success: false,
                     message: format!("Failed to connect to Grafana: {}", e),
+                }),
+            ))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GenerateChronografDashboardRequest {
+    pub measurements: Vec<String>,
+    #[serde(default = "default_bucket")]
+    pub bucket: String,
+    #[serde(default = "default_organization")]
+    pub organization: String,
+}
+
+fn default_organization() -> String {
+    "default".to_string()
+}
+
+#[derive(Serialize)]
+pub struct GenerateChronografDashboardResponse {
+    pub success: bool,
+    pub message: String,
+    pub dashboard_json: Option<String>,
+    pub dashboard_name: Option<String>,
+}
+
+/// Generate a Chronograf dashboard from measurements
+pub async fn generate_chronograf_dashboard(
+    Json(request): Json<GenerateChronografDashboardRequest>,
+) -> Result<Json<GenerateChronografDashboardResponse>, (StatusCode, Json<GenerateChronografDashboardResponse>)> {
+    info!("Generating Chronograf dashboard for {} measurement(s)", request.measurements.len());
+
+    if request.measurements.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(GenerateChronografDashboardResponse {
+                success: false,
+                message: "At least one measurement is required".to_string(),
+                dashboard_json: None,
+                dashboard_name: None,
+            }),
+        ));
+    }
+
+    let primary_measurement = &request.measurements[0];
+    let dashboard_name = format!("{} Dashboard", primary_measurement);
+
+    let config = ChronografDashboardConfig {
+        name: dashboard_name.clone(),
+        organization: request.organization.clone(),
+        measurements: request.measurements.clone(),
+        bucket: request.bucket,
+    };
+
+    match generate_chronograf_dashboard_json(&config, None) {
+        Ok(dashboard_json) => {
+            info!("Successfully generated Chronograf dashboard: {}", dashboard_name);
+            Ok(Json(GenerateChronografDashboardResponse {
+                success: true,
+                message: format!("Chronograf dashboard '{}' generated successfully", dashboard_name),
+                dashboard_json: Some(dashboard_json),
+                dashboard_name: Some(dashboard_name),
+            }))
+        }
+        Err(e) => {
+            error!("Failed to generate Chronograf dashboard: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(GenerateChronografDashboardResponse {
+                    success: false,
+                    message: format!("Failed to generate Chronograf dashboard: {}", e),
+                    dashboard_json: None,
+                    dashboard_name: None,
+                }),
+            ))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct DeployChronografDashboardRequest {
+    pub dashboard_json: String,
+}
+
+#[derive(Serialize)]
+pub struct DeployChronografDashboardResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Deploy dashboard to Chronograf via API
+pub async fn deploy_chronograf_dashboard(
+    Json(request): Json<DeployChronografDashboardRequest>,
+) -> Result<Json<DeployChronografDashboardResponse>, (StatusCode, Json<DeployChronografDashboardResponse>)> {
+    info!("Deploying dashboard to Chronograf");
+
+    // Chronograf API endpoint (running in same docker network)
+    let chronograf_url = std::env::var("CHRONOGRAF_URL")
+        .unwrap_or_else(|_| "http://chronograf:8888".to_string());
+
+    // Deploy via HTTP POST to Chronograf API
+    let client = reqwest::Client::new();
+    let url = format!("{}/chronograf/v1/dashboards", chronograf_url);
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(request.dashboard_json)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+
+            if status.is_success() || status.as_u16() == 200 || status.as_u16() == 201 {
+                info!("Dashboard deployed successfully to Chronograf");
+                Ok(Json(DeployChronografDashboardResponse {
+                    success: true,
+                    message: "Dashboard deployed successfully to Chronograf".to_string(),
+                }))
+            } else {
+                error!("Chronograf returned error: {} - {}", status, body);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(DeployChronografDashboardResponse {
+                        success: false,
+                        message: format!("Chronograf API error: {}", status),
+                    }),
+                ))
+            }
+        }
+        Err(e) => {
+            error!("Failed to connect to Chronograf: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(DeployChronografDashboardResponse {
+                    success: false,
+                    message: format!("Failed to connect to Chronograf: {}", e),
                 }),
             ))
         }
