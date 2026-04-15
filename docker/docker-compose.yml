@@ -72,6 +72,7 @@ services:
     container_name: telegraf
     # user: "telegraf:${HOST_DOCKER_GID}"  # Use host's docker group ID from environment
     restart: unless-stopped
+    stop_grace_period: 30s  # Allow OPC UA connections to close gracefully
     ports:
       - "9273:9273"  # Prometheus metrics endpoint
     deploy:
