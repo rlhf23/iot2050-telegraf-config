@@ -1,7 +1,12 @@
 {
   "meta": {
     "chronografVersion": "1.10.9",
-    "sources": {}
+    "sources": {
+      "0": {
+        "name": "{{SOURCE_NAME}}",
+        "link": "{{SOURCE_URL}}"
+      }
+    }
   },
   "dashboard": {
     "name": "{{DASHBOARD_NAME}}",

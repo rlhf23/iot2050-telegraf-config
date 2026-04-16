@@ -171,10 +171,20 @@ pub struct GenerateChronografDashboardRequest {
     pub measurements: Vec<String>,
     #[serde(default = "default_bucket")]
     pub bucket: String,
+    #[serde(default = "default_source_name")]
+    pub source_name: String,
+    #[serde(default = "default_source_url")]
+    pub source_url: String,
 }
 
-fn default_organization() -> String {
-    "default".to_string()
+
+
+fn default_source_name() -> String {
+    "http://influxdb:8086".to_string()
+}
+
+fn default_source_url() -> String {
+    "/chronograf/v1/sources/0".to_string()
 }
 
 #[derive(Serialize)]
@@ -210,6 +220,8 @@ pub async fn generate_chronograf_dashboard(
         name: dashboard_name.clone(),
         measurements: request.measurements.clone(),
         bucket: request.bucket,
+        source_name: request.source_name,
+        source_url: request.source_url,
     };
 
     match generate_chronograf_dashboard_json(&config, None) {

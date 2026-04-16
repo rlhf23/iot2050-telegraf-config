@@ -504,6 +504,8 @@ impl ConfigGenerator {
         &self,
         measurements: &[String],
         bucket: Option<&str>,
+        source_name: Option<&str>,
+        source_url: Option<&str>,
         template_path: Option<&Path>,
     ) -> Result<String, TelegrafError> {
         if measurements.is_empty() {
@@ -518,6 +520,8 @@ impl ConfigGenerator {
             name: format!("{} Dashboard", primary_measurement),
             measurements: measurements.to_vec(),
             bucket: bucket.unwrap_or("telegraf").to_string(),
+            source_name: source_name.unwrap_or("http://influxdb:8086").to_string(),
+            source_url: source_url.unwrap_or("/chronograf/v1/sources/0").to_string(),
         };
 
         let dashboard_json = generate_chronograf_dashboard(&config, template_path)?;

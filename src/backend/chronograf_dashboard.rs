@@ -20,6 +20,8 @@ pub struct ChronografDashboardConfig {
     pub name: String,
     pub measurements: Vec<String>,
     pub bucket: String,
+    pub source_name: String,
+    pub source_url: String,
 }
 
 pub fn load_template(template_path: Option<&Path>) -> Result<String, TelegrafError> {
@@ -88,6 +90,18 @@ pub fn fill_template(
         TelegrafError::ConfigError(format!("Invalid Chronograf template JSON: {}", e))
     })?;
 
+    let template_str = serde_json::to_string(&template_json)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to serialize template: {}", e)))?;
+    let template_str = template_str
+        .replace("{{SOURCE_NAME}}", &config.source_name)
+        .replace("{{SOURCE_URL}}", &config.source_url);
+    template_json = serde_json::from_str(&template_str).map_err(|e| {
+        TelegrafError::ConfigError(format!(
+            "Failed to parse template after source substitution: {}",
+            e
+        ))
+    })?;
+
     let cell_template = template_json
         .get("__cell_template")
         .cloned()
@@ -107,7 +121,6 @@ pub fn fill_template(
 
     if let Some(meta_obj) = meta.as_object_mut() {
         meta_obj.insert("chronografVersion".to_string(), serde_json::json!("1.10.9"));
-        meta_obj.insert("sources".to_string(), serde_json::json!({}));
     }
 
     let dashboard = template_json.get_mut("dashboard").ok_or_else(|| {
@@ -152,6 +165,8 @@ mod tests {
         let template = load_template(None).unwrap();
         assert!(template.contains("{{DASHBOARD_NAME}}"));
         assert!(template.contains("__cell_template"));
+        assert!(template.contains("{{SOURCE_NAME}}"));
+        assert!(template.contains("{{SOURCE_URL}}"));
         assert!(!template.contains("{{ORGANIZATION}}"));
     }
 
@@ -161,6 +176,8 @@ mod tests {
             name: "Test Dashboard".to_string(),
             measurements: vec!["cpu".to_string()],
             bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -170,14 +187,26 @@ mod tests {
         assert!(!result.contains("{{MEASUREMENT}}"));
         assert!(!result.contains("{{BUCKET}}"));
         assert!(!result.contains("{{CELL_ID}}"));
+        assert!(!result.contains("{{SOURCE_NAME}}"));
+        assert!(!result.contains("{{SOURCE_URL}}"));
         assert!(result.contains("Test Dashboard"));
         assert!(result.contains("cpu"));
         assert!(result.contains("telegraf"));
+        assert!(result.contains("http://influxdb:8086"));
+        assert!(result.contains("/chronograf/v1/sources/0"));
 
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["dashboard"]["name"], "Test Dashboard");
         assert_eq!(parsed["dashboard"]["organization"], "default");
         assert_eq!(parsed["dashboard"]["cells"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            parsed["meta"]["sources"]["0"]["name"],
+            "http://influxdb:8086"
+        );
+        assert_eq!(
+            parsed["meta"]["sources"]["0"]["link"],
+            "/chronograf/v1/sources/0"
+        );
     }
 
     #[test]
@@ -191,6 +220,8 @@ mod tests {
                 "net".to_string(),
             ],
             bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -226,6 +257,8 @@ mod tests {
             name: "Empty".to_string(),
             measurements: vec![],
             bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -244,6 +277,8 @@ mod tests {
             name: "OPC UA Monitor".to_string(),
             measurements: vec!["Sample_DB".to_string()],
             bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let result = generate_chronograf_dashboard(&config, None).unwrap();
@@ -251,6 +286,14 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["dashboard"]["name"], "OPC UA Monitor");
         assert_eq!(parsed["meta"]["chronografVersion"], "1.10.9");
+        assert_eq!(
+            parsed["meta"]["sources"]["0"]["name"],
+            "http://influxdb:8086"
+        );
+        assert_eq!(
+            parsed["meta"]["sources"]["0"]["link"],
+            "/chronograf/v1/sources/0"
+        );
         assert_eq!(parsed["dashboard"]["cells"].as_array().unwrap().len(), 1);
     }
 
@@ -268,6 +311,8 @@ mod tests {
                 "m7".to_string(),
             ],
             bucket: "test".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -303,6 +348,8 @@ mod tests {
             name: "Query Test".to_string(),
             measurements: vec!["opcua_diagnostics".to_string()],
             bucket: "telegraf_diagnostics".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
