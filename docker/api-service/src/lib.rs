@@ -89,6 +89,9 @@ pub fn create_app() -> Router {
         // Dashboard endpoints
         .route("/api/dashboard/generate", post(dashboard::generate_dashboard))
         .route("/api/dashboard/deploy", post(dashboard::deploy_dashboard))
+        // Chronograf dashboard endpoints
+        .route("/api/chronograf/dashboard/generate", post(dashboard::generate_chronograf_dashboard))
+        .route("/api/chronograf/dashboard/deploy", post(dashboard::deploy_chronograf_dashboard))
         // OPC-UA endpoints
         .route("/api/opcua/poll-namespaces", post(opcua::poll_namespaces))
         .layer(cors)

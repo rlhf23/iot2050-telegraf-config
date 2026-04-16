@@ -1,0 +1,93 @@
+{
+  "meta": {
+    "chronografVersion": "1.10.9",
+    "sources": {
+      "0": {
+        "name": "{{SOURCE_NAME}}",
+        "link": "{{SOURCE_URL}}"
+      }
+    }
+  },
+  "dashboard": {
+    "name": "{{DASHBOARD_NAME}}",
+    "organization": "default",
+    "cells": [],
+    "templates": []
+  },
+  "__cell_template": {
+    "i": "{{CELL_ID}}",
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4,
+    "name": "{{MEASUREMENT}}",
+    "queries": [
+      {
+        "query": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)",
+        "queryConfig": {
+          "database": "",
+          "measurement": "",
+          "retentionPolicy": "",
+          "fields": [],
+          "tags": {},
+          "groupBy": {
+            "time": "",
+            "tags": []
+          },
+          "areTagsAccepted": false,
+          "rawText": "from(bucket: \"{{BUCKET}}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"{{MEASUREMENT}}\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)",
+          "range": null,
+          "shifts": null
+        },
+        "source": "",
+        "type": "flux"
+      }
+    ],
+    "axes": {
+      "x": {
+        "bounds": ["", ""],
+        "label": "",
+        "prefix": "",
+        "suffix": "",
+        "base": "10",
+        "scale": "linear"
+      },
+      "y": {
+        "bounds": ["", ""],
+        "label": "",
+        "prefix": "",
+        "suffix": "",
+        "base": "10",
+        "scale": "linear"
+      },
+      "y2": {
+        "bounds": ["", ""],
+        "label": "",
+        "prefix": "",
+        "suffix": "",
+        "base": "10",
+        "scale": "linear"
+      }
+    },
+    "type": "line",
+    "colors": [
+      {"id": "c424a5ed-6a86-4be7-a1fd-51a43c26a28e", "type": "scale", "hex": "#31C0F6", "name": "Nineteen Eighty Four", "value": "0"},
+      {"id": "ca3d41aa-c879-41a0-ae3b-7eef71fb0f6a", "type": "scale", "hex": "#A500A5", "name": "Nineteen Eighty Four", "value": "0"},
+      {"id": "d894eae8-c394-45ce-85e6-9525accbc2db", "type": "scale", "hex": "#FF7E27", "name": "Nineteen Eighty Four", "value": "0"}
+    ],
+    "legend": {},
+    "tableOptions": {
+      "verticalTimeAxis": true,
+      "sortBy": {"internalName": "time", "displayName": "", "visible": true},
+      "wrapping": "truncate",
+      "fixFirstColumn": true
+    },
+    "fieldOptions": [
+      {"internalName": "time", "displayName": "", "visible": true}
+    ],
+    "timeFormat": "MM/DD/YYYY HH:mm:ss",
+    "decimalPlaces": {"isEnforced": true, "digits": 2},
+    "note": "",
+    "noteVisibility": "default"
+  }
+}

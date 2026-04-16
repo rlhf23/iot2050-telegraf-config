@@ -1424,6 +1424,95 @@ pub fn deploy_grafana_dashboard(
     }
 }
 
+/// Deploy a Chronograf dashboard via the HTTP API
+///
+/// # Arguments
+/// * `dashboard_json` - The dashboard JSON to deploy
+/// * `remote_host` - Remote host in hostname:port format
+/// * `username` - SSH username for authentication
+/// * `password` - SSH password for authentication
+/// * `chronograf_port` - Chronograf port (default: 8888)
+///
+/// # Returns
+/// * `Ok(())` - Dashboard deployed successfully
+/// * `Err(TelegrafError)` - Deployment error
+pub fn deploy_chronograf_dashboard(
+    dashboard_json: &str,
+    remote_host: &str,
+    username: &str,
+    password: &str,
+    chronograf_port: Option<u16>,
+) -> Result<(), TelegrafError> {
+    debug!("Deploying Chronograf dashboard to {}", remote_host);
+
+    let port = chronograf_port.unwrap_or(8888);
+
+    let config = SshConfig {
+        connect_timeout: 10,
+        operation_timeout: 60,
+        stream_timeout: 30,
+    };
+    let session = connect_ssh_with_config(remote_host, username, password, &config)?;
+
+    // Write dashboard JSON to a temp file on the remote device
+    let temp_file = "/tmp/chronograf_dashboard.json";
+
+    // Create the temp file and write content
+    let write_cmd = format!(
+        "cat > {} << 'DASHBOARD_EOF'\n{}\nDASHBOARD_EOF",
+        temp_file,
+        dashboard_json.replace("'", "'\\''") // Escape single quotes
+    );
+
+    let mut channel = session.channel_session()?;
+    channel.exec(&write_cmd)?;
+    channel.wait_close()?;
+
+    if channel.exit_status()? != 0 {
+        let mut error_output = String::new();
+        channel.read_to_string(&mut error_output)?;
+        return Err(TelegrafError::SshOperationError(format!(
+            "Failed to write Chronograf dashboard file: {}",
+            error_output
+        )));
+    }
+
+    // Call Chronograf API to create/update dashboard
+    // Chronograf doesn't require authentication by default
+    let api_cmd = format!(
+        "curl -s -o /dev/null -w '%{{http_code}}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:{}/chronograf/v1/dashboards'",
+        temp_file, port
+    );
+
+    let mut channel = session.channel_session()?;
+    channel.exec(&api_cmd)?;
+    let mut response = String::new();
+    channel.read_to_string(&mut response)?;
+    channel.wait_close()?;
+
+    let http_code = response.trim();
+
+    // Clean up temp file
+    let _ = session.channel_session().and_then(|mut ch| {
+        ch.exec(&format!("rm -f {}", temp_file))?;
+        ch.wait_close()
+    });
+
+    // Chronograf returns 200 on success for dashboard creation
+    if http_code == "200" || http_code == "201" {
+        debug!(
+            "Chronograf dashboard deployed successfully (HTTP {})",
+            http_code
+        );
+        Ok(())
+    } else {
+        Err(TelegrafError::SshOperationError(format!(
+            "Failed to deploy Chronograf dashboard: HTTP {}",
+            http_code
+        )))
+    }
+}
+
 /// Upload a file from local machine to remote device via SFTP
 pub fn upload_file(
     session: &Session,
