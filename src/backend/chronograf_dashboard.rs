@@ -22,6 +22,17 @@ pub struct ChronografDashboardConfig {
     pub bucket: String,
     pub source_name: String,
     pub source_url: String,
+    pub query_source: String,
+}
+
+impl ChronografDashboardConfig {
+    pub fn default_query_source(source_url: &str, chronograf_url: &str) -> String {
+        format!(
+            "{}/{}",
+            chronograf_url.trim_end_matches('/'),
+            source_url.trim_start_matches('/')
+        )
+    }
 }
 
 pub fn load_template(template_path: Option<&Path>) -> Result<String, TelegrafError> {
@@ -156,6 +167,34 @@ pub fn generate_chronograf_dashboard(
     fill_template(&template, config)
 }
 
+pub fn extract_deploy_format(full_json: &str, query_source: &str) -> Result<String, TelegrafError> {
+    let parsed: serde_json::Value = serde_json::from_str(full_json).map_err(|e| {
+        TelegrafError::ConfigError(format!("Invalid JSON for deploy extraction: {}", e))
+    })?;
+
+    let mut dashboard = if parsed.get("dashboard").is_some() && parsed.get("meta").is_some() {
+        parsed["dashboard"].clone()
+    } else {
+        parsed
+    };
+
+    if let Some(cells) = dashboard.get_mut("cells").and_then(|c| c.as_array_mut()) {
+        for cell in cells {
+            if let Some(queries) = cell.get_mut("queries").and_then(|q| q.as_array_mut()) {
+                for query in queries {
+                    if let Some(obj) = query.as_object_mut() {
+                        obj.insert("source".to_string(), serde_json::json!(query_source));
+                    }
+                }
+            }
+        }
+    }
+
+    serde_json::to_string_pretty(&dashboard).map_err(|e| {
+        TelegrafError::ConfigError(format!("Failed to serialize deploy dashboard: {}", e))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +217,7 @@ mod tests {
             bucket: "telegraf".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -222,6 +262,7 @@ mod tests {
             bucket: "telegraf".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -259,6 +300,7 @@ mod tests {
             bucket: "telegraf".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -279,6 +321,7 @@ mod tests {
             bucket: "telegraf".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let result = generate_chronograf_dashboard(&config, None).unwrap();
@@ -313,6 +356,7 @@ mod tests {
             bucket: "test".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -350,6 +394,7 @@ mod tests {
             bucket: "telegraf_diagnostics".to_string(),
             source_name: "http://influxdb:8086".to_string(),
             source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
         };
 
         let template = load_template(None).unwrap();
@@ -361,5 +406,90 @@ mod tests {
         assert!(result.contains("|> filter(fn: (r) => r._measurement =="));
         assert!(result.contains("v.timeRangeStop"));
         assert!(result.contains("aggregateWindow"));
+    }
+
+    #[test]
+    fn test_extract_deploy_format_from_full() {
+        let config = ChronografDashboardConfig {
+            name: "Deploy Test".to_string(),
+            measurements: vec!["cpu".to_string()],
+            bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
+        };
+
+        let template = load_template(None).unwrap();
+        let full_json = fill_template(&template, &config).unwrap();
+        let deploy_json = extract_deploy_format(&full_json, &config.query_source).unwrap();
+
+        let parsed: serde_json::Value = serde_json::from_str(&deploy_json).unwrap();
+
+        assert!(
+            parsed.get("meta").is_none(),
+            "Deploy format should not have meta"
+        );
+        assert!(
+            parsed.get("dashboard").is_none(),
+            "Deploy format should not have dashboard wrapper"
+        );
+        assert_eq!(parsed["name"], "Deploy Test");
+        assert_eq!(parsed["organization"], "default");
+        assert!(parsed["cells"].as_array().unwrap().len() > 0);
+
+        let cell = &parsed["cells"][0];
+        let queries = cell["queries"].as_array().unwrap();
+        assert_eq!(
+            queries[0]["source"],
+            "http://chronograf:8888/chronograf/v1/sources/0"
+        );
+    }
+
+    #[test]
+    fn test_extract_deploy_format_from_flat() {
+        let flat_json = r#"{
+            "name": "Test",
+            "organization": "default",
+            "cells": [{
+                "name": "cpu",
+                "queries": [{"query": "show dbs", "source": "", "type": "flux"}],
+                "x": 0, "y": 0, "w": 4, "h": 4
+            }],
+            "templates": []
+        }"#;
+
+        let deploy_json =
+            extract_deploy_format(flat_json, "http://chronograf:8888/chronograf/v1/sources/0")
+                .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&deploy_json).unwrap();
+
+        assert_eq!(parsed["name"], "Test");
+        assert_eq!(
+            parsed["cells"][0]["queries"][0]["source"],
+            "http://chronograf:8888/chronograf/v1/sources/0"
+        );
+    }
+
+    #[test]
+    fn test_extract_deploy_format_preserves_structure() {
+        let config = ChronografDashboardConfig {
+            name: "Structure Test".to_string(),
+            measurements: vec!["mem".to_string(), "disk".to_string()],
+            bucket: "telegraf".to_string(),
+            source_name: "http://influxdb:8086".to_string(),
+            source_url: "/chronograf/v1/sources/0".to_string(),
+            query_source: "http://chronograf:8888/chronograf/v1/sources/0".to_string(),
+        };
+
+        let template = load_template(None).unwrap();
+        let full_json = fill_template(&template, &config).unwrap();
+        let deploy_json = extract_deploy_format(&full_json, &config.query_source).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&deploy_json).unwrap();
+
+        assert_eq!(parsed["cells"].as_array().unwrap().len(), 2);
+        assert_eq!(parsed["cells"][0]["name"], "mem");
+        assert_eq!(parsed["cells"][1]["name"], "disk");
+        assert!(parsed["cells"][0]["axes"].is_object());
+        assert!(parsed["cells"][0]["colors"].is_array());
     }
 }

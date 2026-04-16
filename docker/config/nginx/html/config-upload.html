@@ -1270,6 +1270,7 @@
                     showNotification(data.message, 'success');
                     
                     window.chronografDashboardJson = data.dashboard_json;
+                    window.chronografDeployJson = data.deploy_json;
                     window.chronografDashboardName = data.dashboard_name;
                     
                     document.getElementById('deploy-chronograf-btn').disabled = false;
@@ -1305,7 +1306,7 @@
             showLoading('generate-loading', true);
 
             const requestData = {
-                dashboard_json: window.chronografDashboardJson
+                dashboard_json: window.chronografDeployJson || window.chronografDashboardJson
             };
 
             try {

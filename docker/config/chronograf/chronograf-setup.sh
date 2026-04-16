@@ -75,10 +75,38 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
 
     echo "Importing: ${DASHBOARD_NAME} ($(basename "$dashboard_file"))"
 
-    DASHBOARD_JSON=$(cat "$dashboard_file")
+    # The Chronograf REST API POST /chronograf/v1/dashboards expects just
+    # the inner "dashboard" object, not the full {meta, dashboard} export format.
+    # Extract the dashboard portion and populate query source fields.
+    DASHBOARD_JSON=$(python3 -c "
+import json, sys
+with open('$dashboard_file') as f:
+    data = json.load(f)
+if 'dashboard' in data and 'meta' in data:
+    dashboard = data['dashboard']
+else:
+    dashboard = data
+source_url = '${SOURCE_URL}'
+if source_url:
+    for cell in dashboard.get('cells', []):
+        for query in cell.get('queries', []):
+            query['source'] = source_url
+print(json.dumps(dashboard))
+" 2>/dev/null || echo "")
 
-    if [ -n "$SOURCE_URL" ]; then
-        DASHBOARD_JSON=$(echo "$DASHBOARD_JSON" | sed "s|\"source\":\"\"|\"source\":\"${SOURCE_URL}\"|g")
+    # Fallback: if python3 is not available, try with jq
+    if [ -z "$DASHBOARD_JSON" ]; then
+        DASHBOARD_JSON=$(cat "$dashboard_file" | jq '.dashboard // .' 2>/dev/null || echo "")
+    fi
+
+    # Fallback: if neither python3 nor jq available, send the full file
+    # (this is the old behavior, which creates empty dashboards)
+    if [ -z "$DASHBOARD_JSON" ]; then
+        echo "  WARN: python3 and jq not available, sending full JSON (dashboard may not import correctly)"
+        DASHBOARD_JSON=$(cat "$dashboard_file")
+        if [ -n "$SOURCE_URL" ]; then
+            DASHBOARD_JSON=$(echo "$DASHBOARD_JSON" | sed "s|\"source\":\"\"|\"source\":\"${SOURCE_URL}\"|g")
+        fi
     fi
 
     RESPONSE=$(echo "$DASHBOARD_JSON" | curl -sf -X POST -d @- \

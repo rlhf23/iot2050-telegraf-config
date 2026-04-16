@@ -8,6 +8,7 @@ use tracing::{error, info};
 use sie_generate_config::backend::{
     generate_dashboard as generate_dashboard_json,
     generate_chronograf_dashboard as generate_chronograf_dashboard_json,
+    extract_deploy_format,
     sanitize_uid,
     DashboardConfig,
     ChronografDashboardConfig,
@@ -175,9 +176,9 @@ pub struct GenerateChronografDashboardRequest {
     pub source_name: String,
     #[serde(default = "default_source_url")]
     pub source_url: String,
+    #[serde(default = "default_query_source")]
+    pub query_source: String,
 }
-
-
 
 fn default_source_name() -> String {
     "http://influxdb:8086".to_string()
@@ -187,12 +188,17 @@ fn default_source_url() -> String {
     "/chronograf/v1/sources/0".to_string()
 }
 
+fn default_query_source() -> String {
+    "http://chronograf:8888/chronograf/v1/sources/0".to_string()
+}
+
 #[derive(Serialize)]
 pub struct GenerateChronografDashboardResponse {
     pub success: bool,
     pub message: String,
     pub dashboard_json: Option<String>,
     pub dashboard_name: Option<String>,
+    pub deploy_json: Option<String>,
 }
 
 /// Generate a Chronograf dashboard from measurements
@@ -209,6 +215,7 @@ pub async fn generate_chronograf_dashboard(
                 message: "At least one measurement is required".to_string(),
                 dashboard_json: None,
                 dashboard_name: None,
+                deploy_json: None,
             }),
         ));
     }
@@ -222,16 +229,19 @@ pub async fn generate_chronograf_dashboard(
         bucket: request.bucket,
         source_name: request.source_name,
         source_url: request.source_url,
+        query_source: request.query_source,
     };
 
     match generate_chronograf_dashboard_json(&config, None) {
         Ok(dashboard_json) => {
+            let deploy_json = extract_deploy_format(&dashboard_json, &config.query_source).unwrap_or_else(|_| dashboard_json.clone());
             info!("Successfully generated Chronograf dashboard: {}", dashboard_name);
             Ok(Json(GenerateChronografDashboardResponse {
                 success: true,
                 message: format!("Chronograf dashboard '{}' generated successfully", dashboard_name),
                 dashboard_json: Some(dashboard_json),
                 dashboard_name: Some(dashboard_name),
+                deploy_json: Some(deploy_json),
             }))
         }
         Err(e) => {
@@ -243,6 +253,7 @@ pub async fn generate_chronograf_dashboard(
                     message: format!("Failed to generate Chronograf dashboard: {}", e),
                     dashboard_json: None,
                     dashboard_name: None,
+                    deploy_json: None,
                 }),
             ))
         }
@@ -266,18 +277,35 @@ pub async fn deploy_chronograf_dashboard(
 ) -> Result<Json<DeployChronografDashboardResponse>, (StatusCode, Json<DeployChronografDashboardResponse>)> {
     info!("Deploying dashboard to Chronograf");
 
-    // Chronograf API endpoint (running in same docker network)
     let chronograf_url = std::env::var("CHRONOGRAF_URL")
         .unwrap_or_else(|_| "http://chronograf:8888".to_string());
 
-    // Deploy via HTTP POST to Chronograf API
+    let query_source = format!(
+        "{}/chronograf/v1/sources/0",
+        chronograf_url.trim_end_matches('/')
+    );
+
+    let deploy_json = match extract_deploy_format(&request.dashboard_json, &query_source) {
+        Ok(json) => json,
+        Err(e) => {
+            error!("Failed to extract deploy format: {}", e);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(DeployChronografDashboardResponse {
+                    success: false,
+                    message: format!("Invalid dashboard JSON: {}", e),
+                }),
+            ));
+        }
+    };
+
     let client = reqwest::Client::new();
     let url = format!("{}/chronograf/v1/dashboards", chronograf_url);
 
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
-        .body(request.dashboard_json)
+        .body(deploy_json)
         .send()
         .await;
 
