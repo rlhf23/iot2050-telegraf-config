@@ -93,6 +93,7 @@ jobs:
           INFLUXDB_ORG=test
           INFLUXDB_BUCKET=test
           INFLUXDB_TOKEN=test
+          INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
           TELEGRAF_TOKEN=test
           GRAFANA_ADMIN_USER=test
           GRAFANA_ADMIN_PASSWORD=test
@@ -124,6 +125,7 @@ jobs:
           INFLUXDB_ORG=testorg
           INFLUXDB_BUCKET=testbucket
           INFLUXDB_TOKEN=testtoken123456789abcdef
+          INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
           TELEGRAF_TOKEN=telegraf_test_token_123
           GRAFANA_ADMIN_USER=testadmin
           GRAFANA_ADMIN_PASSWORD=testgrafana123
@@ -157,7 +159,7 @@ jobs:
           
           # Check if all expected containers are running
           RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" | wc -l)
-          EXPECTED_CONTAINERS=9  # influxdb, influxdb-setup, telegraf, chronograf, chronograf-setup, grafana, prometheus, nginx, api-service (full profile)
+          EXPECTED_CONTAINERS=8  # influxdb, telegraf, chronograf, grafana, prometheus, nginx, api-service, control-service (excludes one-shot setup containers)
           
           if [ $RUNNING_CONTAINERS -ne $EXPECTED_CONTAINERS ]; then
             echo "Expected $EXPECTED_CONTAINERS containers running, but found $RUNNING_CONTAINERS"
@@ -589,6 +591,7 @@ jobs:
           INFLUXDB_ORG=testorg
           INFLUXDB_BUCKET=testbucket
           INFLUXDB_TOKEN=testtoken123456789abcdef
+          INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
           TELEGRAF_TOKEN=telegraf_test_token_123
           GRAFANA_ADMIN_USER=testadmin
           GRAFANA_ADMIN_PASSWORD=testgrafana123
