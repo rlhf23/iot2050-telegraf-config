@@ -63,6 +63,25 @@ if [ -n "$SOURCE_ID" ]; then
 fi
 
 echo ""
+echo "Fetching existing dashboards to avoid duplicates..."
+EXISTING_DASHBOARDS=$(curl -sf "${CHRONOGRAF_URL}/chronograf/v1/dashboards" 2>/dev/null || echo '{"dashboards":[]}')
+
+EXISTING_NAMES=$(echo "$EXISTING_DASHBOARDS" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    for d in data.get('dashboards', []):
+        print(d.get('name', ''))
+except: pass
+" 2>/dev/null)
+
+if [ -z "$EXISTING_NAMES" ]; then
+    EXISTING_NAMES=$(echo "$EXISTING_DASHBOARDS" | grep -o '"name":"[^"]*"' | sed 's/"name":"\([^"]*\)"/\1/')
+fi
+
+echo "Existing dashboards: $(echo "$EXISTING_NAMES" | tr '\n' ', ' | sed 's/,$//')"
+
+echo ""
 echo "Importing dashboards..."
 
 for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
@@ -71,12 +90,31 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
         continue
     fi
 
-    DASHBOARD_NAME=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$dashboard_file" | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+    # Extract dashboard name from file
+    DASHBOARD_NAME=$(python3 -c "
+import json
+with open('$dashboard_file') as f:
+    data = json.load(f)
+if 'dashboard' in data and 'meta' in data:
+    print(data['dashboard'].get('name', ''))
+else:
+    print(data.get('name', ''))
+" 2>/dev/null || echo "")
 
-    echo "Importing: ${DASHBOARD_NAME} ($(basename "$dashboard_file"))"
+    if [ -z "$DASHBOARD_NAME" ]; then
+        DASHBOARD_NAME=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$dashboard_file" | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+    fi
+
+    echo "Processing: ${DASHBOARD_NAME} ($(basename "$dashboard_file"))"
+
+    # Check if dashboard already exists by name
+    if echo "$EXISTING_NAMES" | grep -qF "$DASHBOARD_NAME"; then
+        echo "  Skipping: dashboard '${DASHBOARD_NAME}' already exists"
+        continue
+    fi
 
     # The Chronograf REST API POST /chronograf/v1/dashboards expects just
-    # the inner "dashboard" object, not the full {meta, dashboard} export format.
+    # the flat dashboard object, not the {meta, dashboard} export format.
     # Extract the dashboard portion and populate query source fields.
     DASHBOARD_JSON=$(python3 -c "
 import json, sys
@@ -91,22 +129,32 @@ if source_url:
     for cell in dashboard.get('cells', []):
         for query in cell.get('queries', []):
             query['source'] = source_url
+# Remove server-assigned fields that should not be sent on creation
+dashboard.pop('id', None)
+dashboard.pop('links', None)
+for cell in dashboard.get('cells', []):
+    cell.pop('links', None)
 print(json.dumps(dashboard))
 " 2>/dev/null || echo "")
 
     # Fallback: if python3 is not available, try with jq
     if [ -z "$DASHBOARD_JSON" ]; then
-        DASHBOARD_JSON=$(cat "$dashboard_file" | jq '.dashboard // .' 2>/dev/null || echo "")
-    fi
-
-    # Fallback: if neither python3 nor jq available, send the full file
-    # (this is the old behavior, which creates empty dashboards)
-    if [ -z "$DASHBOARD_JSON" ]; then
-        echo "  WARN: python3 and jq not available, sending full JSON (dashboard may not import correctly)"
-        DASHBOARD_JSON=$(cat "$dashboard_file")
-        if [ -n "$SOURCE_URL" ]; then
+        echo "  python3 not available, trying jq..."
+        HAS_META=$(cat "$dashboard_file" | jq 'has("meta")' 2>/dev/null || echo "false")
+        if [ "$HAS_META" = "true" ]; then
+            DASHBOARD_JSON=$(cat "$dashboard_file" | jq '.dashboard' 2>/dev/null || echo "")
+        else
+            DASHBOARD_JSON=$(cat "$dashboard_file")
+        fi
+        if [ -n "$DASHBOARD_JSON" ] && [ -n "$SOURCE_URL" ]; then
             DASHBOARD_JSON=$(echo "$DASHBOARD_JSON" | sed "s|\"source\":\"\"|\"source\":\"${SOURCE_URL}\"|g")
         fi
+    fi
+
+    # Last fallback: send the raw file (may not work for {meta,dashboard} format)
+    if [ -z "$DASHBOARD_JSON" ]; then
+        echo "  WARN: python3 and jq not available, sending raw JSON (may not import correctly)"
+        DASHBOARD_JSON=$(cat "$dashboard_file")
     fi
 
     RESPONSE=$(echo "$DASHBOARD_JSON" | curl -sf -X POST -d @- \
