@@ -1,9 +1,9 @@
 // Tests for backup.rs
 
 use super::backup::{
-    extract_backup_name_from_archive, generate_backup_name, parse_datasource_name,
-    parse_grafana_credentials, parse_influxdb_bucket_list, parse_influxdb_credentials,
-    transform_grafana_dashboard_for_import,
+    extract_backup_name_from_archive, extract_top_dir_from_tar_listing, generate_backup_name,
+    parse_datasource_name, parse_grafana_credentials, parse_influxdb_bucket_list,
+    parse_influxdb_credentials, transform_grafana_dashboard_for_import,
 };
 
 // ============================================================================
@@ -432,4 +432,155 @@ fn parse_datasource_name_complex_json() {
     let line = r#"{"id":42,"name":"Production InfluxDB","type":"influxdb","url":"http://localhost:8086","access":"proxy","isDefault":true}"#;
     let result = parse_datasource_name(line);
     assert_eq!(result, Some("Production InfluxDB".to_string()));
+}
+
+// ============================================================================
+// Tar listing parsing tests (top-level directory discovery)
+// ============================================================================
+
+#[test]
+fn extract_top_dir_from_typical_tar_listing() {
+    let listing = "monitoring_backup_20260421_130407/\nmonitoring_backup_20260421_130407/influxdb/\nmonitoring_backup_20260421_130407/grafana/\n";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some("monitoring_backup_20260421_130407".to_string()));
+}
+
+#[test]
+fn extract_top_dir_without_trailing_slash() {
+    let listing = "monitoring_backup_20240101_120000\nmonitoring_backup_20240101_120000/influxdb\n";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some("monitoring_backup_20240101_120000".to_string()));
+}
+
+#[test]
+fn extract_top_dir_renamed_archive() {
+    let listing = "monitoring_backup_20260421_130407/\nmonitoring_backup_20260421_130407/influxdb/\n";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some("monitoring_backup_20260421_130407".to_string()));
+}
+
+#[test]
+fn extract_top_dir_empty() {
+    let result = extract_top_dir_from_tar_listing("");
+    assert_eq!(result, None);
+}
+
+#[test]
+fn extract_top_dir_just_slash() {
+    let result = extract_top_dir_from_tar_listing("/");
+    assert_eq!(result, None);
+}
+
+#[test]
+fn extract_top_dir_single_dir() {
+    let listing = "my_backup/";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some("my_backup".to_string()));
+}
+
+#[test]
+fn extract_top_dir_with_leading_dot_slash() {
+    let listing = "./monitoring_backup_20260421_130407/\n./monitoring_backup_20260421_130407/influxdb/\n";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some(".".to_string()));
+}
+
+#[test]
+fn extract_top_dir_deep_nested_first_line() {
+    let listing = "a/b/c/d\n";
+    let result = extract_top_dir_from_tar_listing(listing);
+    assert_eq!(result, Some("a".to_string()));
+}
+
+// ============================================================================
+// Integration: create real tar.gz and verify tar listing parsing
+// ============================================================================
+
+#[test]
+fn real_tar_renamed_archive_discovers_correct_dir() {
+    use std::fs;
+    use std::process::Command;
+
+    let tmp = std::env::temp_dir().join("backup_test_renamed_archive");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    let backup_dir = tmp.join("monitoring_backup_20260421_130407");
+    fs::create_dir_all(backup_dir.join("influxdb")).unwrap();
+    fs::create_dir_all(backup_dir.join("grafana/dashboards")).unwrap();
+    fs::write(backup_dir.join("influxdb/meta"), "test").unwrap();
+    fs::write(backup_dir.join("grafana/dashboards/test.json"), "{}").unwrap();
+
+    let original_archive = tmp.join("monitoring_backup_20260421_130407.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&original_archive)
+        .arg("-C")
+        .arg(&tmp)
+        .arg("monitoring_backup_20260421_130407")
+        .current_dir(&tmp)
+        .status()
+        .unwrap();
+    assert!(status.success(), "tar creation failed");
+
+    let renamed_archive = tmp.join("2653_monitoring_backup_20260421_130407.tar.gz");
+    fs::copy(&original_archive, &renamed_archive).unwrap();
+
+    let output = Command::new("tar")
+        .arg("-tzf")
+        .arg(&renamed_archive)
+        .output()
+        .unwrap();
+    let listing = String::from_utf8_lossy(&output.stdout);
+    let result = extract_top_dir_from_tar_listing(&listing);
+
+    assert_eq!(
+        result,
+        Some("monitoring_backup_20260421_130407".to_string()),
+        "Should discover 'monitoring_backup_20260421_130407' from renamed archive, not '2653_monitoring_backup_20260421_130407'"
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn real_tar_original_archive_discovers_correct_dir() {
+    use std::fs;
+    use std::process::Command;
+
+    let tmp = std::env::temp_dir().join("backup_test_original_archive");
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+
+    let backup_dir = tmp.join("monitoring_backup_20240101_120000");
+    fs::create_dir_all(backup_dir.join("influxdb")).unwrap();
+    fs::write(backup_dir.join("influxdb/meta"), "test").unwrap();
+
+    let archive = tmp.join("monitoring_backup_20240101_120000.tar.gz");
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&tmp)
+        .arg("monitoring_backup_20240101_120000")
+        .current_dir(&tmp)
+        .status()
+        .unwrap();
+    assert!(status.success(), "tar creation failed");
+
+    let output = Command::new("tar")
+        .arg("-tzf")
+        .arg(&archive)
+        .output()
+        .unwrap();
+    let listing = String::from_utf8_lossy(&output.stdout);
+    let result = extract_top_dir_from_tar_listing(&listing);
+
+    assert_eq!(
+        result,
+        Some("monitoring_backup_20240101_120000".to_string()),
+        "Should discover correct dir from original (non-renamed) archive"
+    );
+
+    let _ = fs::remove_dir_all(&tmp);
 }
