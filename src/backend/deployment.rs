@@ -488,15 +488,15 @@ impl IoTDeployer {
         // Detect device architecture
         let targetarch = self.detect_architecture()?;
 
-        // Run setup script with optional --minimal flag
+        // Run setup script with optional --minimal flag, passing detected architecture
         let setup_cmd = if self.minimal {
             println!("📦 Using minimal profile (TICK stack only)");
-            "cd ~/monitoring && ./scripts/setup.sh --minimal"
+            format!("cd ~/monitoring && TARGETARCH={} ./scripts/setup.sh --minimal", targetarch)
         } else {
-            "cd ~/monitoring && ./scripts/setup.sh"
+            format!("cd ~/monitoring && TARGETARCH={} ./scripts/setup.sh", targetarch)
         };
 
-        self.run_command(&session, setup_cmd, "Running setup")?;
+        self.run_command(&session, &setup_cmd, "Running setup")?;
 
         println!(
             "✅ Setup completed successfully! (Architecture: {})",
