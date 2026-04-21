@@ -439,12 +439,24 @@ pub fn restore(
 
     // 2. Extract on device
     println!("📦 Extracting archive on device...");
-    let backup_name = archive_path.trim_end_matches(".tar.gz");
-    let backup_name = Path::new(backup_name)
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+
+    // Discover the top-level directory inside the archive (doesn't depend on archive filename)
+    let mut channel = session.channel_session()?;
+    channel.exec(&format!(
+        "tar -tzf {} | head -1 | cut -d'/' -f1",
+        remote_path
+    ))?;
+    let mut top_dir = String::new();
+    channel.read_to_string(&mut top_dir)?;
+    channel.wait_close()?;
+    let backup_name = top_dir.trim().to_string();
+
+    if backup_name.is_empty() {
+        return Err(TelegrafError::ConfigError(
+            "Could not determine backup directory from archive".to_string(),
+        ));
+    }
+
     let extract_dir = format!("/tmp/{}", backup_name);
 
     run_command(
@@ -456,10 +468,7 @@ pub fn restore(
 
     run_command(
         &session,
-        &format!(
-            "mkdir -p {} && tar -xzf {} -C /tmp",
-            extract_dir, remote_path
-        ),
+        &format!("tar -xzf {} -C /tmp", remote_path),
         "Extracting archive",
         config.password.as_ref(),
     )?;
