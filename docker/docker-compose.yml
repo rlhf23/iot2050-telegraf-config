@@ -2,8 +2,9 @@
 # This makes all variables available in the docker-compose file
 #
 # TARGETARCH: Set this environment variable to select the api-service binary architecture
-#   - arm64 (default): For ARM64 devices (IoT2050, Raspberry Pi, etc.)
+#   - arm64: For ARM64 devices (IoT2050, Raspberry Pi, etc.)
 #   - amd64: For x86_64 devices (servers, VMs, etc.)
+# This is set automatically in .env by the setup command.
 # Example: TARGETARCH=amd64 docker-compose up -d
 #
 # COMPOSE_PROFILE: Controls which services are started
@@ -229,7 +230,7 @@ services:
       context: .
       dockerfile: api-service/Dockerfile.prebuilt
       args:
-        - TARGETARCH=${TARGETARCH:-arm64}
+        - TARGETARCH=${TARGETARCH:?TARGETARCH must be set in .env}
     container_name: api-service
     ports:
       - "8000:8000"
@@ -256,7 +257,7 @@ services:
       context: .
       dockerfile: control-service/Dockerfile.prebuilt
       args:
-        - TARGETARCH=${TARGETARCH:-arm64}
+        - TARGETARCH=${TARGETARCH:?TARGETARCH must be set in .env}
     container_name: control-service
     ports:
       - "8002:8002"
