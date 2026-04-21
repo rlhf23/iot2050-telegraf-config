@@ -99,6 +99,7 @@ jobs:
           GRAFANA_ADMIN_PASSWORD=test
           HOST_DOCKER_GID=999
           COMPOSE_PROFILE=full
+          TARGETARCH=amd64
           EOF
 
       - name: Validate docker-compose.yml syntax
@@ -131,6 +132,7 @@ jobs:
           GRAFANA_ADMIN_PASSWORD=testgrafana123
           HOST_DOCKER_GID=999
           COMPOSE_PROFILE=full
+          TARGETARCH=amd64
           EOF
 
       - name: Create required directories and configs
@@ -597,6 +599,7 @@ jobs:
           GRAFANA_ADMIN_PASSWORD=testgrafana123
           HOST_DOCKER_GID=999
           COMPOSE_PROFILE=full
+          TARGETARCH=amd64
           EOF
           
           # Test that we can at least build for ARM64 (don't run due to emulation overhead)
