@@ -7,6 +7,7 @@ use std::path::Path;
 pub mod backup;
 #[cfg(test)]
 mod backup_test;
+pub mod chronograf_dashboard;
 #[cfg(test)]
 mod config_generator_test;
 pub mod dashboard;
@@ -24,6 +25,9 @@ pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
 
+pub use chronograf_dashboard::{
+    extract_deploy_format, generate_chronograf_dashboard, ChronografDashboardConfig,
+};
 pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
 pub use format::XmlParseResult;
@@ -488,6 +492,99 @@ impl ConfigGenerator {
             &self.config.iot_host,
             &self.config.iot_username,
             &self.config.iot_password,
+        )
+    }
+
+    /// Generate a Chronograf dashboard from template
+    ///
+    /// # Arguments
+    /// * `measurements` - List of measurement names (from XML parsing or browser selection)
+    /// * `bucket` - InfluxDB bucket name (default: "telegraf")
+    /// * `source_name` - Source name for meta.sources (default: "http://influxdb:8086")
+    /// * `source_url` - Source link for meta.sources (default: "/chronograf/v1/sources/0")
+    /// * `query_source` - Full Chronograf source URL for cell queries (default: "http://chronograf:8888/chronograf/v1/sources/0")
+    /// * `template_path` - Optional custom template path (uses default if None)
+    ///
+    /// # Returns
+    /// * `Ok(String)` - Generated dashboard JSON (full format for UI import)
+    /// * `Err(TelegrafError)` - Generation error
+    pub fn generate_chronograf_dashboard(
+        &self,
+        measurements: &[String],
+        bucket: Option<&str>,
+        source_name: Option<&str>,
+        source_url: Option<&str>,
+        query_source: Option<&str>,
+        template_path: Option<&Path>,
+    ) -> Result<String, TelegrafError> {
+        if measurements.is_empty() {
+            return Err(TelegrafError::ConfigError(
+                "At least one measurement is required for Chronograf dashboard generation"
+                    .to_string(),
+            ));
+        }
+
+        let src_url = source_url.unwrap_or("/chronograf/v1/sources/0");
+        let primary_measurement = &measurements[0];
+        let config = ChronografDashboardConfig {
+            name: format!("{} Dashboard", primary_measurement),
+            measurements: measurements.to_vec(),
+            bucket: bucket.unwrap_or("telegraf").to_string(),
+            source_name: source_name.unwrap_or("http://influxdb:8086").to_string(),
+            source_url: src_url.to_string(),
+            query_source: query_source
+                .unwrap_or(&ChronografDashboardConfig::default_query_source(
+                    src_url,
+                    "http://chronograf:8888",
+                ))
+                .to_string(),
+        };
+
+        let dashboard_json = generate_chronograf_dashboard(&config, template_path)?;
+
+        let deploy_json = extract_deploy_format(&dashboard_json, &config.query_source)?;
+
+        // Write full format (for UI import)
+        let dashboard_path = self.config.folder.join("chronograf_dashboard.json");
+        let mut dashboard_file = File::create(&dashboard_path).map_err(TelegrafError::IoError)?;
+        dashboard_file
+            .write_all(dashboard_json.as_bytes())
+            .map_err(TelegrafError::IoError)?;
+
+        // Write deploy format (for API deployment)
+        let deploy_path = self.config.folder.join("chronograf_dashboard_deploy.json");
+        let mut deploy_file = File::create(&deploy_path).map_err(TelegrafError::IoError)?;
+        deploy_file
+            .write_all(deploy_json.as_bytes())
+            .map_err(TelegrafError::IoError)?;
+
+        Ok(dashboard_json)
+    }
+
+    /// Deploy Chronograf dashboard via API
+    ///
+    /// # Arguments
+    /// * `dashboard_json` - Dashboard JSON string (full or deploy format; will be converted automatically)
+    /// * `chronograf_port` - Optional Chronograf port (default: 8888)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Dashboard deployed successfully
+    /// * `Err(TelegrafError)` - Deployment error
+    pub fn deploy_chronograf_dashboard(
+        &self,
+        dashboard_json: &str,
+        chronograf_port: Option<u16>,
+    ) -> Result<(), TelegrafError> {
+        let port = chronograf_port.unwrap_or(8888);
+        let query_source = format!("http://localhost:{}/chronograf/v1/sources/0", port);
+        let deploy_json = extract_deploy_format(dashboard_json, &query_source)?;
+
+        ssh_utils::deploy_chronograf_dashboard(
+            &deploy_json,
+            &self.config.iot_host,
+            &self.config.iot_username,
+            &self.config.iot_password,
+            chronograf_port,
         )
     }
 
