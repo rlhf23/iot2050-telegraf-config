@@ -27,6 +27,7 @@ mod ssh_utils_test;
 pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
 pub use format::XmlParseResult;
+pub use ships::{derive_hostname, random_ship_name, ShipName};
 pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]

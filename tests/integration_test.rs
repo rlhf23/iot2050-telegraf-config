@@ -79,6 +79,8 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: tests_dir.clone(),
         use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
     };
 
     // Create a ConfigGenerator
@@ -232,6 +234,8 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
         use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
     };
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
@@ -384,6 +388,8 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
         use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
     };
 
     // Create a new OpcUaPoller instance

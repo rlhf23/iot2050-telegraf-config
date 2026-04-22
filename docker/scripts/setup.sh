@@ -54,13 +54,25 @@ else
         PROFILE="full"
     fi
 
+    # Ship name: use provided values, or generate from CLI, or fall back to defaults
+    SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME:-}
+    SHIP_HOSTNAME=${SHIP_HOSTNAME:-}
+
+    # Derive bucket names from ship hostname, or fall back to defaults
+    INFLUXDB_BUCKET=${SHIP_HOSTNAME:-telegraf}
+    INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_BUCKET}-diag
+
     cat > .env << EOL
+# Ship identity (Culture ship naming)
+SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME}
+SHIP_HOSTNAME=${SHIP_HOSTNAME}
+
 # InfluxDB
 INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 INFLUXDB_ORG=iot2050
-INFLUXDB_BUCKET=telegraf
-INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
+INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
 INFLUXDB_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 
 # Grafana
@@ -95,8 +107,10 @@ EOF
 fi
 
 PROFILE_DISPLAY="${PROFILE:-full}"
+SHIP_DISPLAY="${SHIP_DISPLAY_NAME:-unnamed}"
 echo "✅ Setup complete!"
 echo "   Architecture: $TARGETARCH"
 echo "   Profile: $PROFILE_DISPLAY"
+echo "   Ship: $SHIP_DISPLAY (${SHIP_HOSTNAME:-telegraf})"
 echo ""
 echo "   Start the stack: ./scripts/start.sh"

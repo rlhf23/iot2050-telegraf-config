@@ -225,6 +225,8 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         include_opcua_diagnostics: opcua_diagnostics,
         selected_opcua_nodes: Vec::new(),
         use_source_timestamp: false,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Discover XML files
@@ -463,6 +465,8 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
+                ship_display_name: None,
+                ship_hostname: None,
             };
 
             let _generator = ConfigGenerator::new(config)?;
@@ -506,6 +510,8 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
+                ship_display_name: None,
+                ship_hostname: None,
             };
 
             let generator = ConfigGenerator::new(config)?;
@@ -534,7 +540,6 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     let host = matches.get_one::<String>("host").unwrap().clone();
     let user = matches.get_one::<String>("iot_username").unwrap().clone();
 
-    // Parse host:port - use default port 22 if not specified
     let (hostname, port) = if host.contains(':') {
         let parts: Vec<&str> = host.splitn(2, ':').collect();
         let port = parts[1].parse().unwrap_or(22);
@@ -553,10 +558,19 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
         config = config.with_key_file(key_file.clone());
     }
 
-    // Add git branch if specified (for provision command)
-    // Note: git_branch only exists on provision subcommand, so we use try_get_one
     if let Ok(Some(git_branch)) = matches.try_get_one::<String>("git_branch") {
         config = config.with_git_branch(git_branch.clone());
+    }
+
+    if let Some(ship_name_input) = matches.try_get_one::<String>("ship_name").ok().flatten() {
+        let (display_name, hostname_slug) = if ship_name_input == "random" {
+            let ship = sie_generate_config::backend::ships::random_ship_name();
+            (ship.display_name, ship.hostname)
+        } else {
+            let hostname_slug = sie_generate_config::backend::ships::derive_hostname(ship_name_input);
+            (ship_name_input.clone(), hostname_slug)
+        };
+        config = config.with_ship_name(display_name, hostname_slug);
     }
 
     config
@@ -600,6 +614,7 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                         .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
+                        .arg(clap::Arg::new("ship_name").long("ship-name").help("Culture ship name for device identity (use 'random' for a random name)"))
                 )
                 .subcommand(
                     Command::new("update")
@@ -619,6 +634,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Use minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)"))
+                        .arg(clap::Arg::new("ship_name").long("ship-name").help("Culture ship name for device identity (use 'random' for a random name)"))
                 )
                 .subcommand(
                     Command::new("start")

@@ -37,6 +37,8 @@ pub struct DeploymentConfig {
     pub key_file: Option<String>,
     pub port: u16,
     pub git_branch: Option<String>,
+    pub ship_display_name: Option<String>,
+    pub ship_hostname: Option<String>,
 }
 
 impl DeploymentConfig {
@@ -48,6 +50,8 @@ impl DeploymentConfig {
             key_file: None,
             port: 22,
             git_branch: None,
+            ship_display_name: None,
+            ship_hostname: None,
         }
     }
 
@@ -69,6 +73,13 @@ impl DeploymentConfig {
     /// Set the git branch to use for deployment
     pub fn with_git_branch(mut self, branch: String) -> Self {
         self.git_branch = Some(branch);
+        self
+    }
+
+    /// Set the ship name (both display name and derived hostname)
+    pub fn with_ship_name(mut self, display_name: String, hostname: String) -> Self {
+        self.ship_display_name = Some(display_name);
+        self.ship_hostname = Some(hostname);
         self
     }
 }

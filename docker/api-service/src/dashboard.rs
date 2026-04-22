@@ -21,7 +21,7 @@ pub struct GenerateDashboardRequest {
 }
 
 fn default_bucket() -> String {
-    "telegraf".to_string()
+    std::env::var("INFLUXDB_BUCKET").unwrap_or_else(|_| "telegraf".to_string())
 }
 
 fn default_datasource() -> String {

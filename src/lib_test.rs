@@ -23,6 +23,8 @@ mod tests {
             include_test_inputs: false,
             include_opcua_diagnostics: false,
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // Valid IP addresses
@@ -93,6 +95,8 @@ mod tests {
             include_test_inputs: false,
             include_opcua_diagnostics: false,
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // Test valid hostname formats
@@ -161,6 +165,8 @@ mod tests {
             include_test_inputs: false,
             include_opcua_diagnostics: false,
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
             selected_opcua_nodes: Vec::new(),
         };
 
@@ -182,6 +188,8 @@ mod tests {
             include_test_inputs: false,
             include_opcua_diagnostics: false,
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         let invalid_result = ConfigGenerator::new(invalid_config);
@@ -579,6 +587,8 @@ mod tests {
             include_test_inputs: false,
             include_opcua_diagnostics: false,
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
             selected_opcua_nodes: Vec::new(),
         }
     }
