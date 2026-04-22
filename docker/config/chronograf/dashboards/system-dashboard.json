@@ -20,7 +20,7 @@
 				"name": "Disk",
 				"queries": [
 					{
-						"query": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\")",
+						"query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\")",
 						"queryConfig": {
 							"database": "",
 							"measurement": "",
@@ -32,7 +32,7 @@
 								"tags": []
 							},
 							"areTagsAccepted": false,
-							"rawText": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\")",
+							"rawText": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"disk\" and r._field == \"used_percent\")",
 							"range": null,
 							"shifts": null
 						},
@@ -137,7 +137,7 @@
 				"name": "Network",
 				"queries": [
 					{
-						"query": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"net\" and r._field == \"bytes_recv\"\n\t\t\t\t\t\t\t\t\t\t\t\tor r._field == \"bytes_sent\")",
+						"query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"net\" and r._field == \"bytes_recv\"\n\t\t\t\t\t\t\t\t\t\t\t\tor r._field == \"bytes_sent\")",
 						"queryConfig": {
 							"database": "",
 							"measurement": "",
@@ -149,7 +149,7 @@
 								"tags": []
 							},
 							"areTagsAccepted": false,
-							"rawText": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"net\" and r._field == \"bytes_recv\"\n\t\t\t\t\t\t\t\t\t\t\t\tor r._field == \"bytes_sent\")",
+							"rawText": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"net\" and r._field == \"bytes_recv\"\n\t\t\t\t\t\t\t\t\t\t\t\tor r._field == \"bytes_sent\")",
 							"range": null,
 							"shifts": null
 						},
@@ -254,7 +254,7 @@
 				"name": "Memory",
 				"queries": [
 					{
-						"query": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\")",
+						"query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\")",
 						"queryConfig": {
 							"database": "",
 							"measurement": "",
@@ -266,7 +266,7 @@
 								"tags": []
 							},
 							"areTagsAccepted": false,
-							"rawText": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\")",
+							"rawText": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"mem\" and r._field == \"used_percent\")",
 							"range": null,
 							"shifts": null
 						},
@@ -371,7 +371,7 @@
 				"name": "CPU",
 				"queries": [
 					{
-						"query": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\"\n                                                or r._field == \"usage_system\"\n                                                or r._field == \"usage_user\")",
+						"query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\"\n                                                or r._field == \"usage_system\"\n                                                or r._field == \"usage_user\")",
 						"queryConfig": {
 							"database": "",
 							"measurement": "",
@@ -383,7 +383,7 @@
 								"tags": []
 							},
 							"areTagsAccepted": false,
-							"rawText": "from(bucket: \"telegraf_diagnostics\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\"\n                                                or r._field == \"usage_system\"\n                                                or r._field == \"usage_user\")",
+							"rawText": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart)\n  |> filter(fn: (r) => r._measurement == \"cpu\" and r._field == \"usage_idle\"\n                                                or r._field == \"usage_system\"\n                                                or r._field == \"usage_user\")",
 							"range": null,
 							"shifts": null
 						},

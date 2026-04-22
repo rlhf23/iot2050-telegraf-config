@@ -20,8 +20,10 @@ pub struct DashboardConfig {
     pub title: String,
     /// InfluxDB measurement name(s) to query
     pub measurements: Vec<String>,
-    /// InfluxDB bucket name
+    /// InfluxDB bucket name for process data
     pub bucket: String,
+    /// InfluxDB bucket name for diagnostics data
+    pub diagnostics_bucket: String,
     /// Grafana datasource UID (or name for name-based reference)
     pub datasource_uid: String,
 }
@@ -56,6 +58,7 @@ fn generate_panel(
     panel_template: &serde_json::Value,
     measurement: &str,
     bucket: &str,
+    diagnostics_bucket: &str,
     datasource_uid: &str,
     y_position: i64,
 ) -> Result<serde_json::Value, TelegrafError> {
@@ -68,6 +71,7 @@ fn generate_panel(
     let panel_str = panel_str
         .replace("{{MEASUREMENT}}", measurement)
         .replace("{{BUCKET}}", bucket)
+        .replace("{{DIAGNOSTICS_BUCKET}}", diagnostics_bucket)
         .replace("{{DATASOURCE_UID}}", datasource_uid);
 
     panel = serde_json::from_str(&panel_str)
@@ -108,19 +112,6 @@ pub fn fill_template(template: &str, config: &DashboardConfig) -> Result<String,
         obj.remove("__panel_template");
     }
 
-    // Get dashboard object
-    let dashboard = template_json.get_mut("dashboard").ok_or_else(|| {
-        TelegrafError::ConfigError("Template missing dashboard field".to_string())
-    })?;
-
-    let dashboard_obj = dashboard.as_object_mut().ok_or_else(|| {
-        TelegrafError::ConfigError("Dashboard field is not an object".to_string())
-    })?;
-
-    // Replace dashboard-level placeholders
-    dashboard_obj.insert("uid".to_string(), serde_json::json!(config.uid));
-    dashboard_obj.insert("title".to_string(), serde_json::json!(config.title));
-
     // Generate panels for each measurement
     let mut panels = Vec::new();
     let mut y_position = 0;
@@ -130,19 +121,36 @@ pub fn fill_template(template: &str, config: &DashboardConfig) -> Result<String,
             &panel_template,
             measurement,
             &config.bucket,
+            &config.diagnostics_bucket,
             &config.datasource_uid,
             y_position,
         )?;
         panels.push(panel);
-        y_position += 8; // Each panel is 8 units high
+        y_position += 8;
     }
 
-    // Insert panels array
+    // Insert panels array into dashboard
+    let dashboard = template_json.get_mut("dashboard").ok_or_else(|| {
+        TelegrafError::ConfigError("Template missing dashboard field".to_string())
+    })?;
+    let dashboard_obj = dashboard.as_object_mut().ok_or_else(|| {
+        TelegrafError::ConfigError("Dashboard field is not an object".to_string())
+    })?;
+
+    dashboard_obj.insert("uid".to_string(), serde_json::json!(config.uid));
+    dashboard_obj.insert("title".to_string(), serde_json::json!(config.title));
     dashboard_obj.insert("panels".to_string(), serde_json::json!(panels));
 
-    // Serialize back to JSON
-    serde_json::to_string_pretty(&template_json)
-        .map_err(|e| TelegrafError::ConfigError(format!("Failed to serialize dashboard: {}", e)))
+    // Serialize, then do string-level substitution for bucket placeholders
+    // (These are in templating defaults and other places not accessible via JSON patching)
+    let result = serde_json::to_string_pretty(&template_json)
+        .map_err(|e| TelegrafError::ConfigError(format!("Failed to serialize dashboard: {}", e)))?;
+
+    let result = result
+        .replace("{{DIAGNOSTICS_BUCKET}}", &config.diagnostics_bucket)
+        .replace("{{BUCKET}}", &config.bucket);
+
+    Ok(result)
 }
 
 /// Generate a dashboard JSON from configuration
@@ -199,6 +207,7 @@ mod tests {
             title: "Test Dashboard".to_string(),
             measurements: vec!["TestMeasurement".to_string()],
             bucket: "my_bucket".to_string(),
+            diagnostics_bucket: "my_bucket-diag".to_string(),
             datasource_uid: "MyDataSource".to_string(),
         };
 
@@ -236,6 +245,7 @@ mod tests {
                 "ThirdMetric".to_string(),
             ],
             bucket: "telegraf".to_string(),
+            diagnostics_bucket: "telegraf-diag".to_string(),
             datasource_uid: "InfluxDB".to_string(),
         };
 
@@ -267,6 +277,7 @@ mod tests {
             title: "Test".to_string(),
             measurements: vec![],
             bucket: "telegraf".to_string(),
+            diagnostics_bucket: "telegraf-diag".to_string(),
             datasource_uid: "InfluxDB".to_string(),
         };
 
@@ -287,6 +298,7 @@ mod tests {
             title: "OPC UA Sample Data".to_string(),
             measurements: vec!["Sample_DB".to_string()],
             bucket: "telegraf".to_string(),
+            diagnostics_bucket: "telegraf-diag".to_string(),
             datasource_uid: "InfluxDB".to_string(),
         };
 
@@ -306,6 +318,7 @@ mod tests {
             title: "Test".to_string(),
             measurements: vec!["mymeasurement".to_string()],
             bucket: "telegraf".to_string(),
+            diagnostics_bucket: "telegraf-diag".to_string(),
             datasource_uid: "InfluxDB".to_string(),
         };
 

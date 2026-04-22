@@ -73,8 +73,9 @@ pub async fn generate_dashboard(
         uid: dashboard_uid.clone(),
         title: format!("{} Monitor", primary_measurement),
         measurements: request.measurements.clone(),
-        bucket: request.bucket,
-        datasource_uid: request.datasource_uid,
+        bucket: request.bucket.clone(),
+        diagnostics_bucket: format!("{}-diag", request.bucket),
+        datasource_uid: request.datasource_uid.clone(),
     };
 
     match generate_dashboard_json(&config, None) {

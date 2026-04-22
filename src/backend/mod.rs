@@ -458,6 +458,7 @@ impl ConfigGenerator {
             title: format!("{} Monitor", primary_measurement),
             measurements: measurements.to_vec(),
             bucket: bucket.unwrap_or("telegraf").to_string(),
+            diagnostics_bucket: format!("{}-diag", bucket.unwrap_or("telegraf")),
             datasource_uid: datasource_uid.unwrap_or("InfluxDB").to_string(),
         };
 

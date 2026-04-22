@@ -75,7 +75,7 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
 
     echo "Importing: ${DASHBOARD_NAME} ($(basename "$dashboard_file"))"
 
-    DASHBOARD_JSON=$(cat "$dashboard_file")
+    DASHBOARD_JSON=$(cat "$dashboard_file" | envsubst '${INFLUXDB_DIAGNOSTICS_BUCKET} ${INFLUXDB_BUCKET}')
 
     if [ -n "$SOURCE_URL" ]; then
         DASHBOARD_JSON=$(echo "$DASHBOARD_JSON" | sed "s|\"source\":\"\"|\"source\":\"${SOURCE_URL}\"|g")
