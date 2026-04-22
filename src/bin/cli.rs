@@ -20,6 +20,17 @@ fn wrap_up(exit_code: i32) -> ! {
     std::process::exit(exit_code)
 }
 
+fn confirm_ship_name(display_name: &str, hostname: &str) -> bool {
+    println!();
+    println!("Ship name: {} ({})", display_name, hostname);
+    println!("This will be used as the device identity, hostname, and InfluxDB bucket name.");
+    print!("Press Enter to confirm, or 'n' to abort: ");
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap_or(0);
+    !input.trim().eq_ignore_ascii_case("n") && !input.trim().eq_ignore_ascii_case("no")
+}
+
 fn exit_with_error(error: impl std::fmt::Display) -> ! {
     eprintln!("Error: {}", error);
     wrap_up(1)
@@ -29,6 +40,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
     match matches.subcommand() {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
+            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+                if !confirm_ship_name(display_name, hostname) {
+                    println!("Aborted.");
+                    wrap_up(1);
+                }
+            }
             let deployer = IoTDeployer::new(config);
             let local_transfer = sub_matches.get_flag("local_transfer");
 
@@ -59,6 +76,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         }
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
+            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+                if !confirm_ship_name(display_name, hostname) {
+                    println!("Aborted.");
+                    wrap_up(1);
+                }
+            }
             let minimal = sub_matches.get_flag("minimal");
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
