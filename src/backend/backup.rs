@@ -30,6 +30,18 @@ pub fn extract_backup_name_from_archive(archive_path: &str) -> Option<String> {
     filename.strip_suffix(".tar.gz").map(|s| s.to_string())
 }
 
+/// Extract the top-level directory name from `tar -tzf` output
+/// e.g., "monitoring_backup_20240101_120000/influxdb/\n..." -> "monitoring_backup_20240101_120000"
+pub fn extract_top_dir_from_tar_listing(tar_output: &str) -> Option<String> {
+    let first_line = tar_output.lines().next()?.trim_end_matches('/');
+    let top_dir = first_line.split('/').next()?;
+    if top_dir.is_empty() {
+        None
+    } else {
+        Some(top_dir.to_string())
+    }
+}
+
 /// Parse Grafana credentials from environment output
 /// e.g., "GRAFANA_ADMIN_USER=admin\nGRAFANA_ADMIN_PASSWORD=secret" -> ("admin", "secret")
 pub fn parse_grafana_credentials(creds_output: &str) -> (String, String) {
@@ -439,12 +451,19 @@ pub fn restore(
 
     // 2. Extract on device
     println!("📦 Extracting archive on device...");
-    let backup_name = archive_path.trim_end_matches(".tar.gz");
-    let backup_name = Path::new(backup_name)
-        .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+
+    // Discover the top-level directory inside the archive (doesn't depend on archive filename)
+    let mut channel = session.channel_session()?;
+    channel.exec(&format!("tar -tzf {}", remote_path))?;
+    let mut tar_listing = String::new();
+    channel.read_to_string(&mut tar_listing)?;
+    channel.wait_close()?;
+
+    let backup_name = extract_top_dir_from_tar_listing(&tar_listing)
+        .ok_or_else(|| TelegrafError::ConfigError(
+            "Could not determine backup directory from archive".to_string(),
+        ))?;
+
     let extract_dir = format!("/tmp/{}", backup_name);
 
     run_command(
@@ -456,10 +475,7 @@ pub fn restore(
 
     run_command(
         &session,
-        &format!(
-            "mkdir -p {} && tar -xzf {} -C /tmp",
-            extract_dir, remote_path
-        ),
+        &format!("tar -xzf {} -C /tmp", remote_path),
         "Extracting archive",
         config.password.as_ref(),
     )?;

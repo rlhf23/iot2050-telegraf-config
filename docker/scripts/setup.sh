@@ -28,13 +28,17 @@ else
     echo "⚠️  WARNING: config/telegraf/telegraf.conf.example not found!"
 fi
 
-# --- Detect architecture ---
-case "$(uname -m)" in
-    x86_64|amd64) TARGETARCH="amd64" ;;
-    aarch64|arm64) TARGETARCH="arm64" ;;
-    *) TARGETARCH="arm64"; echo "⚠️  Unknown architecture, defaulting to arm64" ;;
-esac
-echo "🔧 Detected architecture: $TARGETARCH"
+# --- Architecture ---
+if [ -z "$TARGETARCH" ]; then
+    case "$(uname -m)" in
+        x86_64|amd64) TARGETARCH="amd64" ;;
+        aarch64|arm64) TARGETARCH="arm64" ;;
+        *) TARGETARCH="arm64"; echo "⚠️  Unknown architecture, defaulting to arm64" ;;
+    esac
+    echo "🔧 Detected architecture: $TARGETARCH"
+else
+    echo "🔧 Using architecture: $TARGETARCH"
+fi
 
 # --- .env file ---
 if [ -f .env ]; then
