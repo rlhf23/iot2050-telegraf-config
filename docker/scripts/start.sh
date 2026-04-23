@@ -21,9 +21,9 @@ set +a
 DASHBOARD_DIR=config/grafana/provisioning/dashboards
 TEMPLATE_DIR="$DASHBOARD_DIR/templates"
 if [ -d "$TEMPLATE_DIR" ]; then
-  for tmpl in "$TEMPLATE_DIR"/*.json; do
+  for tmpl in "$TEMPLATE_DIR"/*.json.tmpl; do
     [ -f "$tmpl" ] || continue
-    outfile="$DASHBOARD_DIR/$(basename "$tmpl")"
+    outfile="$DASHBOARD_DIR/$(basename "${tmpl%.tmpl}")"
     if command -v envsubst >/dev/null 2>&1; then
       envsubst < "$tmpl" > "$outfile"
     else
