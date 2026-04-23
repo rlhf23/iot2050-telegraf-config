@@ -64,7 +64,7 @@ else
 
     cat > .env << EOL
 # Ship identity (Culture ship naming)
-SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME}
+SHIP_DISPLAY_NAME="${SHIP_DISPLAY_NAME}"
 SHIP_HOSTNAME=${SHIP_HOSTNAME}
 
 # InfluxDB
