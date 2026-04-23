@@ -499,12 +499,21 @@ impl IoTDeployer {
         // Detect device architecture
         let targetarch = self.detect_architecture()?;
 
-        // Run setup script with optional --minimal flag, passing detected architecture
+        // Build environment variables for setup script
+        let mut env_vars = format!("TARGETARCH={}", targetarch);
+
+        if let Some(ref name) = self.config.ship_display_name {
+            env_vars.push_str(&format!(" SHIP_DISPLAY_NAME='{}'", name));
+        }
+        if let Some(ref host) = self.config.ship_hostname {
+            env_vars.push_str(&format!(" SHIP_HOSTNAME='{}'", host));
+        }
+
         let setup_cmd = if self.minimal {
             println!("📦 Using minimal profile (TICK stack only)");
-            format!("cd ~/monitoring && TARGETARCH={} ./scripts/setup.sh --minimal", targetarch)
+            format!("cd ~/monitoring && {} ./scripts/setup.sh --minimal", env_vars)
         } else {
-            format!("cd ~/monitoring && TARGETARCH={} ./scripts/setup.sh", targetarch)
+            format!("cd ~/monitoring && {} ./scripts/setup.sh", env_vars)
         };
 
         self.run_command(&session, &setup_cmd, "Running setup")?;
