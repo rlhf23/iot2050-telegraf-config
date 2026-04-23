@@ -42,7 +42,17 @@ fi
 
 # --- .env file ---
 if [ -f .env ]; then
-    echo "ℹ️  .env file already exists - skipping"
+    echo "ℹ️  .env file already exists"
+    # Update device identity if provided
+    if [ -n "$DEVICE_DISPLAY_NAME" ] || [ -n "$DEVICE_HOSTNAME" ]; then
+        if [ -n "$DEVICE_DISPLAY_NAME" ]; then
+            sed -i "s|^DEVICE_DISPLAY_NAME=.*|DEVICE_DISPLAY_NAME=\"${DEVICE_DISPLAY_NAME}\"|" .env
+        fi
+        if [ -n "$DEVICE_HOSTNAME" ]; then
+            sed -i "s|^DEVICE_HOSTNAME=.*|DEVICE_HOSTNAME=${DEVICE_HOSTNAME}|" .env
+        fi
+        echo "✅ Updated device identity in .env"
+    fi
 else
     echo "ℹ️  Creating .env file with generated credentials..."
 
