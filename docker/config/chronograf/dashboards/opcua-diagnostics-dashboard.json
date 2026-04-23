@@ -342,7 +342,7 @@
         "digits": 2
       },
       "note": "0=Shutdown, 1=Failed, 2=NoConfiguration, 3=Suspended, 4=Test, 5=CommunicationFault, 6=Running",
-      "noteVisibility": "showWhenDataAvailable"
+      "noteVisibility": "default"
     },
     {
       "i": "b1b2c3d4-0001-4000-8000-000000000004",

@@ -1,8 +1,6 @@
 #!/bin/sh
 set -e
 
-command -v jq >/dev/null 2>&1 || { echo "ERROR: jq is required but not found"; exit 1; }
-
 CHRONOGRAF_URL="http://chronograf:8888"
 INFLUXDB_URL="http://influxdb:8086"
 DASHBOARDS_DIR="/dashboards"
@@ -68,7 +66,7 @@ echo ""
 echo "Fetching existing dashboards to avoid duplicates..."
 EXISTING_DASHBOARDS=$(curl -sf "${CHRONOGRAF_URL}/chronograf/v1/dashboards" 2>/dev/null || echo '{"dashboards":[]}')
 
-EXISTING_NAMES=$(echo "$EXISTING_DASHBOARDS" | jq -r '.dashboards[]?.name // empty' 2>/dev/null || echo "$EXISTING_DASHBOARDS" | grep -o '"name":"[^"]*"' | sed 's/"name":"\([^"]*\)"/\1/')
+EXISTING_NAMES=$(echo "$EXISTING_DASHBOARDS" | grep -o '"name":"[^"]*"' | sed 's/"name":"\([^"]*\)"/\1/')
 
 echo "Existing dashboards: $(echo "$EXISTING_NAMES" | tr '\n' ', ' | sed 's/,$//')"
 
@@ -82,11 +80,7 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
     fi
 
     # Extract dashboard name from file
-    DASHBOARD_NAME=$(jq -r 'if has("dashboard") then .dashboard.name else .name end // empty' "$dashboard_file" 2>/dev/null || echo "")
-
-    if [ -z "$DASHBOARD_NAME" ]; then
-        DASHBOARD_NAME=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$dashboard_file" | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-    fi
+    DASHBOARD_NAME=$(grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' "$dashboard_file" | head -1 | sed 's/"name"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
 
     echo "Processing: ${DASHBOARD_NAME} ($(basename "$dashboard_file"))"
 
@@ -103,14 +97,8 @@ for dashboard_file in "${DASHBOARDS_DIR}"/*.json; do
         continue
     fi
 
-    # The Chronograf REST API POST /chronograf/v1/dashboards expects just
-    # the flat dashboard object, not the {meta, dashboard} export format.
-    # Extract the dashboard portion and populate query source fields.
-    DASHBOARD_JSON=$(jq --arg source "$SOURCE_URL" '
-      if has("dashboard") and has("meta") then .dashboard else . end
-      | del(.id, .links, (.cells[].links))
-      | .cells[].queries[].source = $source
-    ' "$PROCESSED_FILE" 2>/dev/null || echo "")
+    # Inject source URL into query definitions
+    DASHBOARD_JSON=$(sed "s|\"source\":\"[^\"]*\"|\"source\":\"${SOURCE_URL}\"|g" "$PROCESSED_FILE")
 
     RESPONSE=$(echo "$DASHBOARD_JSON" | curl -sf -X POST -d @- \
         -H "Content-Type: application/json" \
