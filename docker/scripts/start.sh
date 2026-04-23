@@ -30,6 +30,11 @@ fi
 echo "🔧 Starting containers..."
 docker-compose -f docker-compose.yml $PROFILE_ARGS up -d
 
+# Rebuild prebuilt containers to pick up binary updates
+echo "🔧 Rebuilding prebuilt containers..."
+docker-compose build api-service control-service 2>/dev/null && \
+  docker-compose up -d --force-recreate --no-deps api-service control-service
+
 # Wait for all running containers to be healthy or exited (timeout after 60 seconds)
 timeout=10
 interval=2
