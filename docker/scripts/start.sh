@@ -17,6 +17,23 @@ set -a
 source .env
 set +a
 
+# Render dashboard templates with env vars
+DASHBOARD_DIR=config/grafana/provisioning/dashboards
+TEMPLATE_DIR="$DASHBOARD_DIR/templates"
+if [ -d "$TEMPLATE_DIR" ]; then
+  for tmpl in "$TEMPLATE_DIR"/*.json; do
+    [ -f "$tmpl" ] || continue
+    outfile="$DASHBOARD_DIR/$(basename "$tmpl")"
+    if command -v envsubst >/dev/null 2>&1; then
+      envsubst < "$tmpl" > "$outfile"
+    else
+      sed -e "s/\\\${INFLUXDB_DIAGNOSTICS_BUCKET}/$INFLUXDB_DIAGNOSTICS_BUCKET/g" \
+           -e "s/\\\${INFLUXDB_BUCKET}/$INFLUXDB_BUCKET/g" \
+           < "$tmpl" > "$outfile"
+    fi
+  done
+fi
+
 # Build compose profile flags from COMPOSE_PROFILE
 PROFILE_ARGS=""
 if [ -n "$COMPOSE_PROFILE" ]; then

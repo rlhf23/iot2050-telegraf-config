@@ -8,52 +8,6 @@
   "id": 1,
   "links": [],
   "liveNow": false,
-  "templating": {
-    "list": [
-      {
-        "current": {
-          "selected": false,
-          "text": "telegraf",
-          "value": "telegraf"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Data Bucket",
-        "name": "bucket",
-        "options": [
-          {
-            "selected": true,
-            "text": "telegraf",
-            "value": "telegraf"
-          }
-        ],
-        "query": "telegraf",
-        "refresh": 0,
-        "type": "custom"
-      },
-      {
-        "current": {
-          "selected": false,
-          "text": "telegraf-diagnostics",
-          "value": "telegraf-diagnostics"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Diagnostics Bucket",
-        "name": "diagBucket",
-        "options": [
-          {
-            "selected": true,
-            "text": "telegraf-diagnostics",
-            "value": "telegraf-diagnostics"
-          }
-        ],
-        "query": "telegraf-diagnostics",
-        "refresh": 0,
-        "type": "custom"
-      }
-    ]
-  },
   "panels": [
     {
       "datasource": "InfluxDB",
@@ -132,7 +86,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cpu\")\n  |> filter(fn: (r) => r[\"_field\"] == \"usage_user\" or r[\"_field\"] == \"usage_system\" or r[\"_field\"] == \"usage_idle\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"cpu\")\n  |> filter(fn: (r) => r[\"_field\"] == \"usage_user\" or r[\"_field\"] == \"usage_system\" or r[\"_field\"] == \"usage_idle\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -220,7 +174,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"mem\")\n  |> filter(fn: (r) => r[\"_field\"] == \"used_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"mem\")\n  |> filter(fn: (r) => r[\"_field\"] == \"used_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -313,7 +267,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"net\")\n  |> filter(fn: (r) => r[\"_field\"] == \"bytes_recv\" or r[\"_field\"] == \"bytes_sent\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"net\")\n  |> filter(fn: (r) => r[\"_field\"] == \"bytes_recv\" or r[\"_field\"] == \"bytes_sent\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -393,7 +347,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"diskio\")\n  |> filter(fn: (r) => r[\"_field\"] == \"read_bytes\" or r[\"_field\"] == \"write_bytes\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"diskio\")\n  |> filter(fn: (r) => r[\"_field\"] == \"read_bytes\" or r[\"_field\"] == \"write_bytes\")\n  |> derivative(unit: 1s, nonNegative: true)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -473,7 +427,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"system\")\n  |> filter(fn: (r) => r[\"_field\"] == \"load1\" or r[\"_field\"] == \"load5\" or r[\"_field\"] == \"load15\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"system\")\n  |> filter(fn: (r) => r[\"_field\"] == \"load1\" or r[\"_field\"] == \"load5\" or r[\"_field\"] == \"load15\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
@@ -553,7 +507,7 @@
       "targets": [
         {
           "datasource": "InfluxDB",
-          "query": "from(bucket: v.diagBucket)\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"disk\")\n  |> filter(fn: (r) => r[\"_field\"] == \"used_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "query": "from(bucket: \"${INFLUXDB_DIAGNOSTICS_BUCKET}\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_measurement\"] == \"disk\")\n  |> filter(fn: (r) => r[\"_field\"] == \"used_percent\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
           "refId": "A"
         }
       ],
