@@ -5,9 +5,9 @@
 # Get hostname
 HOSTNAME=$(hostname)
 
-# Get ship identity from environment
-SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME:-}
-SHIP_HOSTNAME=${SHIP_HOSTNAME:-}
+# Get device identity from environment
+DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
+DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
 
 # Get IP address from physical interface (eth0, end0, enp*, etc.) - Alpine-compatible
 # Prioritize physical interfaces over Docker bridges (docker0, br-*)
@@ -55,8 +55,7 @@ SYSTEM_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 cat <<EOF
 {
   "hostname": "$HOSTNAME",
-  "ship_display_name": "$SHIP_DISPLAY_NAME",
-  "ship_hostname": "$SHIP_HOSTNAME",
+  "device_name": "$DEVICE_DISPLAY_NAME",
   "ip_address": "$IP_ADDRESS",
   "uptime": "$UPTIME",
   "architecture": "$ARCH",

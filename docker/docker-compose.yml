@@ -71,7 +71,7 @@ services:
     env_file:
       - .env
     container_name: telegraf
-    hostname: ${SHIP_HOSTNAME:-telegraf}
+    hostname: ${DEVICE_HOSTNAME:-telegraf}
     # user: "telegraf:${HOST_DOCKER_GID}"  # Use host's docker group ID from environment
     restart: unless-stopped
     stop_grace_period: 30s  # Allow OPC UA connections to close gracefully
@@ -86,8 +86,8 @@ services:
     environment:
       - HOST_PROC=/host/proc
       - HOST_SYS=/host/sys
-      - SHIP_HOSTNAME=${SHIP_HOSTNAME:-telegraf}
-      - SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME:-}
+      - DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-telegraf}
+      - DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
@@ -281,7 +281,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: nginx-dashboard
-    hostname: ${SHIP_HOSTNAME:-nginx}
+    hostname: ${DEVICE_HOSTNAME:-nginx}
     ports:
       - "80:80"
     volumes:
@@ -295,8 +295,8 @@ services:
       - /sys:/host/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
-      - SHIP_HOSTNAME=${SHIP_HOSTNAME:-}
-      - SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME:-}
+      - DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
+      - DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
     depends_on:
       - chronograf
       - influxdb

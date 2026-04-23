@@ -567,7 +567,7 @@
         <div class="info-panel">
             <h2>📊 System Information</h2>
             <ul id="system-info-list">
-                <li><strong>Ship Name:</strong> <span id="sys-ship-name">Loading...</span></li>
+                <li><strong>Device Name:</strong> <span id="sys-device-name">Loading...</span></li>
                 <li><strong>Hostname:</strong> <span id="sys-hostname">Loading...</span></li>
                 <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
                 <li><strong>System Time:</strong> <span id="sys-time">Loading...</span></li>
@@ -711,17 +711,13 @@
                     
                     document.getElementById('sys-hostname').textContent = data.hostname || 'N/A';
                     
-                    // Set ship identity
-                    const shipDisplayName = data.ship_display_name || '';
-                    const shipHostname = data.ship_hostname || '';
-                    if (shipDisplayName) {
-                        document.getElementById('sys-ship-name').textContent = shipDisplayName + ' (' + shipHostname + ')';
-                        document.title = shipDisplayName + ' — Monitoring Dashboard';
-                    } else if (shipHostname) {
-                        document.getElementById('sys-ship-name').textContent = shipHostname;
-                        document.title = shipHostname + ' — Monitoring Dashboard';
+                    // Set device identity
+                    const deviceName = data.device_name || '';
+                    if (deviceName) {
+                        document.getElementById('sys-device-name').textContent = deviceName;
+                        document.title = deviceName + ' — Monitoring Dashboard';
                     } else {
-                        document.getElementById('sys-ship-name').textContent = 'N/A';
+                        document.getElementById('sys-device-name').textContent = 'N/A';
                         document.title = 'Monitoring Dashboard';
                     }
                     document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';

@@ -503,10 +503,10 @@ impl IoTDeployer {
         let mut env_vars = format!("TARGETARCH={}", targetarch);
 
         if let Some(ref name) = self.config.ship_display_name {
-            env_vars.push_str(&format!(" SHIP_DISPLAY_NAME='{}'", name));
+            env_vars.push_str(&format!(" DEVICE_DISPLAY_NAME='{}'", name));
         }
         if let Some(ref host) = self.config.ship_hostname {
-            env_vars.push_str(&format!(" SHIP_HOSTNAME='{}'", host));
+            env_vars.push_str(&format!(" DEVICE_HOSTNAME='{}'", host));
         }
 
         let setup_cmd = if self.minimal {

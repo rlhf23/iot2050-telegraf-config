@@ -30,7 +30,7 @@ expression: "&config_result.config_content"
   ## Log only error level messages.
   # quiet = false
 
-  hostname = "${SHIP_HOSTNAME}"
+  hostname = "${DEVICE_HOSTNAME}"
   omit_hostname = false
 
 # Configuration for sending metrics to InfluxDB 2.0

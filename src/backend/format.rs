@@ -261,7 +261,7 @@ pub fn format_config_header(
   ## Log only error level messages.
   # quiet = false
 
-  hostname = "${{SHIP_HOSTNAME}}"
+  hostname = "${{DEVICE_HOSTNAME}}"
   omit_hostname = false
 
 {}

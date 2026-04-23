@@ -54,18 +54,18 @@ else
         PROFILE="full"
     fi
 
-    # Ship name: use provided values, or generate from CLI, or fall back to defaults
-    SHIP_DISPLAY_NAME=${SHIP_DISPLAY_NAME:-}
-    SHIP_HOSTNAME=${SHIP_HOSTNAME:-}
+    # Device name: use provided values, or generate from CLI, or fall back to defaults
+    DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
+    DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
 
-    # Derive bucket names from ship hostname, or fall back to defaults
-    INFLUXDB_BUCKET=${SHIP_HOSTNAME:-telegraf}
+    # Derive bucket names from device hostname, or fall back to defaults
+    INFLUXDB_BUCKET=${DEVICE_HOSTNAME:-telegraf}
     INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_BUCKET}-diag
 
     cat > .env << EOL
-# Ship identity (Culture ship naming)
-SHIP_DISPLAY_NAME="${SHIP_DISPLAY_NAME}"
-SHIP_HOSTNAME=${SHIP_HOSTNAME}
+# Device identity
+DEVICE_DISPLAY_NAME="${DEVICE_DISPLAY_NAME}"
+DEVICE_HOSTNAME=${DEVICE_HOSTNAME}
 
 # InfluxDB
 INFLUXDB_USER=admin
@@ -107,10 +107,10 @@ EOF
 fi
 
 PROFILE_DISPLAY="${PROFILE:-full}"
-SHIP_DISPLAY="${SHIP_DISPLAY_NAME:-unnamed}"
+DEVICE_DISPLAY="${DEVICE_DISPLAY_NAME:-unnamed}"
 echo "✅ Setup complete!"
 echo "   Architecture: $TARGETARCH"
 echo "   Profile: $PROFILE_DISPLAY"
-echo "   Ship: $SHIP_DISPLAY (${SHIP_HOSTNAME:-telegraf})"
+echo "   Device: $DEVICE_DISPLAY"
 echo ""
 echo "   Start the stack: ./scripts/start.sh"
