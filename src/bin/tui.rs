@@ -19,7 +19,7 @@ use sie_generate_config::{
 use std::collections::HashMap;
 use std::{
     fs,
-    io::{self, Write},
+    io,
     path::PathBuf,
 };
 
@@ -37,7 +37,6 @@ enum Tab {
 enum InputMode {
     Normal,
     Editing,
-    FolderBrowsing,
 }
 
 #[derive(Default, Clone)]
@@ -55,7 +54,6 @@ enum EditField {
     IoTHost,
     IoTUsername,
     IoTPassword,
-    OutputFormat,
     FileNamespace(usize),
     FileIp(usize),
     FileInterval(usize),
@@ -1956,35 +1954,6 @@ fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'stat
             Span::styled(format!(" ({})", hotkey), Style::default().fg(Color::Gray)),
         ])
     }
-}
-
-fn render_config_field(
-    f: &mut Frame,
-    label: &str,
-    value: &str,
-    is_editing: bool,
-    input_buffer: &str,
-    area: Rect,
-) {
-    let display_value = if is_editing {
-        format!("{}_", input_buffer)
-    } else {
-        value.to_string()
-    };
-
-    let style = if is_editing {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-    };
-
-    let paragraph = Paragraph::new(display_value)
-        .block(Block::default().borders(Borders::ALL).title(label))
-        .style(style);
-
-    f.render_widget(paragraph, area);
 }
 
 fn render_config_field_with_selection(
