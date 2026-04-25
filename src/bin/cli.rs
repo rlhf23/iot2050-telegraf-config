@@ -585,16 +585,22 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
         config = config.with_git_branch(git_branch.clone());
     }
 
-    if let Some(device_name_input) = matches.try_get_one::<String>("device_name").ok().flatten() {
-        let (display_name, hostname_slug) = if device_name_input == "random" {
+    let device_name_input = matches.try_get_one::<String>("device_name").ok().flatten();
+    let (display_name, hostname_slug) = match device_name_input {
+        Some(name) if name == "random" => {
             let ship = sie_generate_config::backend::ships::random_ship_name();
             (ship.display_name, ship.hostname)
-        } else {
-            let hostname_slug = sie_generate_config::backend::ships::derive_hostname(device_name_input);
-            (device_name_input.clone(), hostname_slug)
-        };
-        config = config.with_ship_name(display_name, hostname_slug);
-    }
+        }
+        Some(name) => {
+            let hostname_slug = sie_generate_config::backend::ships::derive_hostname(name);
+            (name.clone(), hostname_slug)
+        }
+        None => {
+            let ship = sie_generate_config::backend::ships::random_ship_name();
+            (ship.display_name, ship.hostname)
+        }
+    };
+    config = config.with_ship_name(display_name, hostname_slug);
 
     config
 }
@@ -637,7 +643,7 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                         .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
-                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (use 'random' for a random Culture ship name)"))
+                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
                 )
                 .subcommand(
                     Command::new("update")
@@ -657,7 +663,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Use minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)"))
-                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (use 'random' for a random Culture ship name)"))
+                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
                 )
                 .subcommand(
                     Command::new("start")
