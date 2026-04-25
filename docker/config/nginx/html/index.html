@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IoT2050 Monitoring Dashboard</title>
+    <title>Monitoring Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -567,6 +567,7 @@
         <div class="info-panel">
             <h2>📊 System Information</h2>
             <ul id="system-info-list">
+                <li><strong>Device Name:</strong> <span id="sys-device-name">Loading...</span></li>
                 <li><strong>Hostname:</strong> <span id="sys-hostname">Loading...</span></li>
                 <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
                 <li><strong>System Time:</strong> <span id="sys-time">Loading...</span></li>
@@ -709,6 +710,16 @@
                     const data = await response.json();
                     
                     document.getElementById('sys-hostname').textContent = data.hostname || 'N/A';
+                    
+                    // Set device identity
+                    const deviceName = data.device_name || '';
+                    if (deviceName) {
+                        document.getElementById('sys-device-name').textContent = deviceName;
+                        document.title = deviceName + ' — Monitoring Dashboard';
+                    } else {
+                        document.getElementById('sys-device-name').textContent = 'N/A';
+                        document.title = 'Monitoring Dashboard';
+                    }
                     document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';
                     document.getElementById('sys-time').textContent = data.system_time || 'N/A';
                     document.getElementById('sys-arch').textContent = data.architecture || 'N/A';

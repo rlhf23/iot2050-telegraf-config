@@ -542,6 +542,8 @@ pub async fn generate_config(
         include_opcua_diagnostics: request.include_opcua_diagnostics,
         selected_opcua_nodes: vec![],
         use_source_timestamp: request.use_source_timestamp,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Create ConfigGenerator

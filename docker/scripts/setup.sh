@@ -42,7 +42,17 @@ fi
 
 # --- .env file ---
 if [ -f .env ]; then
-    echo "ℹ️  .env file already exists - skipping"
+    echo "ℹ️  .env file already exists"
+    # Update device identity if provided
+    if [ -n "$DEVICE_DISPLAY_NAME" ] || [ -n "$DEVICE_HOSTNAME" ]; then
+        if [ -n "$DEVICE_DISPLAY_NAME" ]; then
+            sed -i "s|^DEVICE_DISPLAY_NAME=.*|DEVICE_DISPLAY_NAME=\"${DEVICE_DISPLAY_NAME}\"|" .env
+        fi
+        if [ -n "$DEVICE_HOSTNAME" ]; then
+            sed -i "s|^DEVICE_HOSTNAME=.*|DEVICE_HOSTNAME=${DEVICE_HOSTNAME}|" .env
+        fi
+        echo "✅ Updated device identity in .env"
+    fi
 else
     echo "ℹ️  Creating .env file with generated credentials..."
 
@@ -54,13 +64,25 @@ else
         PROFILE="full"
     fi
 
+    # Device name: use provided values, or generate from CLI, or fall back to defaults
+    DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
+    DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
+
+    # Derive bucket names from device hostname, or fall back to defaults
+    INFLUXDB_BUCKET=${DEVICE_HOSTNAME:-telegraf}
+    INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_BUCKET}-diag
+
     cat > .env << EOL
+# Device identity
+DEVICE_DISPLAY_NAME="${DEVICE_DISPLAY_NAME}"
+DEVICE_HOSTNAME=${DEVICE_HOSTNAME}
+
 # InfluxDB
 INFLUXDB_USER=admin
 INFLUXDB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
 INFLUXDB_ORG=iot2050
-INFLUXDB_BUCKET=telegraf
-INFLUXDB_DIAGNOSTICS_BUCKET=telegraf_diagnostics
+INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+INFLUXDB_DIAGNOSTICS_BUCKET=${INFLUXDB_DIAGNOSTICS_BUCKET}
 INFLUXDB_TOKEN=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9' | head -c 32)
 
 # Grafana
@@ -95,8 +117,10 @@ EOF
 fi
 
 PROFILE_DISPLAY="${PROFILE:-full}"
+DEVICE_DISPLAY="${DEVICE_DISPLAY_NAME:-unnamed}"
 echo "✅ Setup complete!"
 echo "   Architecture: $TARGETARCH"
 echo "   Profile: $PROFILE_DISPLAY"
+echo "   Device: $DEVICE_DISPLAY"
 echo ""
 echo "   Start the stack: ./scripts/start.sh"

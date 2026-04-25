@@ -20,6 +20,7 @@ mod format_test;
 pub mod opcua_poller;
 #[cfg(test)]
 mod opcua_poller_test;
+pub mod ships;
 pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
@@ -30,6 +31,7 @@ pub use chronograf_dashboard::{
 pub use dashboard::{generate_dashboard, sanitize_uid, DashboardConfig};
 pub use format::OutputFormat;
 pub use format::XmlParseResult;
+pub use ships::{derive_hostname, random_ship_name, ShipName};
 pub use ssh_utils::{check_service_status, ServiceType};
 
 #[derive(Default)]
@@ -460,6 +462,7 @@ impl ConfigGenerator {
             title: format!("{} Monitor", primary_measurement),
             measurements: measurements.to_vec(),
             bucket: bucket.unwrap_or("telegraf").to_string(),
+            diagnostics_bucket: format!("{}-diag", bucket.unwrap_or("telegraf")),
             datasource_uid: datasource_uid.unwrap_or("InfluxDB").to_string(),
         };
 

@@ -17,6 +17,23 @@ set -a
 source .env
 set +a
 
+# Render dashboard templates with env vars
+DASHBOARD_DIR=config/grafana/provisioning/dashboards
+TEMPLATE_DIR="$DASHBOARD_DIR/templates"
+if [ -d "$TEMPLATE_DIR" ]; then
+  for tmpl in "$TEMPLATE_DIR"/*.json.tmpl; do
+    [ -f "$tmpl" ] || continue
+    outfile="$DASHBOARD_DIR/$(basename "${tmpl%.tmpl}")"
+    if command -v envsubst >/dev/null 2>&1; then
+      envsubst < "$tmpl" > "$outfile"
+    else
+      sed -e "s/\\\${INFLUXDB_DIAGNOSTICS_BUCKET}/$INFLUXDB_DIAGNOSTICS_BUCKET/g" \
+           -e "s/\\\${INFLUXDB_BUCKET}/$INFLUXDB_BUCKET/g" \
+           < "$tmpl" > "$outfile"
+    fi
+  done
+fi
+
 # Build compose profile flags from COMPOSE_PROFILE
 PROFILE_ARGS=""
 if [ -n "$COMPOSE_PROFILE" ]; then
@@ -29,6 +46,11 @@ fi
 # Start the stack
 echo "🔧 Starting containers..."
 docker-compose -f docker-compose.yml $PROFILE_ARGS up -d
+
+# Rebuild prebuilt containers to pick up binary updates
+echo "🔧 Rebuilding prebuilt containers..."
+docker-compose build api-service control-service 2>/dev/null && \
+  docker-compose up -d --force-recreate --no-deps api-service control-service
 
 # Wait for all running containers to be healthy or exited (timeout after 60 seconds)
 timeout=10

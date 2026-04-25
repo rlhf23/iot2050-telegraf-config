@@ -5,6 +5,10 @@
 # Get hostname
 HOSTNAME=$(hostname)
 
+# Get device identity from environment
+DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
+DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
+
 # Get IP address from physical interface (eth0, end0, enp*, etc.) - Alpine-compatible
 # Prioritize physical interfaces over Docker bridges (docker0, br-*)
 IP_ADDRESS=$(ip -4 addr show 2>/dev/null | grep -E '^[0-9]+: (eth|end|enp)' -A 2 | grep 'inet ' | head -n 1 | awk '{print $2}' | cut -d'/' -f1)
@@ -51,6 +55,7 @@ SYSTEM_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 cat <<EOF
 {
   "hostname": "$HOSTNAME",
+  "device_name": "$DEVICE_DISPLAY_NAME",
   "ip_address": "$IP_ADDRESS",
   "uptime": "$UPTIME",
   "architecture": "$ARCH",

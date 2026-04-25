@@ -20,6 +20,17 @@ fn wrap_up(exit_code: i32) -> ! {
     std::process::exit(exit_code)
 }
 
+fn confirm_device_name(display_name: &str, hostname: &str) -> bool {
+    println!();
+    println!("Device name: {}", display_name);
+    println!("This will be used as the device identity, hostname, and InfluxDB bucket name.");
+    print!("Press Enter to confirm, or 'n' to abort: ");
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap_or(0);
+    !input.trim().eq_ignore_ascii_case("n") && !input.trim().eq_ignore_ascii_case("no")
+}
+
 fn exit_with_error(error: impl std::fmt::Display) -> ! {
     eprintln!("Error: {}", error);
     wrap_up(1)
@@ -29,6 +40,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
     match matches.subcommand() {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
+            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+                if !confirm_device_name(display_name, hostname) {
+                    println!("Aborted.");
+                    wrap_up(1);
+                }
+            }
             let deployer = IoTDeployer::new(config);
             let local_transfer = sub_matches.get_flag("local_transfer");
 
@@ -59,6 +76,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         }
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
+            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+                if !confirm_device_name(display_name, hostname) {
+                    println!("Aborted.");
+                    wrap_up(1);
+                }
+            }
             let minimal = sub_matches.get_flag("minimal");
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
@@ -225,6 +248,8 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         include_opcua_diagnostics: opcua_diagnostics,
         selected_opcua_nodes: Vec::new(),
         use_source_timestamp: false,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Discover XML files
@@ -463,6 +488,8 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
+                ship_display_name: None,
+                ship_hostname: None,
             };
 
             let _generator = ConfigGenerator::new(config)?;
@@ -506,6 +533,8 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 include_opcua_diagnostics: false,
                 selected_opcua_nodes: Vec::new(),
                 use_source_timestamp: false,
+                ship_display_name: None,
+                ship_hostname: None,
             };
 
             let generator = ConfigGenerator::new(config)?;
@@ -534,7 +563,6 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
     let host = matches.get_one::<String>("host").unwrap().clone();
     let user = matches.get_one::<String>("iot_username").unwrap().clone();
 
-    // Parse host:port - use default port 22 if not specified
     let (hostname, port) = if host.contains(':') {
         let parts: Vec<&str> = host.splitn(2, ':').collect();
         let port = parts[1].parse().unwrap_or(22);
@@ -553,11 +581,26 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
         config = config.with_key_file(key_file.clone());
     }
 
-    // Add git branch if specified (for provision command)
-    // Note: git_branch only exists on provision subcommand, so we use try_get_one
     if let Ok(Some(git_branch)) = matches.try_get_one::<String>("git_branch") {
         config = config.with_git_branch(git_branch.clone());
     }
+
+    let device_name_input = matches.try_get_one::<String>("device_name").ok().flatten();
+    let (display_name, hostname_slug) = match device_name_input {
+        Some(name) if name == "random" => {
+            let ship = sie_generate_config::backend::ships::random_ship_name();
+            (ship.display_name, ship.hostname)
+        }
+        Some(name) => {
+            let hostname_slug = sie_generate_config::backend::ships::derive_hostname(name);
+            (name.clone(), hostname_slug)
+        }
+        None => {
+            let ship = sie_generate_config::backend::ships::random_ship_name();
+            (ship.display_name, ship.hostname)
+        }
+    };
+    config = config.with_ship_name(display_name, hostname_slug);
 
     config
 }
@@ -600,6 +643,7 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                         .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
+                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
                 )
                 .subcommand(
                     Command::new("update")
@@ -619,6 +663,7 @@ fn main() {
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Use minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)"))
+                        .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
                 )
                 .subcommand(
                     Command::new("start")

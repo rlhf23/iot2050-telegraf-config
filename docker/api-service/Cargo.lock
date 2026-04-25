@@ -691,6 +691,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
+name = "gsv-culture-ships"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346abaaa55dc515d52cedb3255b189f6c0a41e85e466b7bfc5d262602fcef088"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "h2"
 version = "0.3.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1908,6 +1917,7 @@ dependencies = [
  "ctrlc",
  "dirs",
  "dotenv",
+ "gsv-culture-ships",
  "log",
  "opcua",
  "openssl",

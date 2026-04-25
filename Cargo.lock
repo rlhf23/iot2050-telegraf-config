@@ -1765,6 +1765,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gsv-culture-ships"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346abaaa55dc515d52cedb3255b189f6c0a41e85e466b7bfc5d262602fcef088"
+dependencies = [
+ "fastrand",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3482,6 +3491,7 @@ dependencies = [
  "dirs",
  "dotenv",
  "eframe",
+ "gsv-culture-ships",
  "insta",
  "log",
  "opcua",

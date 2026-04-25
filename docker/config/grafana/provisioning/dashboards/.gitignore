@@ -1,0 +1,3 @@
+# Generated dashboard files (rendered from templates at runtime)
+/system-dashboard.json
+/opcua-diagnostics-dashboard.json

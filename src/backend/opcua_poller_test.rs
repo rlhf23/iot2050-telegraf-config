@@ -43,6 +43,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: Vec::new(),
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         }
     }
 

@@ -171,6 +171,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: vec![],
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // This should NOT panic - localhost:22 is valid
@@ -201,6 +203,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: vec![],
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // This should pass - verifies our defaults are valid
@@ -232,6 +236,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: vec![],
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // This should FAIL - localhost is not a valid IP format
@@ -286,6 +292,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: vec![],
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         // Create ConfigGenerator
@@ -350,6 +358,8 @@ mod tests {
             include_opcua_diagnostics: false,
             selected_opcua_nodes: vec![],
             use_source_timestamp: false,
+            ship_display_name: None,
+            ship_hostname: None,
         };
 
         let mut generator = ConfigGenerator::new(config).unwrap();

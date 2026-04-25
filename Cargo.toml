@@ -46,6 +46,7 @@ ctrlc = "3.4"
 dirs = "5.0.1"
 opcua = { version = "0.12.0", features = ["console-logging"] }
 thiserror = "2.0.12"
+gsv-culture-ships = { version = "0.5", features = ["noncanonical"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
