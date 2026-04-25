@@ -607,7 +607,7 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
 
 fn main() {
     let matches = Command::new("IOT2050 config handler")
-        .version("0.8")
+        .version("0.11")
         .about("Generates Telegraf configs and deploys monitoring stack to IoT devices")
         .subcommand_required(true)
         .arg_required_else_help(true)
