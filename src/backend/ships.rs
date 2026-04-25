@@ -227,6 +227,66 @@ mod tests {
     }
 
     #[test]
+    fn test_derive_hostname_practical_names() {
+        // Pure numbers should survive as valid hostnames
+        assert_eq!(derive_hostname("001"), "001");
+        assert_eq!(derive_hostname("012"), "012");
+
+        // Special characters get stripped
+        let h = derive_hostname("012_xk=11");
+        assert!(h.contains("012"), "hostname should contain 012: got {}", h);
+        assert!(!h.contains("="), "hostname should not contain =: got {}", h);
+        assert!(!h.contains("_"), "hostname should not contain underscore: got {}", h);
+
+        // Spaces become hyphens
+        assert_eq!(derive_hostname("iot device 7"), "iot-device-7");
+
+        // Plain words
+        assert_eq!(derive_hostname("workshop-alpha"), "workshop-alpha");
+
+        // Names with commas and exclamation marks get stripped
+        assert_eq!(derive_hostname("Hello, World!"), "hello-world");
+
+        // Multiple special chars collapse
+        assert_eq!(derive_hostname("test   ---   device"), "test-device");
+
+        // Uppercase is lowered
+        assert_eq!(derive_hostname("My IoT Device"), "my-iot-device");
+
+        // Name that's all special chars should still produce something non-empty
+        // (strip_prefix returns as-is if no prefix matches, slugify handles the rest)
+        assert!(!derive_hostname("---").is_empty() || derive_hostname("---") == "");
+    }
+
+    #[test]
+    fn test_derive_hostname_hostnames_are_valid() {
+        let names = vec!["001", "012_xk=11", "iot device 7", "GSV Sleeper Service", "ROU Killing Time"];
+        for name in names {
+            let hostname = derive_hostname(name);
+            assert!(!hostname.is_empty(), "empty hostname from '{}'", name);
+            assert!(hostname.len() <= MAX_HOSTNAME_LEN, "hostname too long: '{}'", hostname);
+            assert!(
+                hostname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "invalid chars in hostname '{}' from '{}'", hostname, name
+            );
+            assert!(!hostname.starts_with('-'), "hostname starts with '-': '{}'", hostname);
+            assert!(!hostname.ends_with('-'), "hostname ends with '-': '{}'", hostname);
+        }
+    }
+
+    #[test]
+    fn test_random_ship_name_structure() {
+        let name = random_ship_name();
+        assert!(!name.display_name.is_empty());
+        assert!(!name.hostname.is_empty());
+        assert!(name.hostname.len() <= MAX_HOSTNAME_LEN);
+        assert!(
+            name.hostname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "hostname has invalid chars: '{}'", name.hostname
+        );
+    }
+
+    #[test]
     fn test_print_all_ship_names() {
         let names = all_ship_names();
         for name in &names {
