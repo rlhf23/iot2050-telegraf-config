@@ -570,7 +570,9 @@
                 <li><strong>Device Name:</strong> <span id="sys-device-name">Loading...</span></li>
                 <li><strong>Hostname:</strong> <span id="sys-hostname">Loading...</span></li>
                 <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
-                <li><strong>System Time:</strong> <span id="sys-time">Loading...</span></li>
+                <li><strong>Local Time:</strong> <span id="sys-time">Loading...</span></li>
+                <li><strong>UTC Time:</strong> <span id="sys-utc-time">Loading...</span></li>
+                <li><strong>Timezone:</strong> <span id="sys-timezone">Loading...</span></li>
                 <li><strong>Architecture:</strong> <span id="sys-arch">Loading...</span></li>
                 <li><strong>Uptime:</strong> <span id="sys-uptime">Loading...</span></li>
                 <li><strong>Load Average:</strong> <span id="sys-load">Loading...</span></li>
@@ -722,6 +724,8 @@
                     }
                     document.getElementById('sys-ip').textContent = data.ip_address || 'N/A';
                     document.getElementById('sys-time').textContent = data.system_time || 'N/A';
+                    document.getElementById('sys-utc-time').textContent = data.utc_time || 'N/A';
+                    document.getElementById('sys-timezone').textContent = data.timezone || 'N/A';
                     document.getElementById('sys-arch').textContent = data.architecture || 'N/A';
                     document.getElementById('sys-uptime').textContent = data.uptime || 'N/A';
                     document.getElementById('sys-load').textContent = data.load_average || 'N/A';
