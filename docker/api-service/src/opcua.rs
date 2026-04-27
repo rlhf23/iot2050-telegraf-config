@@ -5,15 +5,87 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
-// Import from main project
-use sie_generate_config::{TelegrafConfig, backend::opcua_poller::OpcUaPoller};
+use sie_generate_config::{OpcUaConnectionConfig, backend::opcua_poller::OpcUaPoller};
 
-/// Ensure OPC-UA IP has port appended (default 4840)
 fn ensure_opcua_port(ip: String) -> String {
     if ip.contains(':') {
         ip
     } else {
         format!("{}:4840", ip)
+    }
+}
+
+#[derive(Deserialize)]
+pub struct PlcTimeRequest {
+    pub opcua_ip: String,
+    pub opcua_username: Option<String>,
+    pub opcua_password: Option<String>,
+    pub anonymous: Option<bool>,
+}
+
+#[derive(Serialize)]
+pub struct PlcTimeResponse {
+    pub success: bool,
+    pub message: String,
+    pub plc_time: Option<String>,
+    pub plc_time_offset_ms: Option<i64>,
+}
+
+pub async fn plc_time(
+    Json(request): Json<PlcTimeRequest>,
+) -> Result<Json<PlcTimeResponse>, (StatusCode, Json<PlcTimeResponse>)> {
+    info!("Reading PLC time from {}", request.opcua_ip);
+
+    let config = OpcUaConnectionConfig {
+        ip: ensure_opcua_port(request.opcua_ip.clone()),
+        username: if request.anonymous.unwrap_or(false) || request.opcua_username.is_none() {
+            String::new()
+        } else {
+            request.opcua_username.unwrap_or_default()
+        },
+        password: if request.anonymous.unwrap_or(false) || request.opcua_password.is_none() {
+            String::new()
+        } else {
+            request.opcua_password.unwrap_or_default()
+        },
+    };
+
+    match tokio::task::spawn_blocking(move || {
+        let poller = OpcUaPoller::new(config)?;
+        poller.read_current_time()
+    }).await {
+        Ok(Ok((plc_time, offset_ms))) => {
+            Ok(Json(PlcTimeResponse {
+                success: true,
+                message: "PLC time retrieved successfully".to_string(),
+                plc_time: Some(plc_time.format("%Y-%m-%d %H:%M:%S").to_string()),
+                plc_time_offset_ms: Some(offset_ms),
+            }))
+        }
+        Ok(Err(e)) => {
+            error!("Failed to read PLC time: {}", e);
+            Err((
+                StatusCode::BAD_GATEWAY,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Failed to read PLC time: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Task join error: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Internal error: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ))
+        }
     }
 }
 
