@@ -82,6 +82,23 @@ pub async fn deploy_config(
         }
     }
 
+    // Also deploy OPC UA credentials if available in the same generated directory
+    let generated_dir = config_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let creds_source = generated_dir.join("opcua-credentials.json");
+    let creds_target = std::path::PathBuf::from("/telegraf/opcua-credentials.json");
+
+    if creds_source.exists() {
+        match fs::read_to_string(&creds_source).await {
+            Ok(creds_content) => {
+                match fs::write(&creds_target, &creds_content).await {
+                    Ok(_) => info!("Successfully deployed OPC UA credentials"),
+                    Err(e) => info!("Note: Failed to deploy OPC UA credentials: {}", e),
+                }
+            }
+            Err(e) => info!("Note: Could not read OPC UA credentials: {}", e),
+        }
+    }
+
     // Restart the Telegraf container using Docker API
     use bollard::container::RestartContainerOptions;
     

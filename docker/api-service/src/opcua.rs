@@ -3,15 +3,174 @@ use axum::{
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
+use tokio::fs;
 use tracing::{error, info};
 
 use sie_generate_config::{OpcUaConnectionConfig, backend::opcua_poller::OpcUaPoller};
+
+const CREDENTIALS_PATH: &str = "/telegraf/opcua-credentials.json";
 
 fn ensure_opcua_port(ip: String) -> String {
     if ip.contains(':') {
         ip
     } else {
         format!("{}:4840", ip)
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct OpcUaCredentials {
+    endpoint: String,
+    username: String,
+    password: String,
+    anonymous: bool,
+}
+
+#[derive(Serialize)]
+pub struct CredentialsResponse {
+    success: bool,
+    message: String,
+    endpoint: Option<String>,
+    anonymous: Option<bool>,
+}
+
+pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode, Json<CredentialsResponse>)> {
+    match fs::read_to_string(CREDENTIALS_PATH).await {
+        Ok(content) => {
+            let creds: OpcUaCredentials = match serde_json::from_str(&content) {
+                Ok(c) => c,
+                Err(e) => {
+                    error!("Failed to parse credentials file: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(CredentialsResponse {
+                            success: false,
+                            message: format!("Failed to parse credentials: {}", e),
+                            endpoint: None,
+                            anonymous: None,
+                        }),
+                    ));
+                }
+            };
+            Ok(Json(CredentialsResponse {
+                success: true,
+                message: "Credentials loaded".to_string(),
+                endpoint: Some(creds.endpoint),
+                anonymous: Some(creds.anonymous),
+            }))
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Err((
+                StatusCode::NOT_FOUND,
+                Json(CredentialsResponse {
+                    success: false,
+                    message: "No OPC UA credentials stored. Deploy a configuration first.".to_string(),
+                    endpoint: None,
+                    anonymous: None,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Failed to read credentials file: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(CredentialsResponse {
+                    success: false,
+                    message: format!("Failed to read credentials: {}", e),
+                    endpoint: None,
+                    anonymous: None,
+                }),
+            ))
+        }
+    }
+}
+
+pub async fn plc_time_stored() -> Result<Json<PlcTimeResponse>, (StatusCode, Json<PlcTimeResponse>)> {
+    let content = match fs::read_to_string(CREDENTIALS_PATH).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: "No OPC UA credentials stored. Deploy a configuration first.".to_string(),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ));
+        }
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Failed to read credentials: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ));
+        }
+    };
+
+    let creds: OpcUaCredentials = match serde_json::from_str(&content) {
+        Ok(c) => c,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Failed to parse credentials: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ));
+        }
+    };
+
+    info!("Reading PLC time from stored endpoint: {}", creds.endpoint);
+
+    let config = OpcUaConnectionConfig {
+        ip: creds.endpoint.clone(),
+        username: if creds.anonymous { String::new() } else { creds.username },
+        password: if creds.anonymous { String::new() } else { creds.password },
+    };
+
+    match tokio::task::spawn_blocking(move || {
+        let poller = OpcUaPoller::new(config)?;
+        poller.read_current_time()
+    }).await {
+        Ok(Ok((plc_time, offset_ms))) => {
+            Ok(Json(PlcTimeResponse {
+                success: true,
+                message: "PLC time retrieved successfully".to_string(),
+                plc_time: Some(plc_time.format("%Y-%m-%d %H:%M:%S").to_string()),
+                plc_time_offset_ms: Some(offset_ms),
+            }))
+        }
+        Ok(Err(e)) => {
+            error!("Failed to read PLC time: {}", e);
+            Err((
+                StatusCode::BAD_GATEWAY,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Failed to read PLC time: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ))
+        }
+        Err(e) => {
+            error!("Task join error: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(PlcTimeResponse {
+                    success: false,
+                    message: format!("Internal error: {}", e),
+                    plc_time: None,
+                    plc_time_offset_ms: None,
+                }),
+            ))
+        }
     }
 }
 

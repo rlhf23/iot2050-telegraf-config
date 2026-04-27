@@ -642,7 +642,19 @@ pub async fn generate_config(
 }
  
             info!("Successfully generated config for session: {}", request.session_id);
-            
+
+            // Write OPC UA credentials for the PLC time endpoint
+            let credentials = serde_json::json!({
+                "endpoint": ensure_opcua_port(request.opcua_ip.clone().filter(|s| !s.is_empty()).unwrap_or_default()),
+                "username": username,
+                "password": password,
+                "anonymous": request.anonymous,
+            });
+            let creds_path = generated_dir.join("opcua-credentials.json");
+            if let Err(e) = fs::write(&creds_path, serde_json::to_string_pretty(&credentials).unwrap_or_default()).await {
+                info!("Note: Failed to write OPC UA credentials file: {}", e);
+            }
+
             // Return full config content without truncation
             let preview = result.config_content;
 
