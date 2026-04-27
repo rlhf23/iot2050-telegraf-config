@@ -454,7 +454,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceProvision { config, local_transfer } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .test_connection()
                                 .map_err(|e| format!("Connection failed: {}", e))
@@ -473,7 +480,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceSetup { config, minimal } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config).with_minimal(minimal);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
                             let result = deployer
                                 .test_connection()
                                 .map_err(|e| format!("Connection failed: {}", e))
@@ -492,7 +506,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceUpdate { config, use_local } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .test_connection()
                                 .map_err(|e| format!("Connection failed: {}", e))
@@ -511,7 +532,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceStart { config } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .start()
                                 .map_err(|e| format!("Start failed: {}", e))
@@ -526,7 +554,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceStop { config, remove_volumes } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .stop_with_volumes(remove_volumes)
                                 .map_err(|e| format!("Stop failed: {}", e))
@@ -545,7 +580,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceStatus { config } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .status()
                                 .map(|_| WorkerResponse::SshCommandOutput(
@@ -559,7 +601,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceBackup { config, output_dir } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .backup(output_dir)
                                 .map(|output| WorkerResponse::SshCommandOutput(
@@ -573,7 +622,14 @@ impl WorkerHandle {
                     WorkerCommand::DeviceRestore { config, archive_path, force } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
-                            let deployer = IoTDeployer::new(config);
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .restore(archive_path, force)
                                 .map(|_| WorkerResponse::SshCommandOutput(
@@ -615,7 +671,6 @@ impl WorkerHandle {
             Ok(response) => Some(response),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                eprintln!("Worker response channel disconnected");
                 None
             }
         }

@@ -4,6 +4,7 @@ use ssh2::Session;
 use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 pub const GITHUB_REPO_OWNER: &str = "rlhf23";
@@ -89,9 +90,18 @@ pub struct IoTDeployer {
     repo_url: String,
     branch: String,
     minimal: bool,
+    progress_sender: Option<Sender<String>>,
 }
 
 impl IoTDeployer {
+    fn progress(&self, msg: &str) {
+        if let Some(sender) = &self.progress_sender {
+            let _ = sender.send(msg.to_string());
+        } else {
+            println!("{}", msg);
+        }
+    }
+
     /// Get the host for this deployer
     pub fn host(&self) -> &str {
         &self.config.host
@@ -106,7 +116,7 @@ impl IoTDeployer {
     pub fn detect_architecture(&self) -> Result<String, TelegrafError> {
         let session = self.create_ssh_session()?;
 
-        println!("🔍 Detecting device architecture...");
+        self.progress("🔍 Detecting device architecture...");
 
         let mut channel = session.channel_session()?;
         channel.exec("uname -m")?;
@@ -119,18 +129,18 @@ impl IoTDeployer {
 
         let targetarch = match arch {
             "x86_64" | "amd64" => {
-                println!("   Detected x86_64 architecture -> using amd64 binaries");
+                self.progress("   Detected x86_64 architecture -> using amd64 binaries");
                 "amd64".to_string()
             }
             "aarch64" | "arm64" => {
-                println!("   Detected ARM64 architecture -> using arm64 binaries");
+                self.progress("   Detected ARM64 architecture -> using arm64 binaries");
                 "arm64".to_string()
             }
             _ => {
-                println!(
+                self.progress(&format!(
                     "   ⚠️  Unknown architecture '{}', defaulting to arm64",
                     arch
-                );
+                ));
                 "arm64".to_string()
             }
         };
@@ -150,6 +160,7 @@ impl IoTDeployer {
             repo_url,
             branch,
             minimal: false,
+            progress_sender: None,
         }
     }
 
@@ -158,12 +169,17 @@ impl IoTDeployer {
         self
     }
 
+    pub fn with_progress_sender(mut self, sender: Sender<String>) -> Self {
+        self.progress_sender = Some(sender);
+        self
+    }
+
     /// Test SSH connectivity to the device
     pub fn test_connection(&self) -> Result<(), TelegrafError> {
-        println!(
+        self.progress(&format!(
             "🔧 Testing SSH connectivity to {}:{}...",
             self.config.host, self.config.port
-        );
+        ));
 
         let session = self.create_ssh_session()?;
         let mut channel = session.channel_session()?;
@@ -174,7 +190,7 @@ impl IoTDeployer {
         channel.wait_close()?;
 
         if channel.exit_status()? == 0 {
-            println!("✅ SSH connectivity verified");
+            self.progress("✅ SSH connectivity verified");
             Ok(())
         } else {
             Err(TelegrafError::SshOperationError(
@@ -190,12 +206,12 @@ impl IoTDeployer {
 
     /// Provision with option to download locally first (offline-capable)
     pub fn provision_with_transfer_mode(&self, local_transfer: bool) -> Result<(), TelegrafError> {
-        println!("🚀 Starting device provisioning...");
+        self.progress("🚀 Starting device provisioning...");
 
         let session = self.create_ssh_session()?;
 
         // Check internet connectivity
-        println!("🌐 Checking internet connectivity...");
+        self.progress("🌐 Checking internet connectivity...");
         self.run_command(
             &session,
             "ping -c 1 www.google.com > /dev/null 2>&1 || { echo 'Error: No internet connectivity'; exit 1; }",
@@ -203,7 +219,7 @@ impl IoTDeployer {
         )?;
 
         // Check repository accessibility
-        println!("🔍 Verifying repository accessibility...");
+        self.progress("🔍 Verifying repository accessibility...");
         self.run_command(
             &session,
             &format!("curl -s -o /dev/null -I -w '%{{http_code}}' {} | grep -q '200\\|302' || {{ echo 'Error: Cannot access repository branch: {}'; exit 1; }}", self.repo_url, self.branch),
@@ -211,7 +227,7 @@ impl IoTDeployer {
         )?;
 
         // Check if all required packages are already installed
-        println!("🔍 Checking for required packages...");
+        self.progress("🔍 Checking for required packages...");
         let packages_status = self.check_required_packages(&session)?;
 
         // Only proceed with apt operations if packages are missing
@@ -219,7 +235,7 @@ impl IoTDeployer {
             // Warn about potential time issues before running apt
             self.check_system_time(&session)?;
 
-            println!("📦 Installing missing packages...");
+            self.progress("📦 Installing missing packages...");
 
             // Update package lists
             self.run_command(&session, "sudo apt-get update", "Updating package lists")?;
@@ -235,7 +251,7 @@ impl IoTDeployer {
 
             // Install Docker if needed
             if packages_status.needs_docker {
-                println!("🐳 Installing Docker...");
+                self.progress("🐳 Installing Docker...");
                 self.run_command(
                     &session,
                     "sudo apt-get install -y docker.io",
@@ -245,7 +261,7 @@ impl IoTDeployer {
 
             // Install Docker Compose if needed
             if packages_status.needs_compose {
-                println!("📦 Installing Docker Compose...");
+                self.progress("📦 Installing Docker Compose...");
                 self.run_command(
                     &session,
                     "sudo apt-get install -y docker-compose",
@@ -253,7 +269,7 @@ impl IoTDeployer {
                 )?;
             }
         } else {
-            println!("✅ All required packages are already installed");
+            self.progress("✅ All required packages are already installed");
         }
 
         // Add user to docker group
@@ -268,7 +284,7 @@ impl IoTDeployer {
         self.run_command(&session, "sudo systemctl enable docker", "Enabling Docker")?;
 
         // Setup monitoring directory structure
-        println!("📂 Setting up monitoring directory...");
+        self.progress("📂 Setting up monitoring directory...");
 
         // Remove existing monitoring directory if it exists
         self.run_command(
@@ -286,16 +302,16 @@ impl IoTDeployer {
 
         // Download docker folder - either directly on device or via local transfer
         if local_transfer {
-            println!(
+            self.progress(&format!(
                 "📥 Downloading docker configuration locally from branch '{}'...",
                 self.branch
-            );
+            ));
             self.download_and_transfer_monitoring_folder(&session)?;
         } else {
-            println!(
+            self.progress(&format!(
                 "📥 Downloading docker configuration directly on device from branch '{}'...",
                 self.branch
-            );
+            ));
 
             let download_cmd = format!(
                 "cd ~/monitoring && curl -L {} | tar -xz --strip-components=2 {}/docker",
@@ -312,18 +328,18 @@ impl IoTDeployer {
             "Making scripts executable",
         )?;
 
-        println!("✅ Device provisioning completed successfully!");
+        self.progress("✅ Device provisioning completed successfully!");
         Ok(())
     }
 
     /// Update monitoring configuration on the device (download fresh copy from git)
     pub fn update(&self, use_local: bool) -> Result<(), TelegrafError> {
-        println!("🔄 Updating monitoring configuration...");
+        self.progress("🔄 Updating monitoring configuration...");
 
         let session = self.create_ssh_session()?;
 
         // Backup .env and telegraf.conf before removing monitoring directory
-        println!("💾 Backing up configuration files...");
+        self.progress("💾 Backing up configuration files...");
         self.run_command(
             &session,
             "cp ~/monitoring/.env ~/monitoring.env.backup 2>/dev/null || true",
@@ -351,10 +367,10 @@ impl IoTDeployer {
 
         if use_local {
             // Download locally and transfer via SFTP
-            println!(
+            self.progress(&format!(
                 "📥 Downloading docker configuration locally from branch '{}'...",
                 self.branch
-            );
+            ));
 
             // Create temp directory
             let temp_dir = std::env::temp_dir().join(format!("monitoring-{}", self.branch));
@@ -397,7 +413,7 @@ impl IoTDeployer {
                 .join(get_extracted_dir_name(&self.branch))
                 .join("docker");
 
-            println!("📤 Transferring files to device via SFTP...");
+            self.progress("📤 Transferring files to device via SFTP...");
 
             // Use SFTP through the existing SSH session
             let sftp = session.sftp().map_err(|e| {
@@ -415,13 +431,13 @@ impl IoTDeployer {
             let _ = std::fs::remove_dir_all(&temp_dir);
         } else {
             // Download directly on the device (requires internet)
-            println!(
+            self.progress(&format!(
                 "📥 Downloading docker configuration on device from branch '{}'...",
                 self.branch
-            );
+            ));
 
             // Check if device has internet connectivity
-            println!("🌐 Checking device internet connectivity...");
+            self.progress("🌐 Checking device internet connectivity...");
             let has_internet =
                 self.check_command(&session, "ping -c 1 www.google.com > /dev/null 2>&1")?;
 
@@ -448,7 +464,7 @@ impl IoTDeployer {
         )?;
 
         // Restore backed up configuration files
-        println!("💾 Restoring configuration files...");
+        self.progress("💾 Restoring configuration files...");
         let env_backup_exists = self.check_command(&session, "test -f ~/monitoring.env.backup")?;
         if env_backup_exists {
             self.run_command(
@@ -464,7 +480,7 @@ impl IoTDeployer {
             );
             self.run_command(&session, &update_arch_cmd, "Updating architecture in .env")?;
         } else {
-            println!("ℹ️  No .env backup found - run 'setup' to create one");
+            self.progress("ℹ️  No .env backup found - run 'setup' to create one");
         }
 
         let telegraf_backup_exists =
@@ -477,13 +493,13 @@ impl IoTDeployer {
             )?;
         }
 
-        println!("✅ Monitoring configuration updated successfully!");
+        self.progress("✅ Monitoring configuration updated successfully!");
         Ok(())
     }
 
     /// Run setup on the device (assumes provisioning is already done)
     pub fn setup(&self) -> Result<(), TelegrafError> {
-        println!("🚀 Starting setup...");
+        self.progress("🚀 Starting setup...");
 
         let session = self.create_ssh_session()?;
 
@@ -510,7 +526,7 @@ impl IoTDeployer {
         }
 
         let setup_cmd = if self.minimal {
-            println!("📦 Using minimal profile (TICK stack only)");
+            self.progress("📦 Using minimal profile (TICK stack only)");
             format!("cd ~/monitoring && {} ./scripts/setup.sh --minimal", env_vars)
         } else {
             format!("cd ~/monitoring && {} ./scripts/setup.sh", env_vars)
@@ -518,16 +534,16 @@ impl IoTDeployer {
 
         self.run_command(&session, &setup_cmd, "Running setup")?;
 
-        println!(
+        self.progress(&format!(
             "✅ Setup completed successfully! (Architecture: {})",
             targetarch
-        );
+        ));
         Ok(())
     }
 
     /// Sync system time from local machine to device
     pub fn sync_time(&self) -> Result<(), TelegrafError> {
-        println!("🕐 Syncing time to device...");
+        self.progress("🕐 Syncing time to device...");
 
         let session = self.create_ssh_session()?;
 
@@ -535,7 +551,7 @@ impl IoTDeployer {
         let utc_time = chrono::Utc::now();
         let time_str = utc_time.format("%Y-%m-%d %H:%M:%S").to_string();
 
-        println!("📅 UTC time: {}", time_str);
+        self.progress(&format!("📅 UTC time: {}", time_str));
 
         // Set time on device (requires sudo)
         // Use -u flag to interpret time as UTC, avoiding timezone issues
@@ -551,20 +567,20 @@ impl IoTDeployer {
         channel.read_to_string(&mut device_time)?;
         channel.wait_close()?;
 
-        println!("✅ Device time updated: {}", device_time.trim());
+        self.progress(&format!("✅ Device time updated: {}", device_time.trim()));
 
         Ok(())
     }
 
     /// Get deployment status
     pub fn status(&self) -> Result<(), TelegrafError> {
-        println!("📊 Checking deployment status...");
+        self.progress("📊 Checking deployment status...");
 
         let session = self.create_ssh_session()?;
 
         // Check if monitoring directory exists
         if !self.check_command(&session, "test -d ~/monitoring")? {
-            println!("❌ Monitoring stack not deployed");
+            self.progress("❌ Monitoring stack not deployed");
             return Ok(());
         }
 
@@ -579,8 +595,8 @@ impl IoTDeployer {
         channel.read_to_string(&mut output)?;
         channel.wait_close()?;
 
-        println!("Container Status:");
-        println!("{}", output);
+        self.progress("Container Status:");
+        self.progress(&format!("{}", output));
 
         // Get credentials
         let mut channel = session.channel_session()?;
@@ -591,13 +607,13 @@ impl IoTDeployer {
         channel.wait_close()?;
 
         if !credentials.trim().is_empty() {
-            println!("\n🔑 Credentials:");
-            println!("{}", credentials);
+            self.progress("\n🔑 Credentials:");
+            self.progress(&format!("{}", credentials));
         }
 
-        println!("\n🔗 Access URLs:");
-        println!("  - InfluxDB: http://{}:8086", self.config.host);
-        println!("  - Chronograf: http://{}:8888", self.config.host);
+        self.progress("\n🔗 Access URLs:");
+        self.progress(&format!("  - InfluxDB: http://{}:8086", self.config.host));
+        self.progress(&format!("  - Chronograf: http://{}:8888", self.config.host));
 
         // Check which profile is active by looking for COMPOSE_PROFILE in .env
         let mut profile_channel = session.channel_session()?;
@@ -610,7 +626,7 @@ impl IoTDeployer {
         let is_minimal = profile_output.trim() == "minimal";
 
         if !is_minimal {
-            println!("  - Grafana: http://{}:3000", self.config.host);
+            self.progress(&format!("  - Grafana: http://{}:3000", self.config.host));
         }
 
         Ok(())
@@ -623,7 +639,7 @@ impl IoTDeployer {
 
     /// Stop the monitoring stack with optional volume removal
     pub fn stop_with_volumes(&self, remove_volumes: bool) -> Result<(), TelegrafError> {
-        println!("🛑 Stopping monitoring stack...");
+        self.progress("🛑 Stopping monitoring stack...");
 
         let session = self.create_ssh_session()?;
 
@@ -642,17 +658,17 @@ impl IoTDeployer {
         self.run_command(&session, stop_command, description)?;
 
         if remove_volumes {
-            println!("✅ Monitoring stack stopped and volumes removed");
-            println!("⚠️  All data has been deleted. You will need to reconfigure services on next start.");
+            self.progress("✅ Monitoring stack stopped and volumes removed");
+            self.progress("⚠️  All data has been deleted. You will need to reconfigure services on next start.");
         } else {
-            println!("✅ Monitoring stack stopped");
+            self.progress("✅ Monitoring stack stopped");
         }
         Ok(())
     }
 
     /// Start the monitoring stack
     pub fn start(&self) -> Result<(), TelegrafError> {
-        println!("🚀 Starting monitoring stack...");
+        self.progress("🚀 Starting monitoring stack...");
 
         let session = self.create_ssh_session()?;
 
@@ -662,18 +678,27 @@ impl IoTDeployer {
             "Starting monitoring stack",
         )?;
 
-        println!("✅ Monitoring stack started");
+        self.progress("✅ Monitoring stack started");
         Ok(())
     }
 
     /// Backup all monitoring data (InfluxDB, Grafana, Prometheus) to local directory
     pub fn backup(&self, output_dir: Option<String>) -> Result<String, TelegrafError> {
-        crate::backend::backup::backup(&self.config, output_dir)
+        crate::backend::backup::backup_with_progress(
+            &self.config,
+            output_dir,
+            self.progress_sender.as_ref(),
+        )
     }
 
     /// Restore monitoring data from backup archive
     pub fn restore(&self, archive_path: String, force: bool) -> Result<(), TelegrafError> {
-        crate::backend::backup::restore(&self.config, archive_path, force)
+        crate::backend::backup::restore_with_progress(
+            &self.config,
+            archive_path,
+            force,
+            self.progress_sender.as_ref(),
+        )
     }
 
     /// Download monitoring folder locally and transfer to device
@@ -690,7 +715,7 @@ impl IoTDeployer {
 
         // Clean up any existing temp directory
         if temp_dir.exists() {
-            println!("🧹 Cleaning up temporary directory...");
+            self.progress("🧹 Cleaning up temporary directory...");
             fs::remove_dir_all(&temp_dir).map_err(|e| {
                 TelegrafError::ConfigError(format!("Failed to clean temp directory: {}", e))
             })?;
@@ -702,7 +727,7 @@ impl IoTDeployer {
         })?;
 
         // Download tarball locally
-        println!("📥 Downloading tarball from {}...", self.repo_url);
+        self.progress(&format!("📥 Downloading tarball from {}...", self.repo_url));
         let output = Command::new("curl")
             .args(&["-L", &self.repo_url, "-o", tar_file.to_str().unwrap()])
             .output()
@@ -716,7 +741,7 @@ impl IoTDeployer {
         }
 
         // Extract tarball locally
-        println!("📦 Extracting tarball locally...");
+        self.progress("📦 Extracting tarball locally...");
         let output = Command::new("tar")
             .args(&[
                 "-xzf",
@@ -737,16 +762,16 @@ impl IoTDeployer {
         }
 
         // Transfer extracted folder to device using SCP
-        println!("📤 Transferring files to device...");
+        self.progress("📤 Transferring files to device...");
         self.transfer_directory(&extract_dir, "~/monitoring")?;
 
         // Clean up temp directory
-        println!("🧹 Cleaning up local temporary files...");
+        self.progress("🧹 Cleaning up local temporary files...");
         fs::remove_dir_all(&temp_dir).map_err(|e| {
             TelegrafError::ConfigError(format!("Failed to clean up temp directory: {}", e))
         })?;
 
-        println!("✅ Files transferred successfully");
+        self.progress("✅ Files transferred successfully");
         Ok(())
     }
 
@@ -885,7 +910,13 @@ impl IoTDeployer {
         command: &str,
         description: &str,
     ) -> Result<(), TelegrafError> {
-        ssh_utils::run_command(session, command, description, self.config.password.as_ref())
+        ssh_utils::run_command_with_progress(
+            session,
+            command,
+            description,
+            self.config.password.as_ref(),
+            self.progress_sender.as_ref(),
+        )
     }
 
     /// Check if a command succeeds (returns true) or fails (returns false)
@@ -903,7 +934,7 @@ impl IoTDeployer {
 
     /// Check system time and warn if it appears incorrect
     fn check_system_time(&self, session: &Session) -> Result<(), TelegrafError> {
-        println!("⏰ Checking system time...");
+        self.progress("⏰ Checking system time...");
 
         // Get remote time with timezone
         let mut channel = session.channel_session()?;
@@ -913,7 +944,7 @@ impl IoTDeployer {
         channel.read_to_string(&mut remote_time_str)?;
         channel.wait_close()?;
 
-        println!("   Remote time: {}", remote_time_str.trim());
+        self.progress(&format!("   Remote time: {}", remote_time_str.trim()));
 
         // Get remote time as Unix timestamp for comparison
         let mut channel = session.channel_session()?;
@@ -936,29 +967,29 @@ impl IoTDeployer {
             // Warn if time difference is more than 3 hours (certificate validation typically fails)
             if diff_seconds > 10800 {
                 // 3 hours in seconds
-                println!(
+                self.progress(&format!(
                     "⚠️  WARNING: System time differs from local time by {} hours",
                     diff_hours
-                );
-                println!("⚠️  This will likely cause apt-get to fail due to certificate validation issues.");
-                println!(
+                ));
+                self.progress("⚠️  This will likely cause apt-get to fail due to certificate validation issues.");
+                self.progress(&format!(
                     "⚠️  Device may be missing CMOS battery. Set time manually before continuing:"
-                );
-                println!("⚠️  sudo timedatectl set-time \"2025-10-01 09:11\"");
-                println!("⚠️  Continuing anyway...");
+                ));
+                self.progress("⚠️  sudo timedatectl set-time \"2025-10-01 09:11\"");
+                self.progress("⚠️  Continuing anyway...");
             } else if diff_seconds > 300 {
                 // More than 5 minutes but less than 3 hours
-                println!(
+                self.progress(&format!(
                     "⚠️  WARNING: System time differs by {} seconds ({} minutes)",
                     diff_seconds,
                     diff_seconds / 60
-                );
-                println!("⚠️  This may cause issues. Consider syncing time if problems occur.");
+                ));
+                self.progress("⚠️  This may cause issues. Consider syncing time if problems occur.");
             } else {
-                println!(
+                self.progress(&format!(
                     "✅ System time is within {} seconds of local time",
                     diff_seconds
-                );
+                ));
             }
         }
 
@@ -976,28 +1007,28 @@ impl IoTDeployer {
         status.needs_base_packages = !(has_curl && has_git && has_openssl);
 
         if status.needs_base_packages {
-            println!(
+            self.progress(&format!(
                 "  ⚙️  Base packages needed (curl: {}, git: {}, openssl: {})",
                 has_curl, has_git, has_openssl
-            );
+            ));
         } else {
-            println!("  ✅ Base packages present");
+            self.progress("  ✅ Base packages present");
         }
 
         // Check Docker
         status.needs_docker = !self.check_command(session, "docker --version")?;
         if status.needs_docker {
-            println!("  🐳 Docker needs installation");
+            self.progress("  🐳 Docker needs installation");
         } else {
-            println!("  ✅ Docker present");
+            self.progress("  ✅ Docker present");
         }
 
         // Check Docker Compose
         status.needs_compose = !self.check_command(session, "docker-compose --version")?;
         if status.needs_compose {
-            println!("  📦 Docker Compose needs installation");
+            self.progress("  📦 Docker Compose needs installation");
         } else {
-            println!("  ✅ Docker Compose present");
+            self.progress("  ✅ Docker Compose present");
         }
 
         Ok(status)
