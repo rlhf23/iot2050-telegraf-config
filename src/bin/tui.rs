@@ -1240,8 +1240,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         } else {
                             match key.code {
                                 KeyCode::Char('q') => return Ok(()),
-                                KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
-                                KeyCode::F(2) => app.status_expanded = !app.status_expanded,
+                                KeyCode::Char('h') => app.show_help = !app.show_help,
+                                KeyCode::Char('s') => app.status_expanded = !app.status_expanded,
                                 KeyCode::PageUp => {
                                     if let Some(selected) = app.status_list_state.selected() {
                                         if selected > 0 {
@@ -1631,7 +1631,7 @@ fn ui(f: &mut Frame, app: &mut App) {
             vec![
                 Constraint::Length(3),       // Tabs
                 Constraint::Min(0),          // Main content
-                Constraint::Max(25),          // Status messages
+                Constraint::Percentage(65),        // Status messages
             ]
         } else {
             vec![
@@ -1647,9 +1647,9 @@ fn ui(f: &mut Frame, app: &mut App) {
     } else if app.pending_confirmation.is_some() {
         "IoT2050 Config TUI ⚠️ Confirm?"
     } else if app.status_expanded {
-        "IoT2050 Config TUI  [F2: hide status]"
+        "IoT2050 Config TUI  [s: hide status]"
     } else {
-        "IoT2050 Config TUI  [F2: show status]"
+        "IoT2050 Config TUI  [s: show status]"
     };
     let tab_titles = vec![
         "Folder",
@@ -2508,12 +2508,12 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
     // Add helpful message if empty
     if messages.is_empty() {
         messages.push(ListItem::new(
-            "Status area ready - F2 toggle, 'c' clear, PgUp/PgDn scroll",
+            "Status area ready - s toggle, 'c' clear, PgUp/PgDn scroll",
         ));
     }
 
     let title = format!(
-        "Status ({}/{}) - F2 toggle, PgUp/PgDn scroll",
+        "Status ({}/{}) - s toggle, PgUp/PgDn scroll",
         app.status_messages.len(),
         50
     );
@@ -2533,7 +2533,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("Global Controls:"),
         Line::from("  Tab/←→/1-7 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
-        Line::from("  F2      - Toggle status panel"),
+        Line::from("  s       - Toggle status panel"),
         Line::from("  PgUp/PgDn - Scroll status messages"),
         Line::from("  q       - Quit application"),
         Line::from(""),
