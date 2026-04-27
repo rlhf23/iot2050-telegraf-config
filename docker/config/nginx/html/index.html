@@ -572,7 +572,7 @@
                 <li><strong>IP Address:</strong> <span id="sys-ip">Loading...</span></li>
                 <li><strong>Local Time:</strong> <span id="sys-time">Loading...</span></li>
                 <li><strong>UTC Time:</strong> <span id="sys-utc-time">Loading...</span></li>
-                <li><strong>PLC Time:</strong> <span id="sys-plc-time">Loading...</span></li>
+                <li><strong>PLC Time:</strong> <span id="sys-plc-time">—</span> <button class="view-btn" onclick="updatePlcTime()" style="margin-left: 8px; padding: 2px 10px; font-size: 0.8em;">Check</button></li>
                 <li><strong>Architecture:</strong> <span id="sys-arch">Loading...</span></li>
                 <li><strong>Uptime:</strong> <span id="sys-uptime">Loading...</span></li>
                 <li><strong>Load Average:</strong> <span id="sys-load">Loading...</span></li>
@@ -758,6 +758,7 @@
         // Fetch PLC time from stored OPC UA credentials
 async function updatePlcTime() {
     const plcTimeEl = document.getElementById('sys-plc-time');
+    plcTimeEl.textContent = 'Checking...';
     try {
         const response = await fetch('/api/opcua/plc-time-stored', { cache: 'no-cache' });
         if (response.ok) {
@@ -954,14 +955,12 @@ async function updatePlcTime() {
 // Initial checks
 checkAllServices();
 updateSystemInfo();
-updatePlcTime();
 
 // Refresh every 10 seconds
 setInterval(() => {
     checkAllServices();
     updateSystemInfo();
 }, 10000);
-setInterval(updatePlcTime, 30000);
     </script>
 </body>
 </html>
