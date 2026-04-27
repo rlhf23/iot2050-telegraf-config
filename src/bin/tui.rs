@@ -222,6 +222,9 @@ struct App {
     worker: Option<WorkerHandle>,
     is_working: bool,
 
+    // Status panel visibility
+    status_expanded: bool,
+
     // Anonymous mode
     anonymous_mode: bool,
 
@@ -288,6 +291,7 @@ impl App {
             show_help: false,
             worker: Some(WorkerHandle::new()),
             is_working: false,
+            status_expanded: true,
             anonymous_mode: false,
             file_configs: HashMap::new(),
             generated_config: None,
@@ -393,17 +397,25 @@ impl App {
         }
     }
 
-    fn add_status_message(&mut self, message: String) {
+fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
-        // Increased buffer size to accommodate larger outputs like logs
         if self.status_messages.len() > 50 {
             self.status_messages.remove(0);
         }
-        // Auto-scroll to the latest message
         if !self.status_messages.is_empty() {
             self.status_list_state
                 .select(Some(self.status_messages.len() - 1));
         }
+    }
+
+    fn start_working(&mut self) {
+        self.is_working = true;
+        self.status_expanded = true;
+    }
+
+    fn stop_working(&mut self) {
+        self.is_working = false;
+        self.status_expanded = false;
     }
 
     fn process_worker_responses(&mut self) {
@@ -419,7 +431,7 @@ impl App {
 
         for response in responses {
             if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
-                self.is_working = false;
+                self.stop_working();
             }
 
             match response {
@@ -788,14 +800,14 @@ impl App {
     // Operational commands for Actions tab
     fn get_telegraf_status(&mut self) {
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus {
                     config: self.config.clone(),
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -805,7 +817,7 @@ impl App {
 
     fn get_telegraf_logs(&mut self) {
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs {
@@ -813,7 +825,7 @@ impl App {
                     lines: 30,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -832,7 +844,7 @@ impl App {
         }
 
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🔄 Restarting Telegraf service...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf {
@@ -841,7 +853,7 @@ impl App {
                     password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -935,7 +947,7 @@ impl App {
         }
 
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🕐 Syncing system time to device...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::SyncTime {
@@ -944,7 +956,7 @@ impl App {
                     password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -957,7 +969,7 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("🚀 Provisioning device...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
@@ -966,7 +978,7 @@ impl App {
                 local_transfer: self.local_transfer,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -976,7 +988,7 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("🔧 Setting up device...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
@@ -985,7 +997,7 @@ impl App {
                 minimal: self.minimal,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -995,7 +1007,7 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("📦 Updating device...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
@@ -1004,7 +1016,7 @@ impl App {
                 use_local: self.local_transfer,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -1014,13 +1026,13 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("▶️ Starting monitoring stack...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceStart { config }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -1057,7 +1069,7 @@ impl App {
 
     fn device_stop_confirmed(&mut self, remove_volumes: bool) {
         self.pending_confirmation = None;
-        self.is_working = true;
+        self.start_working();
         if remove_volumes {
             self.add_status_message("⏹️ Stopping monitoring stack and removing volumes...".to_string());
         } else {
@@ -1070,7 +1082,7 @@ impl App {
                 remove_volumes,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -1080,13 +1092,13 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("📊 Checking device status...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceStatus { config }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -1096,7 +1108,7 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
             return;
         }
-        self.is_working = true;
+        self.start_working();
         self.add_status_message("💾 Backing up device...".to_string());
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
@@ -1105,7 +1117,7 @@ impl App {
                 output_dir: None,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
-                self.is_working = false;
+                self.stop_working();
             }
         }
     }
@@ -1229,6 +1241,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                             match key.code {
                                 KeyCode::Char('q') => return Ok(()),
                                 KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
+                                KeyCode::F(2) => app.status_expanded = !app.status_expanded,
                                 KeyCode::PageUp => {
                                     if let Some(selected) = app.status_list_state.selected() {
                                         if selected > 0 {
@@ -1614,10 +1627,18 @@ fn ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints([
-            Constraint::Length(3),  // Tabs
-            Constraint::Min(0),    // Main content (full height)
-        ])
+        .constraints(if app.status_expanded {
+            vec![
+                Constraint::Length(3),       // Tabs
+                Constraint::Min(0),          // Main content
+                Constraint::Max(25),          // Status messages
+            ]
+        } else {
+            vec![
+                Constraint::Length(3),       // Tabs
+                Constraint::Min(0),          // Main content
+            ]
+        })
         .split(f.area());
 
     // Render tabs
@@ -1625,8 +1646,10 @@ fn ui(f: &mut Frame, app: &mut App) {
         "IoT2050 Config TUI ⏳ Working..."
     } else if app.pending_confirmation.is_some() {
         "IoT2050 Config TUI ⚠️ Confirm?"
+    } else if app.status_expanded {
+        "IoT2050 Config TUI  [F2: hide status]"
     } else {
-        "IoT2050 Config TUI"
+        "IoT2050 Config TUI  [F2: show status]"
     };
     let tab_titles = vec![
         "Folder",
@@ -1673,6 +1696,11 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Actions => render_actions_tab(f, app, chunks[1]),
     }
 
+    // Render status messages (if expanded)
+    if app.status_expanded {
+        render_status_messages(f, app, chunks[2]);
+    }
+
     // Render help popup if needed
     if app.show_help {
         render_help_popup(f, app);
@@ -1689,11 +1717,6 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
-
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(0)])
-        .split(chunks[1]);
 
     // Directory listing
     let items: Vec<ListItem> = app
@@ -1753,21 +1776,14 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
-    f.render_widget(help_block, right_chunks[0]);
-
-    render_status_messages(f, app, right_chunks[1]);
+    f.render_widget(help_block, chunks[1]);
 }
 
 fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
-
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(10)])
-        .split(chunks[1]);
 
     // File list with per-file configuration
     let items: Vec<ListItem> = app
@@ -1837,7 +1853,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
         let edit_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(right_chunks[0]);
+            .split(chunks[1]);
 
         // Determine what we're editing
         let edit_title = if let Some(ref field) = app.current_edit_field {
@@ -1894,20 +1910,14 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
         let help_block = Paragraph::new(instructions)
             .block(Block::default().borders(Borders::ALL).title("Controls"));
-        f.render_widget(help_block, right_chunks[0]);
+        f.render_widget(help_block, chunks[1]);
     }
-
-    render_status_messages(f, app, right_chunks[1]);
 }
 
 fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(24), // Config fields (6 x 3 + border)
-            Constraint::Length(12), // Controls
-            Constraint::Min(0),     // Status messages
-        ])
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
 
     // Configuration fields
@@ -2032,19 +2042,12 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(help_block, chunks[1]);
-
-    // Status messages
-    render_status_messages(f, app, chunks[2]);
 }
 
 fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(12), // Config fields (3 x 3 + title)
-            Constraint::Length(8),  // Controls
-            Constraint::Min(0),    // Status messages
-        ])
+        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
 
     // Configuration fields
@@ -2108,15 +2111,12 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(help_block, chunks[1]);
-
-    // Status messages
-    render_status_messages(f, app, chunks[2]);
 }
 
 fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(8), Constraint::Min(0)])
+        .constraints([Constraint::Min(0), Constraint::Length(8)])
         .split(area);
 
     // Configuration display
@@ -2159,7 +2159,39 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(controls).block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(controls_block, control_chunks[0]);
 
-    render_status_messages(f, app, control_chunks[1]);
+    // Status
+    let config_status = if app.generated_config.is_some() {
+        "✅ Configuration ready"
+    } else {
+        "⚠️  No configuration"
+    };
+
+    let selected_count = app.selected_files.iter().filter(|&&x| x).count();
+    let auth_mode = if app.anonymous_mode {
+        "Anonymous"
+    } else {
+        "Username/Password"
+    };
+
+    let status = vec![
+        Line::from("Status:"),
+        Line::from(""),
+        Line::from(config_status),
+        Line::from(format!("Files: {}", selected_count)),
+        Line::from(format!("Auth: {}", auth_mode)),
+        Line::from(format!(
+            "IoT: {}",
+            if app.config.iot_host.is_empty() {
+                "Not set"
+            } else {
+                "Configured"
+            }
+        )),
+    ];
+
+    let status_block =
+        Paragraph::new(status).block(Block::default().borders(Borders::ALL).title("Status"));
+    f.render_widget(status_block, control_chunks[1]);
 }
 
 fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -2167,11 +2199,6 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
-
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(14), Constraint::Min(0)])
-        .split(chunks[1]);
 
     let selected_field = DeviceField::from_index(app.device_selection);
 
@@ -2285,9 +2312,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let config_block =
         Paragraph::new(config).block(Block::default().borders(Borders::ALL).title("Config"));
-    f.render_widget(config_block, right_chunks[0]);
-
-    render_status_messages(f, app, right_chunks[1]);
+    f.render_widget(config_block, chunks[1]);
 }
 
 fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -2295,11 +2320,6 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
-
-    let right_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(0)])
-        .split(chunks[1]);
 
     // Actions with selection bar
     let selected_field = ActionsField::from_index(app.actions_selection);
@@ -2396,9 +2416,7 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let summary_block =
         Paragraph::new(summary).block(Block::default().borders(Borders::ALL).title("Summary"));
-    f.render_widget(summary_block, right_chunks[0]);
-
-    render_status_messages(f, app, right_chunks[1]);
+    f.render_widget(summary_block, chunks[1]);
 }
 
 fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'static> {
@@ -2490,12 +2508,12 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
     // Add helpful message if empty
     if messages.is_empty() {
         messages.push(ListItem::new(
-            "Status area ready - press 'c' to clear messages, PgUp/PgDn to scroll",
+            "Status area ready - F2 toggle, 'c' clear, PgUp/PgDn scroll",
         ));
     }
 
     let title = format!(
-        "Status Messages ({}/{}) - PgUp/PgDn to scroll",
+        "Status ({}/{}) - F2 toggle, PgUp/PgDn scroll",
         app.status_messages.len(),
         50
     );
@@ -2515,6 +2533,7 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("Global Controls:"),
         Line::from("  Tab/←→/1-7 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
+        Line::from("  F2      - Toggle status panel"),
         Line::from("  PgUp/PgDn - Scroll status messages"),
         Line::from("  q       - Quit application"),
         Line::from(""),
