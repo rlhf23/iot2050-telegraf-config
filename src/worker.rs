@@ -2,6 +2,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::Duration;
 
+use crate::backend::deployment::{DeploymentConfig, IoTDeployer};
 use crate::backend::opcua_poller::OpcUaPoller;
 use crate::backend::ssh_utils;
 use crate::backend::{ConfigGenerator, ServiceType};
@@ -65,6 +66,37 @@ pub enum WorkerCommand {
         username: String,
         password: String,
     },
+    DeviceProvision {
+        config: DeploymentConfig,
+        local_transfer: bool,
+    },
+    DeviceSetup {
+        config: DeploymentConfig,
+        minimal: bool,
+    },
+    DeviceUpdate {
+        config: DeploymentConfig,
+        use_local: bool,
+    },
+    DeviceStart {
+        config: DeploymentConfig,
+    },
+    DeviceStop {
+        config: DeploymentConfig,
+        remove_volumes: bool,
+    },
+    DeviceStatus {
+        config: DeploymentConfig,
+    },
+    DeviceBackup {
+        config: DeploymentConfig,
+        output_dir: Option<String>,
+    },
+    DeviceRestore {
+        config: DeploymentConfig,
+        archive_path: String,
+        force: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +110,8 @@ pub enum WorkerResponse {
     OpcUaNodes(Vec<crate::backend::opcua_poller::OpcUaNode>),
     OpcUaNamespaces(std::collections::HashMap<String, u16>),
     OpcUaError(String),
-    Error(String), // Generic error response for unhandled commands
+    Error(String),
+    ConfirmationNeeded(String),
 }
 
 pub struct WorkerHandle {
@@ -414,6 +447,139 @@ impl WorkerHandle {
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!("Failed to sync time: {}", e))
                                 });
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceProvision { config, local_transfer } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .test_connection()
+                                .map_err(|e| format!("Connection failed: {}", e))
+                                .and_then(|_| {
+                                    deployer.provision_with_transfer_mode(local_transfer)
+                                        .map_err(|e| format!("Provisioning failed: {}", e))
+                                })
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Device provisioned successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceSetup { config, minimal } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config).with_minimal(minimal);
+                            let result = deployer
+                                .test_connection()
+                                .map_err(|e| format!("Connection failed: {}", e))
+                                .and_then(|_| {
+                                    deployer.setup()
+                                        .map_err(|e| format!("Setup failed: {}", e))
+                                })
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Device setup completed successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceUpdate { config, use_local } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .test_connection()
+                                .map_err(|e| format!("Connection failed: {}", e))
+                                .and_then(|_| {
+                                    deployer.update(use_local)
+                                        .map_err(|e| format!("Update failed: {}", e))
+                                })
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Device updated successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceStart { config } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .start()
+                                .map_err(|e| format!("Start failed: {}", e))
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Monitoring stack started successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceStop { config, remove_volumes } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .stop_with_volumes(remove_volumes)
+                                .map_err(|e| format!("Stop failed: {}", e))
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    if remove_volumes {
+                                        "Monitoring stack stopped and volumes removed".to_string()
+                                    } else {
+                                        "Monitoring stack stopped successfully".to_string()
+                                    },
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceStatus { config } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .status()
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Status check completed".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Status check failed: {}", e)));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceBackup { config, output_dir } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .backup(output_dir)
+                                .map(|output| WorkerResponse::SshCommandOutput(
+                                    format!("Backup completed: {}", output),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Backup failed: {}", e)));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceRestore { config, archive_path, force } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let deployer = IoTDeployer::new(config);
+                            let result = deployer
+                                .restore(archive_path, force)
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Restore completed successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Restore failed: {}", e)));
                             let _ = response_sender.send(result);
                         });
                         continue;

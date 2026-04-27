@@ -13,7 +13,11 @@ use ratatui::{
     Frame, Terminal,
 };
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
+    backend::{
+        deployment::DeploymentConfig,
+        opcua_poller::OpcUaPoller,
+        ConfigGenerator, ServiceType,
+    },
     TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 use std::collections::HashMap;
@@ -190,6 +194,17 @@ struct App {
     opcua_config_selection: usize,
     iot_config_selection: usize,
     actions_selection: usize,
+    device_selection: usize,
+
+    // Device deployment fields
+    device_name: String,
+    key_file: String,
+    git_branch: String,
+    minimal: bool,
+    local_transfer: bool,
+
+    // Confirmation for destructive operations
+    pending_confirmation: Option<String>,
 }
 
 impl App {
@@ -236,6 +251,13 @@ impl App {
             opcua_config_selection: 0,
             iot_config_selection: 0,
             actions_selection: 0,
+            device_selection: 0,
+            device_name: String::new(),
+            key_file: String::new(),
+            git_branch: "master".to_string(),
+            minimal: false,
+            local_transfer: false,
+            pending_confirmation: None,
         };
 
         app.load_directory_entries();
@@ -339,34 +361,42 @@ impl App {
     }
 
     fn process_worker_responses(&mut self) {
-        if let Some(worker) = &self.worker {
-            if let Some(response) = worker.try_get_response() {
-                // Set working state for non-progress responses
-                if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
-                    self.is_working = false;
-                }
+        let responses: Vec<WorkerResponse> = if let Some(worker) = &self.worker {
+            let mut responses = Vec::new();
+            while let Some(response) = worker.try_get_response() {
+                responses.push(response);
+            }
+            responses
+        } else {
+            return;
+        };
 
-                // Process the response
-                match response {
-                    WorkerResponse::SshCommandOutput(output) => {
-                        self.add_status_message(format!(
-                            "✅ Command completed successfully:\n{}",
-                            output
-                        ));
-                    }
-                    WorkerResponse::SshError(err) => {
-                        self.add_status_message(format!("❌ SSH error: {}", err));
-                    }
-                    WorkerResponse::ProgressUpdate(progress) => {
-                        self.add_status_message(progress);
-                    }
-                    WorkerResponse::Error(err) => {
-                        self.add_status_message(format!("❌ Error: {}", err));
-                    }
-                    _ => {
-                        // Handle other response types as needed
-                        self.add_status_message("✅ Operation completed".to_string());
-                    }
+        for response in responses {
+            if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
+                self.is_working = false;
+            }
+
+            match response {
+                WorkerResponse::SshCommandOutput(output) => {
+                    self.add_status_message(format!(
+                        "✅ Command completed successfully:\n{}",
+                        output
+                    ));
+                }
+                WorkerResponse::SshError(err) => {
+                    self.add_status_message(format!("❌ SSH error: {}", err));
+                }
+                WorkerResponse::ProgressUpdate(progress) => {
+                    self.add_status_message(progress);
+                }
+                WorkerResponse::Error(err) => {
+                    self.add_status_message(format!("❌ Error: {}", err));
+                }
+                WorkerResponse::ConfirmationNeeded(message) => {
+                    self.add_status_message(format!("⚠️  {}", message));
+                }
+                _ => {
+                    self.add_status_message("✅ Operation completed".to_string());
                 }
             }
         }
@@ -869,6 +899,41 @@ impl App {
             self.add_status_message("❌ Worker not available".to_string());
         }
     }
+
+    fn build_deployment_config(&self) -> DeploymentConfig {
+        let host = self.config.iot_host.clone();
+        let user = self.config.iot_username.clone();
+
+        let (hostname, port) = if host.contains(':') {
+            let parts: Vec<&str> = host.splitn(2, ':').collect();
+            let port = parts.get(1).and_then(|p| p.parse::<u16>().ok()).unwrap_or(22);
+            (parts[0].to_string(), port)
+        } else {
+            (host, 22)
+        };
+
+        let mut config = DeploymentConfig::new(hostname, user).with_port(port);
+
+        if !self.config.iot_password.is_empty() {
+            config = config.with_password(self.config.iot_password.clone());
+        }
+
+        if !self.key_file.is_empty() {
+            config = config.with_key_file(self.key_file.clone());
+        }
+
+        if !self.git_branch.is_empty() {
+            config = config.with_git_branch(self.git_branch.clone());
+        }
+
+        if !self.device_name.is_empty() {
+            let hostname_slug =
+                sie_generate_config::backend::ships::derive_hostname(&self.device_name);
+            config = config.with_ship_name(self.device_name.clone(), hostname_slug);
+        }
+
+        config
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -901,81 +966,81 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
-        // Process worker responses before drawing
         app.process_worker_responses();
 
         terminal.draw(|f| ui(f, &mut app))?;
 
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                match app.input_mode {
-                    InputMode::Normal => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
-                        // Global status message scrolling
-                        KeyCode::PageUp => {
-                            if let Some(selected) = app.status_list_state.selected() {
-                                if selected > 0 {
-                                    app.status_list_state.select(Some(selected - 1));
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match app.input_mode {
+                        InputMode::Normal => match key.code {
+                            KeyCode::Char('q') => return Ok(()),
+                            KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
+                            KeyCode::PageUp => {
+                                if let Some(selected) = app.status_list_state.selected() {
+                                    if selected > 0 {
+                                        app.status_list_state.select(Some(selected - 1));
+                                    }
+                                } else if !app.status_messages.is_empty() {
+                                    app.status_list_state
+                                        .select(Some(app.status_messages.len() - 1));
                                 }
-                            } else if !app.status_messages.is_empty() {
-                                app.status_list_state
-                                    .select(Some(app.status_messages.len() - 1));
                             }
-                        }
-                        KeyCode::PageDown => {
-                            if let Some(selected) = app.status_list_state.selected() {
-                                if selected < app.status_messages.len().saturating_sub(1) {
-                                    app.status_list_state.select(Some(selected + 1));
+                            KeyCode::PageDown => {
+                                if let Some(selected) = app.status_list_state.selected() {
+                                    if selected < app.status_messages.len().saturating_sub(1) {
+                                        app.status_list_state.select(Some(selected + 1));
+                                    }
+                                } else if !app.status_messages.is_empty() {
+                                    app.status_list_state.select(Some(0));
                                 }
-                            } else if !app.status_messages.is_empty() {
-                                app.status_list_state.select(Some(0));
                             }
-                        }
-                        KeyCode::Tab | KeyCode::Right => {
-                            app.current_tab = match app.current_tab {
-                                Tab::Folder => Tab::Files,
-                                Tab::Files => Tab::OpcUaConfig,
-                                Tab::OpcUaConfig => Tab::IoTConfig,
-                                Tab::IoTConfig => Tab::Config,
-                                Tab::Config => Tab::Actions,
-                                Tab::Actions => Tab::Folder,
-                            };
-                        }
-                        KeyCode::Left => {
-                            app.current_tab = match app.current_tab {
-                                Tab::Folder => Tab::Actions,
-                                Tab::Files => Tab::Folder,
-                                Tab::OpcUaConfig => Tab::Files,
-                                Tab::IoTConfig => Tab::OpcUaConfig,
-                                Tab::Config => Tab::IoTConfig,
-                                Tab::Actions => Tab::Config,
-                            };
-                        }
-                        KeyCode::Char('1') => app.current_tab = Tab::Folder,
-                        KeyCode::Char('2') => app.current_tab = Tab::Files,
-                        KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
-                        KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
-                        KeyCode::Char('5') => app.current_tab = Tab::Config,
-                        KeyCode::Char('6') => app.current_tab = Tab::Actions,
-                        _ => match app.current_tab {
-                            Tab::Folder => handle_folder_input(&mut app, key.code),
-                            Tab::Files => handle_files_input(&mut app, key.code),
-                            Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
-                            Tab::IoTConfig => handle_iot_input(&mut app, key.code),
-                            Tab::Config => handle_config_input(&mut app, key.code),
-                            Tab::Actions => handle_actions_input(&mut app, key.code),
+                            KeyCode::Tab | KeyCode::Right => {
+                                app.current_tab = match app.current_tab {
+                                    Tab::Folder => Tab::Files,
+                                    Tab::Files => Tab::OpcUaConfig,
+                                    Tab::OpcUaConfig => Tab::IoTConfig,
+                                    Tab::IoTConfig => Tab::Config,
+                                    Tab::Config => Tab::Actions,
+                                    Tab::Actions => Tab::Folder,
+                                };
+                            }
+                            KeyCode::Left => {
+                                app.current_tab = match app.current_tab {
+                                    Tab::Folder => Tab::Actions,
+                                    Tab::Files => Tab::Folder,
+                                    Tab::OpcUaConfig => Tab::Files,
+                                    Tab::IoTConfig => Tab::OpcUaConfig,
+                                    Tab::Config => Tab::IoTConfig,
+                                    Tab::Actions => Tab::Config,
+                                };
+                            }
+                            KeyCode::Char('1') => app.current_tab = Tab::Folder,
+                            KeyCode::Char('2') => app.current_tab = Tab::Files,
+                            KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
+                            KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
+                            KeyCode::Char('5') => app.current_tab = Tab::Config,
+                            KeyCode::Char('6') => app.current_tab = Tab::Actions,
+                            _ => match app.current_tab {
+                                Tab::Folder => handle_folder_input(&mut app, key.code),
+                                Tab::Files => handle_files_input(&mut app, key.code),
+                                Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
+                                Tab::IoTConfig => handle_iot_input(&mut app, key.code),
+                                Tab::Config => handle_config_input(&mut app, key.code),
+                                Tab::Actions => handle_actions_input(&mut app, key.code),
+                            },
                         },
-                    },
-                    InputMode::Editing => match key.code {
-                        KeyCode::Enter => app.finish_editing(),
-                        KeyCode::Esc => app.cancel_editing(),
-                        KeyCode::Char(c) => app.input_buffer.push(c),
-                        KeyCode::Backspace => {
-                            app.input_buffer.pop();
-                        }
-                        _ => {}
-                    },
+                        InputMode::Editing => match key.code {
+                            KeyCode::Enter => app.finish_editing(),
+                            KeyCode::Esc => app.cancel_editing(),
+                            KeyCode::Char(c) => app.input_buffer.push(c),
+                            KeyCode::Backspace => {
+                                app.input_buffer.pop();
+                            }
+                            _ => {}
+                        },
+                    }
                 }
             }
         }
