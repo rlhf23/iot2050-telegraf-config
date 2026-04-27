@@ -587,8 +587,37 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await createSession();
             await loadFiles();
+            await loadCredentials();
             setupEventListeners();
         });
+
+        // Load stored OPC UA credentials
+        async function loadCredentials() {
+            try {
+                const response = await fetch('/api/opcua/credentials', { cache: 'no-cache' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        if (data.endpoint) {
+                            document.getElementById('opcua-ip').value = data.endpoint;
+                        }
+                        if (data.username) {
+                            document.getElementById('opcua-username').value = data.username;
+                        }
+                        if (data.password) {
+                            document.getElementById('opcua-password').value = data.password;
+                        }
+                        if (data.anonymous) {
+                            document.getElementById('anonymous-auth').checked = true;
+                            document.getElementById('opcua-username').disabled = true;
+                            document.getElementById('opcua-password').disabled = true;
+                        }
+                    }
+                }
+            } catch (error) {
+                // Credentials not available yet — that's fine, user will fill in manually
+            }
+        }
 
         // Create session
         async function createSession() {
