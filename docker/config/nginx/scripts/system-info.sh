@@ -51,7 +51,7 @@ CONTAINER_COUNT=$(curl -s --unix-socket /var/run/docker.sock \
 # Get current system time (human readable)
 SYSTEM_TIME=$(date '+%Y-%m-%d %H:%M:%S')
 UTC_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
-TIMEZONE=$(cat /etc/timezone 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's|.*/zone/||' || echo "UTC")
+UTC_OFFSET=$(date +%z)
 
 # Output JSON
 cat <<EOF
@@ -64,7 +64,7 @@ cat <<EOF
   "load_average": "$LOAD_AVG",
   "system_time": "$SYSTEM_TIME",
   "utc_time": "$UTC_TIME",
-  "timezone": "$TIMEZONE",
+  "utc_offset": "$UTC_OFFSET",
   "memory": {
     "total_mb": $MEM_TOTAL,
     "used_mb": $MEM_USED,
