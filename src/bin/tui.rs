@@ -1616,8 +1616,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         .margin(1)
         .constraints([
             Constraint::Length(3),  // Tabs
-            Constraint::Min(0),     // Main content
-            Constraint::Length(25), // Status messages - increased for better visibility
+            Constraint::Min(0),    // Main content (full height)
         ])
         .split(f.area());
 
@@ -1674,9 +1673,6 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Actions => render_actions_tab(f, app, chunks[1]),
     }
 
-    // Render status messages
-    render_status_messages(f, app, chunks[2]);
-
     // Render help popup if needed
     if app.show_help {
         render_help_popup(f, app);
@@ -1693,6 +1689,11 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
         .split(area);
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(10), Constraint::Min(0)])
+        .split(chunks[1]);
 
     // Directory listing
     let items: Vec<ListItem> = app
@@ -1752,14 +1753,21 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
-    f.render_widget(help_block, chunks[1]);
+    f.render_widget(help_block, right_chunks[0]);
+
+    render_status_messages(f, app, right_chunks[1]);
 }
 
 fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
         .split(area);
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(10)])
+        .split(chunks[1]);
 
     // File list with per-file configuration
     let items: Vec<ListItem> = app
@@ -1829,7 +1837,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
         let edit_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(chunks[1]);
+            .split(right_chunks[0]);
 
         // Determine what we're editing
         let edit_title = if let Some(ref field) = app.current_edit_field {
@@ -1886,14 +1894,20 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
         let help_block = Paragraph::new(instructions)
             .block(Block::default().borders(Borders::ALL).title("Controls"));
-        f.render_widget(help_block, chunks[1]);
+        f.render_widget(help_block, right_chunks[0]);
     }
+
+    render_status_messages(f, app, right_chunks[1]);
 }
 
 fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([
+            Constraint::Length(24), // Config fields (6 x 3 + border)
+            Constraint::Length(12), // Controls
+            Constraint::Min(0),     // Status messages
+        ])
         .split(area);
 
     // Configuration fields
@@ -2018,12 +2032,19 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(help_block, chunks[1]);
+
+    // Status messages
+    render_status_messages(f, app, chunks[2]);
 }
 
 fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([
+            Constraint::Length(12), // Config fields (3 x 3 + title)
+            Constraint::Length(8),  // Controls
+            Constraint::Min(0),    // Status messages
+        ])
         .split(area);
 
     // Configuration fields
@@ -2087,12 +2108,15 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let help_block = Paragraph::new(instructions)
         .block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(help_block, chunks[1]);
+
+    // Status messages
+    render_status_messages(f, app, chunks[2]);
 }
 
 fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .constraints([Constraint::Min(0), Constraint::Length(8), Constraint::Min(0)])
         .split(area);
 
     // Configuration display
@@ -2135,39 +2159,7 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(controls).block(Block::default().borders(Borders::ALL).title("Controls"));
     f.render_widget(controls_block, control_chunks[0]);
 
-    // Status
-    let config_status = if app.generated_config.is_some() {
-        "✅ Configuration ready"
-    } else {
-        "⚠️  No configuration"
-    };
-
-    let selected_count = app.selected_files.iter().filter(|&&x| x).count();
-    let auth_mode = if app.anonymous_mode {
-        "Anonymous"
-    } else {
-        "Username/Password"
-    };
-
-    let status = vec![
-        Line::from("Status:"),
-        Line::from(""),
-        Line::from(config_status),
-        Line::from(format!("Files: {}", selected_count)),
-        Line::from(format!("Auth: {}", auth_mode)),
-        Line::from(format!(
-            "IoT: {}",
-            if app.config.iot_host.is_empty() {
-                "Not set"
-            } else {
-                "Configured"
-            }
-        )),
-    ];
-
-    let status_block =
-        Paragraph::new(status).block(Block::default().borders(Borders::ALL).title("Status"));
-    f.render_widget(status_block, control_chunks[1]);
+    render_status_messages(f, app, control_chunks[1]);
 }
 
 fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -2175,6 +2167,11 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(14), Constraint::Min(0)])
+        .split(chunks[1]);
 
     let selected_field = DeviceField::from_index(app.device_selection);
 
@@ -2288,7 +2285,9 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let config_block =
         Paragraph::new(config).block(Block::default().borders(Borders::ALL).title("Config"));
-    f.render_widget(config_block, chunks[1]);
+    f.render_widget(config_block, right_chunks[0]);
+
+    render_status_messages(f, app, right_chunks[1]);
 }
 
 fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
@@ -2296,6 +2295,11 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
+
+    let right_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(10), Constraint::Min(0)])
+        .split(chunks[1]);
 
     // Actions with selection bar
     let selected_field = ActionsField::from_index(app.actions_selection);
@@ -2392,7 +2396,9 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     let summary_block =
         Paragraph::new(summary).block(Block::default().borders(Borders::ALL).title("Summary"));
-    f.render_widget(summary_block, chunks[1]);
+    f.render_widget(summary_block, right_chunks[0]);
+
+    render_status_messages(f, app, right_chunks[1]);
 }
 
 fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'static> {
