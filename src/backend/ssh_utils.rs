@@ -1223,7 +1223,21 @@ pub fn run_command(
     description: &str,
     password: Option<&String>,
 ) -> Result<(), TelegrafError> {
-    println!("🔧 {}", description);
+    run_command_with_progress(session, command, description, password, None)
+}
+
+pub fn run_command_with_progress(
+    session: &Session,
+    command: &str,
+    description: &str,
+    password: Option<&String>,
+    progress_sender: Option<&std::sync::mpsc::Sender<String>>,
+) -> Result<(), TelegrafError> {
+    if let Some(sender) = progress_sender {
+        let _ = sender.send(format!("🔧 {}", description));
+    } else {
+        println!("🔧 {}", description);
+    }
 
     let command = if command.contains("sudo ") && password.is_some() {
         let pwd = password.unwrap();
@@ -1250,7 +1264,11 @@ pub fn run_command(
     let mut stderr_buf = [0u8; 1024];
     loop {
         if start_time.elapsed() > timeout {
-            println!("⏰ Command timed out after 5 minutes");
+            if let Some(sender) = progress_sender {
+                let _ = sender.send("⏰ Command timed out after 5 minutes".to_string());
+            } else {
+                println!("⏰ Command timed out after 5 minutes");
+            }
             channel.close().ok();
             return Err(TelegrafError::SshOperationError(format!(
                 "Command timed out: {}",
@@ -1260,16 +1278,28 @@ pub fn run_command(
         match stdout_reader.read(&mut stdout_buf) {
             Ok(n) if n > 0 => {
                 let s = String::from_utf8_lossy(&stdout_buf[..n]);
-                print!("{}", s);
-                std::io::stdout().flush().ok();
+                if let Some(sender) = progress_sender {
+                    for line in s.lines() {
+                        let _ = sender.send(line.to_string());
+                    }
+                } else {
+                    print!("{}", s);
+                    std::io::stdout().flush().ok();
+                }
             }
             _ => {}
         }
         match stderr_reader.read(&mut stderr_buf) {
             Ok(n) if n > 0 => {
                 let s = String::from_utf8_lossy(&stderr_buf[..n]);
-                eprint!("{}", s);
-                std::io::stderr().flush().ok();
+                if let Some(sender) = progress_sender {
+                    for line in s.lines() {
+                        let _ = sender.send(line.to_string());
+                    }
+                } else {
+                    eprint!("{}", s);
+                    std::io::stderr().flush().ok();
+                }
             }
             _ => {}
         }

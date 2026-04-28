@@ -1,3 +1,4 @@
+
 //! Backup and restore functionality for monitoring stack
 //!
 //! This module provides comprehensive backup and restore operations
@@ -12,7 +13,16 @@ use std::fs;
 use std::io::Read;
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::mpsc::Sender;
 use std::time::Duration;
+
+fn progress_send(sender: Option<&Sender<String>>, msg: &str) {
+    if let Some(s) = sender {
+        let _ = s.send(msg.to_string());
+    } else {
+        println!("{}", msg);
+    }
+}
 
 /// Generate a backup name with timestamp
 pub fn generate_backup_name() -> String {
@@ -191,10 +201,18 @@ pub fn backup(
     config: &DeploymentConfig,
     output_dir: Option<String>,
 ) -> Result<String, TelegrafError> {
+    backup_with_progress(config, output_dir, None)
+}
+
+pub fn backup_with_progress(
+    config: &DeploymentConfig,
+    output_dir: Option<String>,
+    progress_sender: Option<&Sender<String>>,
+) -> Result<String, TelegrafError> {
     use chrono::Utc;
     use std::process::Command;
 
-    println!("💾 Starting comprehensive backup...");
+    progress_send(progress_sender, "💾 Starting comprehensive backup...");
 
     let session = create_ssh_session(config)?;
 
@@ -206,10 +224,10 @@ pub fn backup(
         TelegrafError::ConfigError(format!("Failed to create backup directory: {}", e))
     })?;
 
-    println!("📂 Backup directory: {}", local_backup_dir);
+    progress_send(progress_sender, &format!("📂 Backup directory: {}", local_backup_dir));
 
     // 1. Backup InfluxDB data
-    println!("\n📊 Backing up InfluxDB data...");
+    progress_send(progress_sender, "\n📊 Backing up InfluxDB data...");
     let influx_backup_remote = format!("/tmp/influx_backup_{}", timestamp);
 
     let token_cmd = "cd ~/monitoring && grep INFLUXDB_TOKEN= .env | cut -d'=' -f2";
@@ -251,7 +269,7 @@ pub fn backup(
     )?;
 
     // 2. Backup Grafana dashboards via API
-    println!("\n📈 Backing up Grafana dashboards...");
+    progress_send(progress_sender, "\n📈 Backing up Grafana dashboards...");
     let grafana_local = format!("{}/grafana", local_backup_dir);
     fs::create_dir_all(&grafana_local)?;
 
@@ -319,16 +337,16 @@ pub fn backup(
                 dashboard_count += 1;
             }
             Err(e) => {
-                eprintln!("   ⚠️  Failed to transform dashboard {}: {}", uid, e);
+                progress_send(progress_sender, &format!("   ⚠️  Failed to transform dashboard {}: {}", uid, e));
                 // Still save the raw file for manual recovery
             }
         }
     }
 
-    println!("   Exported {} dashboards", dashboard_count);
+    progress_send(progress_sender, &format!("   Exported {} dashboards", dashboard_count));
 
     // Export datasources
-    println!("   Exporting datasources...");
+    progress_send(progress_sender, "   Exporting datasources...");
     let datasources_cmd = format!(
         "curl -s -u {}:'{}' 'http://localhost:3000/api/datasources'",
         admin_user, admin_pass
@@ -343,7 +361,7 @@ pub fn backup(
     fs::write(&datasources_file, &datasources_json)?;
 
     // 3. Backup Prometheus data
-    println!("\n📉 Backing up Prometheus data...");
+    progress_send(progress_sender, "\n📉 Backing up Prometheus data...");
     let prometheus_local = format!("{}/prometheus", local_backup_dir);
     fs::create_dir_all(&prometheus_local)?;
 
@@ -373,7 +391,7 @@ pub fn backup(
     )?;
 
     // 4. Backup configuration files
-    println!("\n⚙️  Backing up configuration files...");
+    progress_send(progress_sender, "\n⚙️  Backing up configuration files...");
     let config_local = format!("{}/config", local_backup_dir);
     fs::create_dir_all(&config_local)?;
 
@@ -400,7 +418,7 @@ pub fn backup(
     fs::write(format!("{}/backup_info.txt", local_backup_dir), metadata)?;
 
     // 6. Create compressed archive
-    println!("\n📦 Creating compressed archive...");
+    progress_send(progress_sender, "\n📦 Creating compressed archive...");
     let archive_name = format!("{}.tar.gz", backup_name);
     let output = Command::new("tar")
         .args(&["-czf", &archive_name, "-C", ".", &backup_name])
@@ -414,9 +432,9 @@ pub fn backup(
         )));
     }
 
-    println!("\n✅ Backup completed successfully!");
-    println!("📦 Archive: {}", archive_name);
-    println!("📂 Extracted backup: {}", local_backup_dir);
+    progress_send(progress_sender, "\n✅ Backup completed successfully!");
+    progress_send(progress_sender, &format!("📦 Archive: {}", archive_name));
+    progress_send(progress_sender, &format!("📂 Extracted backup: {}", local_backup_dir));
 
     Ok(format!("Backup saved to: {}", archive_name))
 }
@@ -427,10 +445,19 @@ pub fn restore(
     archive_path: String,
     force: bool,
 ) -> Result<(), TelegrafError> {
-    println!("♻️  Starting restore from backup...");
-    println!("📦 Archive: {}", archive_path);
+    restore_with_progress(config, archive_path, force, None)
+}
+
+pub fn restore_with_progress(
+    config: &DeploymentConfig,
+    archive_path: String,
+    force: bool,
+    progress_sender: Option<&Sender<String>>,
+) -> Result<(), TelegrafError> {
+    progress_send(progress_sender, "♻️  Starting restore from backup...");
+    progress_send(progress_sender, &format!("📦 Archive: {}", archive_path));
     if force {
-        println!("⚠️  Force mode enabled - existing buckets will be deleted");
+        progress_send(progress_sender, "⚠️  Force mode enabled - existing buckets will be deleted");
     }
 
     // Verify archive exists
@@ -444,13 +471,13 @@ pub fn restore(
     let session = create_ssh_session(config)?;
 
     // 1. Upload tarball to device
-    println!("📤 Uploading archive to device...");
+    progress_send(progress_sender, "📤 Uploading archive to device...");
     let remote_path = "/tmp/monitoring_restore.tar.gz";
     upload_file(&session, &archive_path, remote_path)?;
-    println!("✅ Archive uploaded to: {}", remote_path);
+    progress_send(progress_sender, &format!("✅ Archive uploaded to: {}", remote_path));
 
     // 2. Extract on device
-    println!("📦 Extracting archive on device...");
+    progress_send(progress_sender, "📦 Extracting archive on device...");
 
     // Discover the top-level directory inside the archive (doesn't depend on archive filename)
     let mut channel = session.channel_session()?;
@@ -481,7 +508,7 @@ pub fn restore(
     )?;
 
     // 3. Check if InfluxDB container is running
-    println!("\n🔍 Checking if containers are running...");
+    progress_send(progress_sender, "\n🔍 Checking if containers are running...");
     let mut channel = session.channel_session()?;
     channel.exec("docker ps --filter name=influxdb --format '{{.Names}}'")?;
     let mut container_status = String::new();
@@ -494,10 +521,10 @@ pub fn restore(
                 .to_string(),
         ));
     }
-    println!("✅ InfluxDB container is running");
+    progress_send(progress_sender, "✅ InfluxDB container is running");
 
     // 4. Restore InfluxDB data
-    println!("\n📊 Restoring InfluxDB data...");
+    progress_send(progress_sender, "\n📊 Restoring InfluxDB data...");
     let influx_backup_dir = format!("{}/influxdb", extract_dir);
 
     let mut channel = session.channel_session()?;
@@ -528,7 +555,7 @@ pub fn restore(
             .unwrap_or("my-org");
 
         if force {
-            println!("🔧 Deleting existing buckets in org '{}'...", org);
+            progress_send(progress_sender, &format!("🔧 Deleting existing buckets in org '{}'...", org));
             let mut channel = session.channel_session()?;
             channel.exec(&format!(
                 "docker exec influxdb influx bucket list -t {} -o {}",
@@ -545,7 +572,7 @@ pub fn restore(
                     if bucket_name.starts_with('_') {
                         continue;
                     }
-                    println!("   Deleting bucket: {}", bucket_name);
+                    progress_send(progress_sender, &format!("   Deleting bucket: {}", bucket_name));
                     let mut channel = session.channel_session()?;
                     channel.exec(&format!(
                         "docker exec influxdb influx bucket delete -t {} -n {} -o {}",
@@ -555,9 +582,9 @@ pub fn restore(
                     channel.read_to_string(&mut result)?;
                     channel.wait_close()?;
                     if result.contains("Error") || result.contains("error") {
-                        println!("   ⚠️  Could not delete {}: {}", bucket_name, result.trim());
+                        progress_send(progress_sender, &format!("   ⚠️  Could not delete {}: {}", bucket_name, result.trim()));
                     } else {
-                        println!("   ✓ Deleted bucket: {}", bucket_name);
+                        progress_send(progress_sender, &format!("   ✓ Deleted bucket: {}", bucket_name));
                     }
                 }
             }
@@ -573,7 +600,7 @@ pub fn restore(
             config.password.as_ref(),
         )?;
 
-        println!("🔧 Running InfluxDB restore...");
+        progress_send(progress_sender, "🔧 Running InfluxDB restore...");
         let mut channel = session.channel_session()?;
         channel.exec(&format!(
             "docker exec influxdb influx restore -t {} /tmp/influx_restore",
@@ -586,16 +613,16 @@ pub fn restore(
         channel.wait_close()?;
         channel.stderr().read_to_string(&mut stderr).ok();
 
-        println!("{}", stdout);
+        progress_send(progress_sender, &format!("{}", stdout));
         if !stderr.is_empty() {
-            eprintln!("{}", stderr);
+            progress_send(progress_sender, &format!("stderr: {}", stderr));
         }
 
         let exit_status = channel.exit_status()?;
         if exit_status != 0 {
-            println!("\n⚠️  InfluxDB restore returned exit code: {}", exit_status);
+            progress_send(progress_sender, &format!("\n⚠️  InfluxDB restore returned exit code: {}", exit_status));
         } else {
-            println!("✅ InfluxDB restore completed");
+            progress_send(progress_sender, "✅ InfluxDB restore completed");
         }
 
         run_command(
@@ -605,11 +632,11 @@ pub fn restore(
             config.password.as_ref(),
         )?;
     } else {
-        println!("⏭️  No InfluxDB backup found, skipping");
+        progress_send(progress_sender, "⏭️  No InfluxDB backup found, skipping");
     }
 
     // 5. Restore Grafana dashboards and datasources
-    println!("\n📈 Restoring Grafana data...");
+    progress_send(progress_sender, "\n📈 Restoring Grafana data...");
     let grafana_backup_dir = format!("{}/grafana", extract_dir);
     let dashboards_dir = format!("{}/dashboards", grafana_backup_dir);
 
@@ -620,7 +647,7 @@ pub fn restore(
     channel.wait_close()?;
 
     if !grafana_status.trim().contains("grafana") {
-        println!("⚠️  Grafana container is not running, skipping Grafana restore");
+        progress_send(progress_sender, "⚠️  Grafana container is not running, skipping Grafana restore");
     } else {
         let mut channel = session.channel_session()?;
         channel.exec(&format!("ls {} 2>/dev/null", dashboards_dir))?;
@@ -654,7 +681,7 @@ pub fn restore(
             channel.wait_close()?;
 
             if !dashboard_list.trim().is_empty() {
-                println!("   Restoring dashboards...");
+                progress_send(progress_sender, "   Restoring dashboards...");
                 for dashboard_file in dashboard_list.lines() {
                     let dashboard_file = dashboard_file.trim();
                     if dashboard_file.is_empty() {
@@ -671,9 +698,9 @@ pub fn restore(
                     channel.read_to_string(&mut result)?;
                     channel.wait_close()?;
                     if result.contains("\"success\":true") || result.contains("\"id\"") {
-                        println!("   ✓ Restored dashboard: {}", filename);
+                        progress_send(progress_sender, &format!("   ✓ Restored dashboard: {}", filename));
                     } else {
-                        println!("   ⚠️  Failed to restore {}: {}", filename, result.trim());
+                        progress_send(progress_sender, &format!("   ⚠️  Failed to restore {}: {}", filename, result.trim()));
                     }
                 }
             }
@@ -686,7 +713,7 @@ pub fn restore(
             channel.wait_close()?;
 
             if !ds_exists.trim().is_empty() {
-                println!("   Restoring datasources...");
+                progress_send(progress_sender, "   Restoring datasources...");
                 let mut channel = session.channel_session()?;
                 channel.exec(&format!("cat {}", datasources_file))?;
                 let mut ds_content = String::new();
@@ -755,26 +782,26 @@ pub fn restore(
                     channel.read_to_string(&mut result)?;
                     channel.wait_close()?;
                     if result.contains("\"success\":true") || result.contains("\"id\"") {
-                        println!("   ✓ Restored datasource: {}", name);
+                        progress_send(progress_sender, &format!("   ✓ Restored datasource: {}", name));
                     } else if result.contains("already exists") {
-                        println!("   ⚠️  Datasource '{}' already exists, skipped", name);
+                        progress_send(progress_sender, &format!("   ⚠️  Datasource '{}' already exists, skipped", name));
                     } else {
-                        println!(
+                        progress_send(progress_sender, &format!(
                             "   ⚠️  Failed to restore datasource {}: {}",
                             name,
                             result.trim()
-                        );
+                        ));
                     }
                 }
             }
-            println!("✅ Grafana restore completed");
+            progress_send(progress_sender, "✅ Grafana restore completed");
         } else {
-            println!("⏭️  No Grafana backup found, skipping");
+            progress_send(progress_sender, "⏭️  No Grafana backup found, skipping");
         }
     }
 
     // 6. Cleanup
-    println!("\n🧹 Cleaning up...");
+    progress_send(progress_sender, "\n🧹 Cleaning up...");
     run_command(
         &session,
         &format!("rm -rf {} {}", extract_dir, remote_path),
@@ -782,6 +809,6 @@ pub fn restore(
         config.password.as_ref(),
     )?;
 
-    println!("\n✅ Restore process completed");
+    progress_send(progress_sender, "\n✅ Restore process completed");
     Ok(())
 }

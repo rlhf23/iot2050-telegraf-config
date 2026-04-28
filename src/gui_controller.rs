@@ -237,6 +237,10 @@ impl GuiController {
                         self.status_messages.push(format!("Worker error: {}", err));
                         self.is_working = false;
                     }
+                    WorkerResponse::ConfirmationNeeded(message) => {
+                        self.status_messages.push(format!("⚠️  {}", message));
+                        self.is_working = false;
+                    }
                 }
                 should_repaint = true;
             } else if self.is_working {

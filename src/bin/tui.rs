@@ -13,7 +13,11 @@ use ratatui::{
     Frame, Terminal,
 };
 use sie_generate_config::{
-    backend::{opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType},
+    backend::{
+        deployment::DeploymentConfig,
+        opcua_poller::OpcUaPoller,
+        ConfigGenerator, ServiceType,
+    },
     TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 use std::collections::HashMap;
@@ -29,6 +33,7 @@ enum Tab {
     Files,
     OpcUaConfig,
     IoTConfig,
+    Device,
     Config,
     Actions,
 }
@@ -54,6 +59,9 @@ enum EditField {
     IoTHost,
     IoTUsername,
     IoTPassword,
+    DeviceName,
+    KeyFile,
+    GitBranch,
     FileNamespace(usize),
     FileIp(usize),
     FileInterval(usize),
@@ -86,7 +94,66 @@ enum ActionsField {
     RestartTelegraf,
     ServiceStatus,
     BackupGrafana,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DeviceActionField {
+    Provision,
+    Setup,
+    Update,
+    Start,
+    Stop,
+    Status,
+    Backup,
+    Restore,
     SyncTime,
+}
+
+impl DeviceActionField {
+    fn count() -> usize {
+        9
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::Provision,
+            1 => Self::Setup,
+            2 => Self::Update,
+            3 => Self::Start,
+            4 => Self::Stop,
+            5 => Self::Status,
+            6 => Self::Backup,
+            7 => Self::Restore,
+            8 => Self::SyncTime,
+            _ => Self::Provision,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DeviceConfigField {
+    DeviceName,
+    KeyFile,
+    GitBranch,
+    Minimal,
+    LocalTransfer,
+}
+
+impl DeviceConfigField {
+    fn count() -> usize {
+        5
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::DeviceName,
+            1 => Self::KeyFile,
+            2 => Self::GitBranch,
+            3 => Self::Minimal,
+            4 => Self::LocalTransfer,
+            _ => Self::DeviceName,
+        }
+    }
 }
 
 impl OpcUaConfigField {
@@ -124,7 +191,7 @@ impl IoTConfigField {
 
 impl ActionsField {
     fn count() -> usize {
-        9 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana, SyncTime
+        8 // GenerateConfig, SendConfig, ClearMessages, TelegrafStatus, TelegrafLogs, RestartTelegraf, ServiceStatus, BackupGrafana
     }
 
     fn from_index(index: usize) -> Self {
@@ -137,8 +204,7 @@ impl ActionsField {
             5 => Self::RestartTelegraf,
             6 => Self::ServiceStatus,
             7 => Self::BackupGrafana,
-            8 => Self::SyncTime,
-            _ => Self::GenerateConfig, // Default fallback
+            _ => Self::GenerateConfig,
         }
     }
 }
@@ -172,6 +238,9 @@ struct App {
     worker: Option<WorkerHandle>,
     is_working: bool,
 
+    // Status panel visibility
+    status_expanded: bool,
+
     // Anonymous mode
     anonymous_mode: bool,
 
@@ -190,6 +259,19 @@ struct App {
     opcua_config_selection: usize,
     iot_config_selection: usize,
     actions_selection: usize,
+    device_selection: usize,
+    device_config_selection: usize,
+    device_focus_right: bool,
+
+    // Device deployment fields
+    device_name: String,
+    key_file: String,
+    git_branch: String,
+    minimal: bool,
+    local_transfer: bool,
+
+    // Confirmation for destructive operations
+    pending_confirmation: Option<String>,
 }
 
 impl App {
@@ -227,6 +309,7 @@ impl App {
             show_help: false,
             worker: Some(WorkerHandle::new()),
             is_working: false,
+            status_expanded: false,
             anonymous_mode: false,
             file_configs: HashMap::new(),
             generated_config: None,
@@ -236,6 +319,15 @@ impl App {
             opcua_config_selection: 0,
             iot_config_selection: 0,
             actions_selection: 0,
+            device_selection: 0,
+            device_config_selection: 0,
+            device_focus_right: false,
+            device_name: String::new(),
+            key_file: String::new(),
+            git_branch: "master".to_string(),
+            minimal: false,
+            local_transfer: false,
+            pending_confirmation: None,
         };
 
         app.load_directory_entries();
@@ -325,48 +417,64 @@ impl App {
         }
     }
 
-    fn add_status_message(&mut self, message: String) {
+fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
-        // Increased buffer size to accommodate larger outputs like logs
-        if self.status_messages.len() > 50 {
-            self.status_messages.remove(0);
-        }
-        // Auto-scroll to the latest message
-        if !self.status_messages.is_empty() {
-            self.status_list_state
-                .select(Some(self.status_messages.len() - 1));
+        let len = self.status_messages.len();
+        let at_bottom = self
+            .status_list_state
+            .selected()
+            .map_or(true, |s| s >= len.saturating_sub(3));
+        if at_bottom && !self.status_messages.is_empty() {
+            self.status_list_state.select(Some(len - 1));
         }
     }
 
-    fn process_worker_responses(&mut self) {
-        if let Some(worker) = &self.worker {
-            if let Some(response) = worker.try_get_response() {
-                // Set working state for non-progress responses
-                if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
-                    self.is_working = false;
-                }
+    fn start_working(&mut self) {
+        self.is_working = true;
+        self.status_expanded = true;
+    }
 
-                // Process the response
-                match response {
-                    WorkerResponse::SshCommandOutput(output) => {
-                        self.add_status_message(format!(
-                            "✅ Command completed successfully:\n{}",
-                            output
-                        ));
-                    }
-                    WorkerResponse::SshError(err) => {
-                        self.add_status_message(format!("❌ SSH error: {}", err));
-                    }
-                    WorkerResponse::ProgressUpdate(progress) => {
-                        self.add_status_message(progress);
-                    }
-                    WorkerResponse::Error(err) => {
-                        self.add_status_message(format!("❌ Error: {}", err));
-                    }
-                    _ => {
-                        // Handle other response types as needed
-                        self.add_status_message("✅ Operation completed".to_string());
-                    }
+    fn stop_working(&mut self) {
+        self.is_working = false;
+    }
+
+    fn process_worker_responses(&mut self) {
+        let responses: Vec<WorkerResponse> = if let Some(worker) = &self.worker {
+            let mut responses = Vec::new();
+            while let Some(response) = worker.try_get_response() {
+                responses.push(response);
+            }
+            responses
+        } else {
+            return;
+        };
+
+        for response in responses {
+            if !matches!(response, WorkerResponse::ProgressUpdate(_)) {
+                self.stop_working();
+            }
+
+            match response {
+                WorkerResponse::SshCommandOutput(output) => {
+                    self.add_status_message(format!(
+                        "✅ Command completed successfully:\n{}",
+                        output
+                    ));
+                }
+                WorkerResponse::SshError(err) => {
+                    self.add_status_message(format!("❌ SSH error: {}", err));
+                }
+                WorkerResponse::ProgressUpdate(progress) => {
+                    self.add_status_message(progress);
+                }
+                WorkerResponse::Error(err) => {
+                    self.add_status_message(format!("❌ Error: {}", err));
+                }
+                WorkerResponse::ConfirmationNeeded(message) => {
+                    self.add_status_message(format!("⚠️  {}", message));
+                }
+                _ => {
+                    self.add_status_message("✅ Operation completed".to_string());
                 }
             }
         }
@@ -563,6 +671,9 @@ impl App {
             EditField::IoTHost => self.config.iot_host.clone(),
             EditField::IoTUsername => self.config.iot_username.clone(),
             EditField::IoTPassword => self.config.iot_password.clone(),
+            EditField::DeviceName => self.device_name.clone(),
+            EditField::KeyFile => self.key_file.clone(),
+            EditField::GitBranch => self.git_branch.clone(),
             EditField::FileNamespace(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
                     self.file_configs
@@ -662,6 +773,9 @@ impl App {
                 EditField::IoTHost => self.config.iot_host = self.input_buffer.clone(),
                 EditField::IoTUsername => self.config.iot_username = self.input_buffer.clone(),
                 EditField::IoTPassword => self.config.iot_password = self.input_buffer.clone(),
+                EditField::DeviceName => self.device_name = self.input_buffer.clone(),
+                EditField::KeyFile => self.key_file = self.input_buffer.clone(),
+                EditField::GitBranch => self.git_branch = self.input_buffer.clone(),
                 EditField::FileNamespace(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
                         let config = self
@@ -706,14 +820,14 @@ impl App {
     // Operational commands for Actions tab
     fn get_telegraf_status(&mut self) {
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🔍 Retrieving Telegraf status...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafStatus {
                     config: self.config.clone(),
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -723,7 +837,7 @@ impl App {
 
     fn get_telegraf_logs(&mut self) {
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("📋 Retrieving Telegraf logs (last 30 lines)...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::GetTelegrafLogs {
@@ -731,7 +845,7 @@ impl App {
                     lines: 30,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -750,7 +864,7 @@ impl App {
         }
 
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🔄 Restarting Telegraf service...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::RestartTelegraf {
@@ -759,7 +873,7 @@ impl App {
                     password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
@@ -853,7 +967,7 @@ impl App {
         }
 
         if self.worker.is_some() {
-            self.is_working = true;
+            self.start_working();
             self.add_status_message("🕐 Syncing system time to device...".to_string());
             if let Some(worker) = &self.worker {
                 if let Err(e) = worker.send_command(WorkerCommand::SyncTime {
@@ -862,12 +976,225 @@ impl App {
                     password,
                 }) {
                     self.add_status_message(format!("❌ Failed to send command: {}", e));
-                    self.is_working = false;
+                    self.stop_working();
                 }
             }
         } else {
             self.add_status_message("❌ Worker not available".to_string());
         }
+    }
+
+    fn device_provision(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("🚀 Provisioning device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceProvision {
+                config,
+                local_transfer: self.local_transfer,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_setup(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("🔧 Setting up device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceSetup {
+                config,
+                minimal: self.minimal,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_update(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("📦 Updating device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceUpdate {
+                config,
+                use_local: self.local_transfer,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_start(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("▶️ Starting monitoring stack...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceStart { config }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_stop(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+
+        if self.pending_confirmation.is_some() {
+            self.add_status_message("⚠️ Another confirmation is pending".to_string());
+            return;
+        }
+
+        self.pending_confirmation = Some("stop_normal".to_string());
+        self.add_status_message("⚠️ Stop monitoring stack? Press 'y' to confirm or 'n' to cancel. Press 'v' to stop and remove volumes.".to_string());
+    }
+
+    fn device_stop_with_volumes(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+
+        if self.pending_confirmation.is_some() {
+            self.add_status_message("⚠️ Another confirmation is pending".to_string());
+            return;
+        }
+
+        self.pending_confirmation = Some("stop_volumes".to_string());
+        self.add_status_message("⚠️ Stop and REMOVE ALL DATA? Press 'y' to confirm or 'n' to cancel.".to_string());
+    }
+
+    fn device_stop_confirmed(&mut self, remove_volumes: bool) {
+        self.pending_confirmation = None;
+        self.start_working();
+        if remove_volumes {
+            self.add_status_message("⏹️ Stopping monitoring stack and removing volumes...".to_string());
+        } else {
+            self.add_status_message("⏹️ Stopping monitoring stack...".to_string());
+        }
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceStop {
+                config,
+                remove_volumes,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_status(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("📊 Checking device status...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceStatus { config }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_backup(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("💾 Backing up device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceBackup {
+                config,
+                output_dir: None,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_restore(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+
+        if self.pending_confirmation.is_some() {
+            self.add_status_message("⚠️ Another confirmation is pending".to_string());
+            return;
+        }
+
+        self.pending_confirmation = Some("restore".to_string());
+        self.add_status_message("⚠️ Restore from backup? This will overwrite existing data. Press 'y' to confirm, 'n' to cancel.".to_string());
+    }
+
+    fn device_restore_confirmed(&mut self) {
+        self.pending_confirmation = None;
+        self.add_status_message("⚠️ Restore requires an archive path. Use the CLI for restore with a specific archive file.".to_string());
+    }
+
+    fn build_deployment_config(&self) -> DeploymentConfig {
+        let host = self.config.iot_host.clone();
+        let user = self.config.iot_username.clone();
+
+        let (hostname, port) = if host.contains(':') {
+            let parts: Vec<&str> = host.splitn(2, ':').collect();
+            let port = parts.get(1).and_then(|p| p.parse::<u16>().ok()).unwrap_or(22);
+            (parts[0].to_string(), port)
+        } else {
+            (host, 22)
+        };
+
+        let mut config = DeploymentConfig::new(hostname, user).with_port(port);
+
+        if !self.config.iot_password.is_empty() {
+            config = config.with_password(self.config.iot_password.clone());
+        }
+
+        if !self.key_file.is_empty() {
+            config = config.with_key_file(self.key_file.clone());
+        }
+
+        if !self.git_branch.is_empty() {
+            config = config.with_git_branch(self.git_branch.clone());
+        }
+
+        if !self.device_name.is_empty() {
+            let hostname_slug =
+                sie_generate_config::backend::ships::derive_hostname(&self.device_name);
+            config = config.with_ship_name(self.device_name.clone(), hostname_slug);
+        }
+
+        config
     }
 }
 
@@ -901,81 +1228,126 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<()> {
     loop {
-        // Process worker responses before drawing
         app.process_worker_responses();
 
         terminal.draw(|f| ui(f, &mut app))?;
 
-        if let Event::Key(key) = event::read()? {
-            if key.kind == KeyEventKind::Press {
-                match app.input_mode {
-                    InputMode::Normal => match key.code {
-                        KeyCode::Char('q') => return Ok(()),
-                        KeyCode::Char('h') | KeyCode::F(1) => app.show_help = !app.show_help,
-                        // Global status message scrolling
-                        KeyCode::PageUp => {
-                            if let Some(selected) = app.status_list_state.selected() {
-                                if selected > 0 {
-                                    app.status_list_state.select(Some(selected - 1));
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(key) = event::read()? {
+                if key.kind == KeyEventKind::Press {
+                    match app.input_mode {
+                        InputMode::Normal => {
+                        if app.pending_confirmation.is_some() {
+                            match key.code {
+                                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                    let confirmation = app.pending_confirmation.clone();
+                                    match confirmation.as_deref() {
+                                        Some("stop_normal") => app.device_stop_confirmed(false),
+                                        Some("stop_volumes") => app.device_stop_confirmed(true),
+                                        Some("restore") => app.device_restore_confirmed(),
+                                        _ => {
+                                            app.pending_confirmation = None;
+                                            app.add_status_message("Confirmation cancelled.".to_string());
+                                        }
+                                    }
                                 }
-                            } else if !app.status_messages.is_empty() {
-                                app.status_list_state
-                                    .select(Some(app.status_messages.len() - 1));
+                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                    app.pending_confirmation = None;
+                                    app.add_status_message("Action cancelled.".to_string());
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            match key.code {
+                                KeyCode::Char('q') => return Ok(()),
+                                KeyCode::Char('h') => app.show_help = !app.show_help,
+                                KeyCode::Char('s') => app.status_expanded = !app.status_expanded,
+                                KeyCode::PageUp => {
+                                    if let Some(selected) = app.status_list_state.selected() {
+                                        app.status_list_state.select(Some(selected.saturating_sub(10)));
+                                    } else if !app.status_messages.is_empty() {
+                                        app.status_list_state.select(Some(app.status_messages.len() - 1));
+                                    }
+                                }
+                                KeyCode::PageDown => {
+                                    if let Some(selected) = app.status_list_state.selected() {
+                                        app.status_list_state.select(Some((selected + 10).min(app.status_messages.len().saturating_sub(1))));
+                                    } else if !app.status_messages.is_empty() {
+                                        app.status_list_state.select(Some(0));
+                                    }
+                                }
+                                KeyCode::Tab => {
+                                    app.current_tab = match app.current_tab {
+                                        Tab::Folder => Tab::Files,
+                                        Tab::Files => Tab::OpcUaConfig,
+                                        Tab::OpcUaConfig => Tab::IoTConfig,
+                                        Tab::IoTConfig => Tab::Config,
+                                        Tab::Config => Tab::Actions,
+                                        Tab::Actions => Tab::Device,
+                                        Tab::Device => Tab::Folder,
+                                    };
+                                }
+                                KeyCode::Right => {
+                                    if app.current_tab == Tab::Device && !app.device_focus_right {
+                                        app.device_focus_right = true;
+                                    } else {
+                                        app.current_tab = match app.current_tab {
+                                            Tab::Folder => Tab::Files,
+                                            Tab::Files => Tab::OpcUaConfig,
+                                            Tab::OpcUaConfig => Tab::IoTConfig,
+                                            Tab::IoTConfig => Tab::Config,
+                                            Tab::Config => Tab::Actions,
+                                            Tab::Actions => Tab::Device,
+                                            Tab::Device => Tab::Folder,
+                                        };
+                                        app.device_focus_right = false;
+                                    }
+                                }
+                                KeyCode::Left => {
+                                    if app.current_tab == Tab::Device && app.device_focus_right {
+                                        app.device_focus_right = false;
+                                    } else {
+                                        app.current_tab = match app.current_tab {
+                                            Tab::Folder => Tab::Device,
+                                            Tab::Files => Tab::Folder,
+                                            Tab::OpcUaConfig => Tab::Files,
+                                            Tab::IoTConfig => Tab::OpcUaConfig,
+                                            Tab::Config => Tab::IoTConfig,
+                                            Tab::Actions => Tab::Config,
+                                            Tab::Device => Tab::Actions,
+                                        };
+                                        app.device_focus_right = false;
+                                    }
+                                }
+                                KeyCode::Char('1') => app.current_tab = Tab::Folder,
+                                KeyCode::Char('2') => app.current_tab = Tab::Files,
+                                KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
+                                KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
+                                KeyCode::Char('5') => app.current_tab = Tab::Config,
+                                KeyCode::Char('6') => app.current_tab = Tab::Actions,
+                                KeyCode::Char('7') => app.current_tab = Tab::Device,
+                                _ => match app.current_tab {
+                                    Tab::Folder => handle_folder_input(&mut app, key.code),
+                                    Tab::Files => handle_files_input(&mut app, key.code),
+                                    Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
+                                    Tab::IoTConfig => handle_iot_input(&mut app, key.code),
+                                    Tab::Device => handle_device_input(&mut app, key.code),
+                                    Tab::Config => handle_config_input(&mut app, key.code),
+                                    Tab::Actions => handle_actions_input(&mut app, key.code),
+                                },
                             }
                         }
-                        KeyCode::PageDown => {
-                            if let Some(selected) = app.status_list_state.selected() {
-                                if selected < app.status_messages.len().saturating_sub(1) {
-                                    app.status_list_state.select(Some(selected + 1));
-                                }
-                            } else if !app.status_messages.is_empty() {
-                                app.status_list_state.select(Some(0));
+                    }
+                        InputMode::Editing => match key.code {
+                            KeyCode::Enter => app.finish_editing(),
+                            KeyCode::Esc => app.cancel_editing(),
+                            KeyCode::Char(c) => app.input_buffer.push(c),
+                            KeyCode::Backspace => {
+                                app.input_buffer.pop();
                             }
-                        }
-                        KeyCode::Tab | KeyCode::Right => {
-                            app.current_tab = match app.current_tab {
-                                Tab::Folder => Tab::Files,
-                                Tab::Files => Tab::OpcUaConfig,
-                                Tab::OpcUaConfig => Tab::IoTConfig,
-                                Tab::IoTConfig => Tab::Config,
-                                Tab::Config => Tab::Actions,
-                                Tab::Actions => Tab::Folder,
-                            };
-                        }
-                        KeyCode::Left => {
-                            app.current_tab = match app.current_tab {
-                                Tab::Folder => Tab::Actions,
-                                Tab::Files => Tab::Folder,
-                                Tab::OpcUaConfig => Tab::Files,
-                                Tab::IoTConfig => Tab::OpcUaConfig,
-                                Tab::Config => Tab::IoTConfig,
-                                Tab::Actions => Tab::Config,
-                            };
-                        }
-                        KeyCode::Char('1') => app.current_tab = Tab::Folder,
-                        KeyCode::Char('2') => app.current_tab = Tab::Files,
-                        KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
-                        KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
-                        KeyCode::Char('5') => app.current_tab = Tab::Config,
-                        KeyCode::Char('6') => app.current_tab = Tab::Actions,
-                        _ => match app.current_tab {
-                            Tab::Folder => handle_folder_input(&mut app, key.code),
-                            Tab::Files => handle_files_input(&mut app, key.code),
-                            Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
-                            Tab::IoTConfig => handle_iot_input(&mut app, key.code),
-                            Tab::Config => handle_config_input(&mut app, key.code),
-                            Tab::Actions => handle_actions_input(&mut app, key.code),
+                            _ => {}
                         },
-                    },
-                    InputMode::Editing => match key.code {
-                        KeyCode::Enter => app.finish_editing(),
-                        KeyCode::Esc => app.cancel_editing(),
-                        KeyCode::Char(c) => app.input_buffer.push(c),
-                        KeyCode::Backspace => {
-                            app.input_buffer.pop();
-                        }
-                        _ => {}
-                    },
+                    }
                 }
             }
         }
@@ -1217,7 +1589,6 @@ fn handle_actions_input(app: &mut App, key: KeyCode) {
                 ActionsField::RestartTelegraf => app.restart_telegraf(),
                 ActionsField::ServiceStatus => app.check_service_status(),
                 ActionsField::BackupGrafana => app.backup_grafana(),
-                ActionsField::SyncTime => app.sync_time(),
             }
         }
         // Legacy hotkeys for backward compatibility
@@ -1229,8 +1600,83 @@ fn handle_actions_input(app: &mut App, key: KeyCode) {
         KeyCode::Char('r') => app.restart_telegraf(),
         KeyCode::Char('v') => app.check_service_status(),
         KeyCode::Char('b') => app.backup_grafana(),
-        KeyCode::Char('y') => app.sync_time(),
         _ => {}
+    }
+}
+
+fn handle_device_input(app: &mut App, key: KeyCode) {
+    if app.device_focus_right {
+        match key {
+            KeyCode::Up => {
+                if app.device_config_selection > 0 {
+                    app.device_config_selection -= 1;
+                } else {
+                    app.device_config_selection = DeviceConfigField::count() - 1;
+                }
+            }
+            KeyCode::Down => {
+                app.device_config_selection = (app.device_config_selection + 1) % DeviceConfigField::count();
+            }
+            KeyCode::Enter => {
+                let selected = DeviceConfigField::from_index(app.device_config_selection);
+                match selected {
+                    DeviceConfigField::DeviceName => app.start_editing(EditField::DeviceName),
+                    DeviceConfigField::KeyFile => app.start_editing(EditField::KeyFile),
+                    DeviceConfigField::GitBranch => app.start_editing(EditField::GitBranch),
+                    DeviceConfigField::Minimal => {
+                        app.minimal = !app.minimal;
+                        app.add_status_message(format!(
+                            "Minimal mode: {}",
+                            if app.minimal { "enabled" } else { "disabled" }
+                        ));
+                    }
+                    DeviceConfigField::LocalTransfer => {
+                        app.local_transfer = !app.local_transfer;
+                        app.add_status_message(format!(
+                            "Local transfer: {}",
+                            if app.local_transfer { "enabled" } else { "disabled" }
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    } else {
+        match key {
+            KeyCode::Up => {
+                if app.device_selection > 0 {
+                    app.device_selection -= 1;
+                } else {
+                    app.device_selection = DeviceActionField::count() - 1;
+                }
+            }
+            KeyCode::Down => {
+                app.device_selection = (app.device_selection + 1) % DeviceActionField::count();
+            }
+            KeyCode::Enter => {
+                let selected_field = DeviceActionField::from_index(app.device_selection);
+                match selected_field {
+                    DeviceActionField::Provision => app.device_provision(),
+                    DeviceActionField::Setup => app.device_setup(),
+                    DeviceActionField::Update => app.device_update(),
+                    DeviceActionField::Start => app.device_start(),
+                    DeviceActionField::Stop => app.device_stop(),
+                    DeviceActionField::Status => app.device_status(),
+                    DeviceActionField::Backup => app.device_backup(),
+                    DeviceActionField::Restore => app.device_restore(),
+                    DeviceActionField::SyncTime => app.sync_time(),
+                }
+            }
+            KeyCode::Char('p') => app.device_provision(),
+            KeyCode::Char('s') => app.device_setup(),
+            KeyCode::Char('u') => app.device_update(),
+            KeyCode::Char('g') => app.device_start(),
+            KeyCode::Char('v') => app.device_stop_with_volumes(),
+            KeyCode::Char('n') => {
+                app.start_editing(EditField::DeviceName);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -1238,14 +1684,30 @@ fn ui(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)
-        .constraints([
-            Constraint::Length(3),  // Tabs
-            Constraint::Min(0),     // Main content
-            Constraint::Length(25), // Status messages - increased for better visibility
-        ])
+        .constraints(if app.status_expanded {
+            vec![
+                Constraint::Length(3),       // Tabs
+                Constraint::Min(0),          // Main content
+                Constraint::Percentage(65),        // Status messages
+            ]
+        } else {
+            vec![
+                Constraint::Length(3),       // Tabs
+                Constraint::Min(0),          // Main content
+            ]
+        })
         .split(f.area());
 
     // Render tabs
+    let tab_title = if app.is_working {
+        "IoT2050 Config TUI ⏳ Working..."
+    } else if app.pending_confirmation.is_some() {
+        "IoT2050 Config TUI ⚠️ Confirm?"
+    } else if app.status_expanded {
+        "IoT2050 Config TUI  [s: hide status]"
+    } else {
+        "IoT2050 Config TUI  [s: show status]"
+    };
     let tab_titles = vec![
         "Folder",
         "Files",
@@ -1253,6 +1715,7 @@ fn ui(f: &mut Frame, app: &mut App) {
         "IoT Config",
         "Config",
         "Actions",
+        "Device",
     ];
     let selected_tab = match app.current_tab {
         Tab::Folder => 0,
@@ -1261,13 +1724,14 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::IoTConfig => 3,
         Tab::Config => 4,
         Tab::Actions => 5,
+        Tab::Device => 6,
     };
 
     let tabs = Tabs::new(tab_titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("IoT2050 Config TUI"),
+                .title(tab_title),
         )
         .select(selected_tab)
         .style(Style::default().fg(Color::Cyan))
@@ -1284,23 +1748,31 @@ fn ui(f: &mut Frame, app: &mut App) {
         Tab::Files => render_files_tab(f, app, chunks[1]),
         Tab::OpcUaConfig => render_opcua_tab(f, app, chunks[1]),
         Tab::IoTConfig => render_iot_tab(f, app, chunks[1]),
+        Tab::Device => render_device_tab(f, app, chunks[1]),
         Tab::Config => render_config_tab(f, app, chunks[1]),
         Tab::Actions => render_actions_tab(f, app, chunks[1]),
     }
 
-    // Render status messages
-    render_status_messages(f, app, chunks[2]);
+    // Render status messages (if expanded)
+    if app.status_expanded {
+        render_status_messages(f, app, chunks[2]);
+    }
 
     // Render help popup if needed
     if app.show_help {
         render_help_popup(f, app);
+    }
+
+    // Render confirmation overlay if needed
+    if app.pending_confirmation.is_some() {
+        render_confirmation_overlay(f, app);
     }
 }
 
 fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(area);
 
     // Directory listing
@@ -1367,7 +1839,7 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(area);
 
     // File list with per-file configuration
@@ -1502,7 +1974,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(18), Constraint::Min(0)])
         .split(area);
 
     // Configuration fields
@@ -1632,7 +2104,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(9), Constraint::Min(0)])
         .split(area);
 
     // Configuration fields
@@ -1701,7 +2173,7 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .constraints([Constraint::Min(10), Constraint::Min(0)])
         .split(area);
 
     // Configuration display
@@ -1779,6 +2251,175 @@ fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(status_block, control_chunks[1]);
 }
 
+fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(area);
+
+    let selected_action = DeviceActionField::from_index(app.device_selection);
+
+    let confirmation_warning = if app.pending_confirmation.is_some() {
+        vec![
+            Line::from(""),
+            Line::from("⚠️  CONFIRMATION REQUIRED ⚠️".to_string())
+                .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Line::from("Press 'y' to confirm or 'n' to cancel".to_string())
+                .style(Style::default().fg(Color::Yellow)),
+        ]
+    } else {
+        vec![]
+    };
+
+    let action_highlight = !app.device_focus_right;
+    let actions = vec![
+        Line::from("Device Management (↑/↓ navigate, Enter execute):"),
+        Line::from(""),
+        Line::from("Deployment Actions:"),
+        render_action_item(
+            "🚀 Provision Device",
+            action_highlight && matches!(selected_action, DeviceActionField::Provision),
+            "p",
+        ),
+        render_action_item(
+            "🔧 Setup Device",
+            action_highlight && matches!(selected_action, DeviceActionField::Setup),
+            "s",
+        ),
+        render_action_item(
+            "📦 Update Device",
+            action_highlight && matches!(selected_action, DeviceActionField::Update),
+            "u",
+        ),
+        Line::from(""),
+        Line::from("Service Control:"),
+        render_action_item(
+            "▶️ Start Monitoring Stack",
+            action_highlight && matches!(selected_action, DeviceActionField::Start),
+            "g",
+        ),
+        render_action_item(
+            "⏹️ Stop Monitoring Stack",
+            action_highlight && matches!(selected_action, DeviceActionField::Stop),
+            "v=stop+rm volumes",
+        ),
+        render_action_item(
+            "📊 Device Status",
+            action_highlight && matches!(selected_action, DeviceActionField::Status),
+            "",
+        ),
+        Line::from(""),
+        Line::from("Data Management:"),
+        render_action_item(
+            "💾 Backup All Data",
+            action_highlight && matches!(selected_action, DeviceActionField::Backup),
+            "",
+        ),
+        render_action_item(
+            "♻️ Restore from Backup",
+            action_highlight && matches!(selected_action, DeviceActionField::Restore),
+            "",
+        ),
+        render_action_item(
+            "🕐 Sync Device Time",
+            action_highlight && matches!(selected_action, DeviceActionField::SyncTime),
+            "",
+        ),
+    ];
+
+    let mut lines = actions;
+    lines.extend(confirmation_warning);
+
+    let actions_title = if app.device_focus_right { "Device" } else { "Device ►" };
+    let actions_block =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(actions_title));
+    f.render_widget(actions_block, chunks[0]);
+
+    // Configuration panel
+    let minimal_status = if app.minimal { "Enabled" } else { "Disabled" };
+    let local_transfer_status = if app.local_transfer { "Enabled" } else { "Disabled" };
+
+    let device_name_display = if app.device_name.is_empty() {
+        "(random name)"
+    } else {
+        &app.device_name
+    };
+    let key_file_display = if app.key_file.is_empty() {
+        "(default)"
+    } else {
+        &app.key_file
+    };
+
+    let selected_config = DeviceConfigField::from_index(app.device_config_selection);
+    let config_highlight = app.device_focus_right;
+
+    let config = vec![
+        Line::from(if config_highlight { "Device Configuration (← actions):" } else { "Device Configuration:" }),
+        Line::from(""),
+        Line::from(format!("{} Device Name: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::DeviceName) { "►" } else { " " },
+            device_name_display)),
+        Line::from(format!("{} Key File: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::KeyFile) { "►" } else { " " },
+            key_file_display)),
+        Line::from(format!("{} Git Branch: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::GitBranch) { "►" } else { " " },
+            app.git_branch)),
+        Line::from(format!("{} Minimal Mode: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) { "►" } else { " " },
+            minimal_status)),
+        Line::from(format!("{} Local Transfer: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::LocalTransfer) { "►" } else { " " },
+            local_transfer_status)),
+        Line::from(""),
+        Line::from("IoT Connection (from IoT Config tab):"),
+        Line::from(format!("  Host: {}", app.config.iot_host)),
+        Line::from(format!("  User: {}", app.config.iot_username)),
+        Line::from(""),
+        Line::from("Controls:"),
+        Line::from("  ←/→   - Switch panels"),
+        Line::from("  ↑/↓   - Navigate"),
+        Line::from("  Enter - Execute / Edit"),
+    ];
+
+    let config_title = if app.device_focus_right { "► Config" } else { "Config" };
+
+    if app.input_mode == InputMode::Editing {
+        let edit_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunks[1]);
+
+        let edit_title = if let Some(ref field) = app.current_edit_field {
+            match field {
+                EditField::DeviceName => "Edit Device Name",
+                EditField::KeyFile => "Edit Key File",
+                EditField::GitBranch => "Edit Git Branch",
+                _ => "Edit Field",
+            }
+        } else {
+            "Edit Field"
+        };
+
+        let input = Paragraph::new(app.input_buffer.as_str())
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL).title(edit_title));
+        f.render_widget(input, edit_chunks[0]);
+
+        let edit_instructions = vec![
+            Line::from("Enter  - Save changes"),
+            Line::from("Esc    - Cancel editing"),
+        ];
+        let edit_help = Paragraph::new(edit_instructions)
+            .block(Block::default().borders(Borders::ALL).title("Edit Help"));
+        f.render_widget(edit_help, edit_chunks[1]);
+    } else {
+        let config_block =
+            Paragraph::new(config).block(Block::default().borders(Borders::ALL).title(config_title));
+        f.render_widget(config_block, chunks[1]);
+    }
+}
+
 fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -1839,11 +2480,6 @@ fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
             "📊 Backup Grafana",
             matches!(selected_field, ActionsField::BackupGrafana),
             "b",
-        ),
-        render_action_item(
-            "🕐 Sync Device Time",
-            matches!(selected_field, ActionsField::SyncTime),
-            "y",
         ),
     ];
 
@@ -1977,14 +2613,13 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
     // Add helpful message if empty
     if messages.is_empty() {
         messages.push(ListItem::new(
-            "Status area ready - press 'c' to clear messages, PgUp/PgDn to scroll",
+            "Status area ready - s toggle, 'c' clear, PgUp/PgDn scroll",
         ));
     }
 
     let title = format!(
-        "Status Messages ({}/{}) - PgUp/PgDn to scroll",
-        app.status_messages.len(),
-        50
+        "Status ({}) - s toggle, PgUp/PgDn scroll",
+        app.status_messages.len()
     );
     let messages_list = List::new(messages)
         .block(Block::default().borders(Borders::ALL).title(title))
@@ -2000,8 +2635,9 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("IoT2050 Configuration TUI - Help"),
         Line::from(""),
         Line::from("Global Controls:"),
-        Line::from("  Tab/←→/h/l/1-6 - Switch between tabs"),
+        Line::from("  Tab/←→/1-7 - Switch between tabs"),
         Line::from("  h/F1    - Toggle this help"),
+        Line::from("  s       - Toggle status panel"),
         Line::from("  PgUp/PgDn - Scroll status messages"),
         Line::from("  q       - Quit application"),
         Line::from(""),
@@ -2026,6 +2662,12 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
         Line::from("  Enter   - Confirm edit"),
         Line::from("  Esc     - Cancel edit"),
         Line::from(""),
+        Line::from("Device Tab:"),
+        Line::from("  ↑/↓     - Navigate actions/config"),
+        Line::from("  Enter   - Execute action / edit field"),
+        Line::from("  n       - Edit device name"),
+        Line::from("  y/n     - Confirm/cancel destructive ops"),
+        Line::from(""),
         Line::from("Config Tab:"),
         Line::from("  g       - Generate configuration"),
         Line::from("  s       - Send config to IoT device"),
@@ -2046,6 +2688,41 @@ fn render_help_popup(f: &mut Frame, _app: &App) {
 
     f.render_widget(Clear, popup_area);
     f.render_widget(help_paragraph, popup_area);
+}
+
+fn render_confirmation_overlay(f: &mut Frame, app: &mut App) {
+    let popup_area = centered_rect(60, 30, f.area());
+
+    let action = match app.pending_confirmation.as_deref() {
+        Some("stop_normal") => "Stop monitoring stack?",
+        Some("stop_volumes") => "Stop monitoring stack and REMOVE ALL DATA (volumes)?",
+        Some("restore") => "Restore from backup? This will overwrite existing data.",
+        _ => "Confirm action?",
+    };
+
+    let warning_text = vec![
+        Line::from(""),
+        Line::from(format!("⚠️  {}", action))
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        Line::from(""),
+        Line::from("Press 'y' to confirm or 'n' to cancel")
+            .style(Style::default().fg(Color::Yellow)),
+        Line::from(""),
+        Line::from("This action cannot be undone.")
+            .style(Style::default().fg(Color::DarkGray)),
+    ];
+
+    let warning_paragraph = Paragraph::new(warning_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Confirmation Required ")
+                .border_style(Style::default().fg(Color::Red)),
+        )
+        .style(Style::default().bg(Color::Black));
+
+    f.render_widget(Clear, popup_area);
+    f.render_widget(warning_paragraph, popup_area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
