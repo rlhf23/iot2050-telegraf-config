@@ -591,6 +591,9 @@
             setupEventListeners();
         });
 
+        // Stored file configs from last deploy (populated by loadCredentials)
+        let storedFileConfigs = null;
+
         // Load stored OPC UA credentials and file configs
         async function loadCredentials() {
             try {
@@ -612,25 +615,34 @@
                             document.getElementById('opcua-username').disabled = true;
                             document.getElementById('opcua-password').disabled = true;
                         }
-                        // Restore per-file config (namespace, interval, etc.) by filename match
+                        // Store file configs for later application
                         if (data.file_configs && data.file_configs.length > 0) {
-                            for (const fc of data.file_configs) {
-                                if (uploadedFiles.some(f => f.name === fc.filename)) {
-                                    fileConfigs[fc.filename] = {
-                                        namespace: fc.namespace || 'default',
-                                        interval_ms: fc.interval_ms || 1000,
-                                        use_listener: fc.use_listener || false,
-                                        custom_ip: fc.custom_ip || ''
-                                    };
-                                }
-                            }
-                            renderFileList();
+                            storedFileConfigs = data.file_configs;
+                            applyStoredFileConfigs();
                         }
                     }
                 }
             } catch (error) {
                 // Credentials not available yet — that's fine, user will fill in manually
             }
+        }
+
+        // Apply stored file configs to currently uploaded files (by filename match)
+        function applyStoredFileConfigs() {
+            if (!storedFileConfigs) return;
+            let applied = false;
+            for (const fc of storedFileConfigs) {
+                if (uploadedFiles.some(f => f.name === fc.filename)) {
+                    fileConfigs[fc.filename] = {
+                        namespace: fc.namespace || 'default',
+                        interval_ms: fc.interval_ms || 1000,
+                        use_listener: fc.use_listener || false,
+                        custom_ip: fc.custom_ip || ''
+                    };
+                    applied = true;
+                }
+            }
+            if (applied) renderFileList();
         }
 
         // Create session
@@ -761,6 +773,7 @@
                 if (data.success) {
                     uploadedFiles = data.files;
                     renderFileList();
+                    applyStoredFileConfigs();
                     updateGenerateButton();
                 }
             } catch (error) {
