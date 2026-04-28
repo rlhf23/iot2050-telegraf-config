@@ -728,54 +728,39 @@ fn test_opcua_read_current_time() -> Result<(), Box<dyn std::error::Error>> {
         plc_time, offset_ms, diff_from_now
     );
 
-    Ok(())
-}
 
+     Ok(())
+}
 #[test]
 fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
     if is_ci_environment() {
         println!("Skipping OPC UA get_namespace_info test in CI environment");
         return Ok(());
     }
-
     let port = 4844;
     let server_handle = start_opcua_server(port);
     let _server_guard = scopeguard::guard(server_handle, |mut server| {
         let _ = server.kill();
         let _ = server.wait();
     });
-
     let config = OpcUaConnectionConfig {
         ip: format!("127.0.0.1:{}", port),
         username: String::new(),
         password: String::new(),
     };
-
     let poller = OpcUaPoller::new(config)?;
-
+    
     let xml_files = vec!["sample_db.xml".to_string()];
 
-    match poller.get_namespace_info(&xml_files) {
-        Ok(namespace_map) => {
-            assert!(
-                !namespace_map.is_empty(),
-                "Should find at least one namespace mapping for sample_db.xml"
-            );
-            for (filename, ns_index) in &namespace_map {
-                println!("Mapped file '{}' to namespace {}", filename, ns_index);
-            }
-        }
-        Err(e) => {
-            println!(
-                "get_namespace_info returned an error (expected with basic test server): {}",
-                e
-            );
-            assert!(
-                e.to_string().contains("namespace") || e.to_string().contains("ServerInterfaces"),
-                "Error should mention namespaces or ServerInterfaces, got: {}",
-                e
-            );
-        }
+    let namespace_map = poller.get_namespace_info(&xml_files)?;
+
+    assert!(
+        !namespace_map.is_empty(),
+        "Should find at least one namespace mapping for sample_db.xml"
+    );
+
+    for (filename, ns_index) in &namespace_map {
+        println!("Mapped file '{}' to namespace {}", filename, ns_index);
     }
 
     Ok(())

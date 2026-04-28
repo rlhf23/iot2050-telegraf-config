@@ -51,7 +51,7 @@ fn main() -> Result<(), TelegrafError> {
             ))
         }
     };
-    let ns = {
+    let _ns = {
         let address_space = server.address_space();
         let mut address_space = address_space.write();
         address_space
@@ -73,8 +73,13 @@ fn main() -> Result<(), TelegrafError> {
 
     if !any_loaded {
         println!("No nodes loaded from XML, adding example variables");
-        add_example_variables(&mut server, ns);
+        add_example_variables(&mut server);
     }
+
+    // Always add the ServerInterfaces structure at ns=3 so that
+    // get_namespace_info() can browse it. This mimics the Siemens PLC
+    // convention where ServerInterfaces lives at NodeId(3, "ServerInterfaces").
+    add_server_interfaces_namespace(&mut server);
 
     // Set up Ctrl-C handler for clean shutdown
     ctrlc::set_handler(move || {
@@ -320,7 +325,107 @@ fn get_default_value_for_type(data_type: &str) -> opcua::types::Variant {
     }
 }
 
-pub fn add_example_variables(server: &mut Server, ns: u16) {
+/// Add the ServerInterfaces folder at ns=3 with data block children,
+/// mimicking the Siemens PLC convention that get_namespace_info() relies on.
+/// The function ensures the namespace array has at least 4 entries (ns 0-3)
+/// and creates:
+///   - ServerInterfaces at NodeId(3, "ServerInterfaces"), organized by Objects
+///   - Sample_DB data block under ServerInterfaces, with variables in ns=2
+///
+/// This is only added if the node doesn't already exist (e.g. from XML loading).
+fn add_server_interfaces_namespace(server: &mut Server) {
+    let address_space = server.address_space();
+
+    // Ensure namespace indices 1, 2, 3 exist. ns=0 is always the standard
+    // namespace. register_namespace returns the next available index but
+    // will return an existing index if the URI is already registered.
+    let uris = &[
+        "urn:opcua-test-server",
+        "http://www.siemens.com/simatic-s7-opcua",
+        "http://Sample_DB",
+    ];
+    {
+        let mut address_space = address_space.write();
+        for uri in uris {
+            let _ = address_space.register_namespace(uri);
+        }
+    }
+
+    let si_node_id = NodeId::new(3u16, "ServerInterfaces");
+
+    // Check if ServerInterfaces already exists at this NodeId
+    {
+        let address_space = address_space.read();
+        if address_space.find_node(&si_node_id).is_some() {
+            println!("ServerInterfaces folder already exists at ns=3;s=ServerInterfaces, skipping creation");
+            return;
+        }
+    }
+
+    // Create ServerInterfaces folder at ns=3;s=ServerInterfaces under Objects
+    let ok = {
+        let mut address_space = address_space.write();
+        address_space.add_folder_with_id(
+            &si_node_id,
+            "ServerInterfaces",
+            "ServerInterfaces",
+            &NodeId::objects_folder_id(),
+        )
+    };
+    if ok {
+        println!("Created ServerInterfaces folder at ns=3;s=ServerInterfaces");
+    } else {
+        println!("ServerInterfaces folder creation failed");
+        return;
+    }
+
+    // Create a data block folder "Sample_DB" organized by ServerInterfaces.
+    // Its browse name must match the XML filename (case-insensitive) so that
+    // get_namespace_info() can map "sample_db.xml" → namespace index.
+    // We place the data block in ns=2 so the reference's namespace index
+    // points to the application namespace.
+    let db_node_id = NodeId::new(2u16, "Sample_DB");
+    let db_ok = {
+        let mut address_space = address_space.write();
+        address_space.add_folder_with_id(
+            &db_node_id,
+            "Sample_DB",
+            "Sample_DB",
+            &si_node_id,
+        )
+    };
+    if db_ok {
+        println!("Created Sample_DB data block at ns=2;s=Sample_DB under ServerInterfaces");
+    } else {
+        println!("Sample_DB data block already exists or creation failed");
+    }
+
+    // Add some variables under the Sample_DB data block in ns=2
+    let vars = vec![
+        Variable::new(&NodeId::new(2u16, "SI_Real_1"), "SI_Real_1", "SI_Real_1", 0.0f32),
+        Variable::new(&NodeId::new(2u16, "SI_Real_2"), "SI_Real_2", "SI_Real_2", 0.0f32),
+        Variable::new(&NodeId::new(2u16, "SI_Real_3"), "SI_Real_3", "SI_Real_3", 0.0f32),
+    ];
+    {
+        let mut address_space = address_space.write();
+        let results = address_space.add_variables(vars, &db_node_id);
+        for (i, ok) in results.iter().enumerate() {
+            if !ok {
+                println!("Failed to add variable {} under Sample_DB", i);
+            }
+        }
+    }
+}
+
+pub fn add_example_variables(server: &mut Server) {
+    let address_space = server.address_space();
+    let ns = {
+        let mut address_space = address_space.write();
+        address_space
+            .register_namespace("urn:opcua-example-variables")
+            .unwrap()
+    };
+
     // These will be the node ids of the new variables
     let v1_node = NodeId::new(ns, "v1");
     let v2_node = NodeId::new(ns, "v2");
