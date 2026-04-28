@@ -309,7 +309,7 @@ impl App {
             show_help: false,
             worker: Some(WorkerHandle::new()),
             is_working: false,
-            status_expanded: true,
+            status_expanded: false,
             anonymous_mode: false,
             file_configs: HashMap::new(),
             generated_config: None,
@@ -1772,7 +1772,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(area);
 
     // Directory listing
@@ -1839,7 +1839,7 @@ fn render_folder_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(0), Constraint::Length(30)])
         .split(area);
 
     // File list with per-file configuration
@@ -1974,7 +1974,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(18), Constraint::Min(0)])
         .split(area);
 
     // Configuration fields
@@ -2104,7 +2104,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
+        .constraints([Constraint::Min(9), Constraint::Min(0)])
         .split(area);
 
     // Configuration fields
@@ -2173,7 +2173,7 @@ fn render_iot_tab(f: &mut Frame, app: &mut App, area: Rect) {
 fn render_config_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(8)])
+        .constraints([Constraint::Min(10), Constraint::Min(0)])
         .split(area);
 
     // Configuration display
