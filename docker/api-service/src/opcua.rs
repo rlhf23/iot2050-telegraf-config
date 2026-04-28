@@ -24,6 +24,17 @@ struct OpcUaCredentials {
     username: String,
     password: String,
     anonymous: bool,
+    #[serde(default)]
+    file_configs: Vec<FileConfigEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct FileConfigEntry {
+    filename: String,
+    namespace: String,
+    interval_ms: u64,
+    use_listener: bool,
+    custom_ip: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -34,6 +45,7 @@ pub struct CredentialsResponse {
     username: Option<String>,
     password: Option<String>,
     anonymous: Option<bool>,
+    file_configs: Option<Vec<FileConfigEntry>>,
 }
 
 pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode, Json<CredentialsResponse>)> {
@@ -52,6 +64,7 @@ pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode,
                             username: None,
                             password: None,
                             anonymous: None,
+                            file_configs: None,
                         }),
                     ));
                 }
@@ -63,6 +76,7 @@ pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode,
                 username: Some(creds.username),
                 password: Some(creds.password),
                 anonymous: Some(creds.anonymous),
+                file_configs: Some(creds.file_configs),
             }))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -75,6 +89,7 @@ pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode,
                     username: None,
                     password: None,
                     anonymous: None,
+                    file_configs: None,
                 }),
             ))
         }
@@ -89,6 +104,7 @@ pub async fn get_credentials() -> Result<Json<CredentialsResponse>, (StatusCode,
                     username: None,
                     password: None,
                     anonymous: None,
+                    file_configs: None,
                 }),
             ))
         }

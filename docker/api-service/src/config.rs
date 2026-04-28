@@ -644,11 +644,21 @@ pub async fn generate_config(
             info!("Successfully generated config for session: {}", request.session_id);
 
             // Write OPC UA credentials for the PLC time endpoint
+            let file_configs_json: Vec<serde_json::Value> = request.file_configs.iter().map(|fc| {
+                serde_json::json!({
+                    "filename": fc.filename,
+                    "namespace": fc.namespace,
+                    "interval_ms": fc.interval_ms,
+                    "use_listener": fc.use_listener,
+                    "custom_ip": fc.custom_ip,
+                })
+            }).collect();
             let credentials = serde_json::json!({
                 "endpoint": ensure_opcua_port(request.opcua_ip.clone().filter(|s| !s.is_empty()).unwrap_or_default()),
                 "username": username,
                 "password": password,
                 "anonymous": request.anonymous,
+                "file_configs": file_configs_json,
             });
             let creds_path = generated_dir.join("opcua-credentials.json");
             if let Err(e) = fs::write(&creds_path, serde_json::to_string_pretty(&credentials).unwrap_or_default()).await {

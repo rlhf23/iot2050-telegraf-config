@@ -591,7 +591,7 @@
             setupEventListeners();
         });
 
-        // Load stored OPC UA credentials
+        // Load stored OPC UA credentials and file configs
         async function loadCredentials() {
             try {
                 const response = await fetch('/api/opcua/credentials', { cache: 'no-cache' });
@@ -611,6 +611,20 @@
                             document.getElementById('anonymous-auth').checked = true;
                             document.getElementById('opcua-username').disabled = true;
                             document.getElementById('opcua-password').disabled = true;
+                        }
+                        // Restore per-file config (namespace, interval, etc.) by filename match
+                        if (data.file_configs && data.file_configs.length > 0) {
+                            for (const fc of data.file_configs) {
+                                if (uploadedFiles.some(f => f.name === fc.filename)) {
+                                    fileConfigs[fc.filename] = {
+                                        namespace: fc.namespace || 'default',
+                                        interval_ms: fc.interval_ms || 1000,
+                                        use_listener: fc.use_listener || false,
+                                        custom_ip: fc.custom_ip || ''
+                                    };
+                                }
+                            }
+                            renderFileList();
                         }
                     }
                 }
