@@ -419,9 +419,13 @@ impl App {
 
 fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
-        if !self.status_messages.is_empty() {
-            self.status_list_state
-                .select(Some(self.status_messages.len() - 1));
+        let len = self.status_messages.len();
+        let at_bottom = self
+            .status_list_state
+            .selected()
+            .map_or(true, |s| s >= len.saturating_sub(3));
+        if at_bottom && !self.status_messages.is_empty() {
+            self.status_list_state.select(Some(len - 1));
         }
     }
 
@@ -1260,19 +1264,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                 KeyCode::Char('s') => app.status_expanded = !app.status_expanded,
                                 KeyCode::PageUp => {
                                     if let Some(selected) = app.status_list_state.selected() {
-                                        if selected > 0 {
-                                            app.status_list_state.select(Some(selected - 1));
-                                        }
+                                        app.status_list_state.select(Some(selected.saturating_sub(10)));
                                     } else if !app.status_messages.is_empty() {
-                                        app.status_list_state
-                                            .select(Some(app.status_messages.len() - 1));
+                                        app.status_list_state.select(Some(app.status_messages.len() - 1));
                                     }
                                 }
                                 KeyCode::PageDown => {
                                     if let Some(selected) = app.status_list_state.selected() {
-                                        if selected < app.status_messages.len().saturating_sub(1) {
-                                            app.status_list_state.select(Some(selected + 1));
-                                        }
+                                        app.status_list_state.select(Some((selected + 10).min(app.status_messages.len().saturating_sub(1))));
                                     } else if !app.status_messages.is_empty() {
                                         app.status_list_state.select(Some(0));
                                     }
