@@ -33,6 +33,7 @@ fn main() -> Result<(), TelegrafError> {
     let port = args.port;
 
     // Create a new server instance for the thread using the same configuration
+    // new_sample() already creates sample keypair and endpoints including Basic256Sha256/Sign
     let server_builder = ServerBuilder::new_sample()
         .application_name("OPC UA Test Server")
         .application_uri("urn:opcua-test-server")

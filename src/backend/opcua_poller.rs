@@ -245,6 +245,7 @@ impl OpcUaPoller {
             .product_uri("urn:TelegrafOpcUaClient")
             .create_sample_keypair(true)
             .trust_server_certs(true)
+            .verify_server_certs(false)
             .session_retry_limit(3)
             .client()
             .ok_or_else(|| {
@@ -403,6 +404,7 @@ impl OpcUaPoller {
             .product_uri("urn:TelegrafOpcUaClient")
             .create_sample_keypair(true)
             .trust_server_certs(true)
+            .verify_server_certs(false)
             .session_retry_limit(3)
             .client()
             .ok_or_else(|| {
