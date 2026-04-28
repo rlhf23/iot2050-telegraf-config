@@ -163,7 +163,7 @@ impl GuiRenderer {
                     let file_config = controller.file_configs.entry(file.clone()).or_default();
 
                     // Use grid layout for all fields in the XML file configuration
-                    egui::Grid::new(&format!("xml_file_grid_{}", i))
+                    egui::Grid::new(format!("xml_file_grid_{}", i))
                         .num_columns(2)
                         .spacing([40.0, 4.0])
                         .show(ui, |ui| {
@@ -459,8 +459,7 @@ impl GuiRenderer {
 
                 if (node.node_class == opcua::types::NodeClass::Variable || is_folder)
                     && indent_level > 0
-                {
-                    if ui.checkbox(&mut node.selected, "").changed() {
+                    && ui.checkbox(&mut node.selected, "").changed() {
                         if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
                             node.deselect_children();
                         }
@@ -477,7 +476,6 @@ impl GuiRenderer {
                             }
                         }
                     }
-                }
 
                 let node_icon = match node.node_class {
                     opcua::types::NodeClass::Object => "[O] ",
@@ -587,7 +585,7 @@ impl GuiRenderer {
                                     .enumerate()
                                 {
                                     ui.label(&node.display_name);
-                                    ui.label(&node.namespace.to_string());
+                                    ui.label(node.namespace.to_string());
 
                                     // Allow editing the measurement name
                                     let mut measurement_name = node.measurement_name.clone();

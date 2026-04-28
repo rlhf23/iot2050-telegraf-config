@@ -58,18 +58,15 @@ fn default_momentary_duration() -> u64 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ButtonMode {
     #[serde(rename = "toggle")]
+    #[default]
     Toggle,
     #[serde(rename = "momentary")]
     Momentary,
 }
 
-impl Default for ButtonMode {
-    fn default() -> Self {
-        ButtonMode::Toggle
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct ParsedAddress {
@@ -119,8 +116,7 @@ pub fn parse_s7_address(addr: &str) -> Result<ParsedAddress, ConfigError> {
 
     let after_dot = &rest[dot_pos + 1..];
 
-    if after_dot.starts_with("DBX") {
-        let bit_addr = &after_dot[3..];
+    if let Some(bit_addr) = after_dot.strip_prefix("DBX") {
         let parts: Vec<&str> = bit_addr.split('.').collect();
         if parts.len() != 2 {
             return Err(ConfigError::InvalidAddress(format!(
@@ -135,7 +131,7 @@ pub fn parse_s7_address(addr: &str) -> Result<ParsedAddress, ConfigError> {
             .parse()
             .map_err(|_| ConfigError::InvalidAddress(format!("Invalid bit: {}", addr)))?;
 
-        if bit < 0 || bit > 7 {
+        if !(0..=7).contains(&bit) {
             return Err(ConfigError::InvalidAddress(format!(
                 "Bit must be 0-7: {}",
                 addr
@@ -143,8 +139,8 @@ pub fn parse_s7_address(addr: &str) -> Result<ParsedAddress, ConfigError> {
         }
 
         Ok(ParsedAddress { db, byte, bit })
-    } else if after_dot.starts_with("DBB") {
-        let byte: i32 = after_dot[3..]
+    } else if let Some(byte_str) = after_dot.strip_prefix("DBB") {
+        let byte: i32 = byte_str
             .parse()
             .map_err(|_| ConfigError::InvalidAddress(format!("Invalid byte: {}", addr)))?;
         Ok(ParsedAddress { db, byte, bit: 0 })
@@ -158,7 +154,7 @@ pub fn parse_s7_address(addr: &str) -> Result<ParsedAddress, ConfigError> {
             let bit: i32 = parts[1]
                 .parse()
                 .map_err(|_| ConfigError::InvalidAddress(format!("Invalid bit: {}", addr)))?;
-            if bit < 0 || bit > 7 {
+            if !(0..=7).contains(&bit) {
                 return Err(ConfigError::InvalidAddress(format!(
                     "Bit must be 0-7: {}",
                     addr

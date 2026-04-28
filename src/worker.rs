@@ -121,6 +121,12 @@ pub struct WorkerHandle {
     _thread: thread::JoinHandle<()>,
 }
 
+impl Default for WorkerHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkerHandle {
     pub fn new() -> Self {
         let (command_sender, command_receiver) = channel();
@@ -218,7 +224,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = ConfigGenerator::new(config)
                                 .and_then(|generator| generator.backup_influx())
-                                .map(|output| WorkerResponse::SshCommandOutput(output))
+                                .map(WorkerResponse::SshCommandOutput)
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
                                         "Failed to backup InfluxDB: {}",
@@ -234,7 +240,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = ConfigGenerator::new(config)
                                 .and_then(|generator| generator.backup_grafana())
-                                .map(|output| WorkerResponse::SshCommandOutput(output))
+                                .map(WorkerResponse::SshCommandOutput)
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
                                         "Failed to backup Grafana: {}",
@@ -250,7 +256,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = ConfigGenerator::new(config)
                                 .and_then(|generator| generator.get_telegraf_status())
-                                .map(|output| WorkerResponse::SshCommandOutput(output))
+                                .map(WorkerResponse::SshCommandOutput)
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
                                         "Failed to get Telegraf status: {}",
@@ -266,7 +272,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = ConfigGenerator::new(config)
                                 .and_then(|generator| generator.get_telegraf_logs(lines))
-                                .map(|output| WorkerResponse::SshCommandOutput(output))
+                                .map(WorkerResponse::SshCommandOutput)
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::SshError(format!(
                                         "Failed to get Telegraf logs: {}",
@@ -343,7 +349,7 @@ impl WorkerHandle {
                             let result = ssh_utils::execute_command_over_ssh(
                                 &host, &username, &password, &command,
                             )
-                            .map(|output| WorkerResponse::SshCommandOutput(output))
+                            .map(WorkerResponse::SshCommandOutput)
                             .unwrap_or_else(|e| {
                                 WorkerResponse::SshError(format!("SSH command failed: {}", e))
                             });
@@ -356,7 +362,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = OpcUaPoller::new(config.connection_config())
                                 .and_then(|poller| poller.browse_complete_structure())
-                                .map(|nodes| WorkerResponse::OpcUaNodes(nodes))
+                                .map(WorkerResponse::OpcUaNodes)
                                 .unwrap_or_else(|e| WorkerResponse::OpcUaError(e.to_string()));
                             let _ = response_sender.send(result);
                         });
@@ -367,7 +373,7 @@ impl WorkerHandle {
                         std::thread::spawn(move || {
                             let result = OpcUaPoller::new(config.connection_config())
                                 .and_then(|poller| poller.get_namespace_info(&xml_files))
-                                .map(|namespace_map| WorkerResponse::OpcUaNamespaces(namespace_map))
+                                .map(WorkerResponse::OpcUaNamespaces)
                                 .unwrap_or_else(|e| {
                                     WorkerResponse::OpcUaError(format!(
                                         "Error getting namespaces: {}",
@@ -472,7 +478,7 @@ impl WorkerHandle {
                                 .map(|_| WorkerResponse::SshCommandOutput(
                                     "Device provisioned successfully".to_string(),
                                 ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                                .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -498,7 +504,7 @@ impl WorkerHandle {
                                 .map(|_| WorkerResponse::SshCommandOutput(
                                     "Device setup completed successfully".to_string(),
                                 ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                                .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -524,7 +530,7 @@ impl WorkerHandle {
                                 .map(|_| WorkerResponse::SshCommandOutput(
                                     "Device updated successfully".to_string(),
                                 ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                                .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -546,7 +552,7 @@ impl WorkerHandle {
                                 .map(|_| WorkerResponse::SshCommandOutput(
                                     "Monitoring stack started successfully".to_string(),
                                 ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                                .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -572,7 +578,7 @@ impl WorkerHandle {
                                         "Monitoring stack stopped successfully".to_string()
                                     },
                                 ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(e));
+                                .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -655,6 +661,7 @@ impl WorkerHandle {
         }
     }
 
+    #[allow(clippy::result_large_err)]
     pub fn send_command(
         &self,
         cmd: WorkerCommand,

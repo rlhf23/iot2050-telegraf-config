@@ -59,9 +59,9 @@ pub fn parse_grafana_credentials(creds_output: &str) -> (String, String) {
     let mut password = "admin".to_string();
     for line in creds_output.lines() {
         if line.starts_with("GRAFANA_ADMIN_USER=") {
-            user = line.splitn(2, '=').nth(1).unwrap_or("admin").to_string();
+            user = line.split_once('=').map(|x| x.1).unwrap_or("admin").to_string();
         } else if line.starts_with("GRAFANA_ADMIN_PASSWORD=") {
-            password = line.splitn(2, '=').nth(1).unwrap_or("admin").to_string();
+            password = line.split_once('=').map(|x| x.1).unwrap_or("admin").to_string();
         }
     }
     (user, password)
@@ -74,9 +74,9 @@ pub fn parse_influxdb_credentials(env_output: &str) -> (Option<String>, Option<S
     let mut org: Option<String> = None;
     for line in env_output.lines() {
         if line.starts_with("INFLUXDB_TOKEN=") {
-            token = line.splitn(2, '=').nth(1).map(|s| s.to_string());
+            token = line.split_once('=').map(|x| x.1).map(|s| s.to_string());
         } else if line.starts_with("INFLUXDB_ORG=") {
-            org = line.splitn(2, '=').nth(1).map(|s| s.to_string());
+            org = line.split_once('=').map(|x| x.1).map(|s| s.to_string());
         }
     }
     (token, org)
@@ -108,11 +108,7 @@ pub fn parse_datasource_name(json_line: &str) -> Option<String> {
     }
     if let Some(start) = line.find("\"name\":\"") {
         let start = start + 8;
-        if let Some(end) = line[start..].find('"') {
-            Some(line[start..start + end].to_string())
-        } else {
-            None
-        }
+        line[start..].find('"').map(|end| line[start..start + end].to_string())
     } else {
         None
     }
@@ -421,7 +417,7 @@ pub fn backup_with_progress(
     progress_send(progress_sender, "\n📦 Creating compressed archive...");
     let archive_name = format!("{}.tar.gz", backup_name);
     let output = Command::new("tar")
-        .args(&["-czf", &archive_name, "-C", ".", &backup_name])
+        .args(["-czf", &archive_name, "-C", ".", &backup_name])
         .output()
         .map_err(|e| TelegrafError::ConfigError(format!("Failed to create archive: {}", e)))?;
 
@@ -613,7 +609,7 @@ pub fn restore_with_progress(
         channel.wait_close()?;
         channel.stderr().read_to_string(&mut stderr).ok();
 
-        progress_send(progress_sender, &format!("{}", stdout));
+        progress_send(progress_sender, &stdout.to_string());
         if !stderr.is_empty() {
             progress_send(progress_sender, &format!("stderr: {}", stderr));
         }
@@ -687,7 +683,7 @@ pub fn restore_with_progress(
                     if dashboard_file.is_empty() {
                         continue;
                     }
-                    let filename = dashboard_file.split('/').last().unwrap_or("unknown");
+                    let filename = dashboard_file.split('/').next_back().unwrap_or("unknown");
                     let import_cmd = format!(
                         "curl -s -u {}:'{}' -X POST -H 'Content-Type: application/json' -d @{} 'http://localhost:3000/api/dashboards/db'",
                         admin_user, admin_pass, dashboard_file

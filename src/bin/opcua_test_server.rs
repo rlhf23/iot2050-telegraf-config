@@ -94,7 +94,7 @@ fn main() -> Result<(), TelegrafError> {
 
 fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), TelegrafError> {
     let xml_content =
-        std::fs::read_to_string(xml_file_path).map_err(|e| TelegrafError::IoError(e))?;
+        std::fs::read_to_string(xml_file_path).map_err(TelegrafError::IoError)?;
 
     let doc = roxmltree::Document::parse(&xml_content)
         .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
@@ -119,7 +119,7 @@ fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), T
     let address_space = server.address_space();
     {
         let mut address_space = address_space.write();
-        for (_, uri) in &namespaces {
+        for uri in namespaces.values() {
             let ns_id = address_space.register_namespace(uri).unwrap();
             namespace_ids.insert(uri.clone(), ns_id);
         }

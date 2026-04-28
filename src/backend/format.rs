@@ -71,45 +71,41 @@ pub fn format_config_header(
     let output_config = match output_format {
         OutputFormat::InfluxDB => {
             if use_dual_bucket {
-                let mut config = format!(
-                    r#"# Configuration for sending metrics to InfluxDB 2.0
+                let mut config = r#"# Configuration for sending metrics to InfluxDB 2.0
 # Output to InfluxDB - Main process data (user-defined OPC UA measurements)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${{INFLUXDB_TOKEN}}"
-  organization = "${{INFLUXDB_ORG}}"
-  bucket = "${{INFLUXDB_BUCKET}}"
+  token = "${INFLUXDB_TOKEN}"
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_BUCKET}"
   # Drop diagnostics metrics - everything else goes to this bucket
   namedrop = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
 
 # Output to InfluxDB - Diagnostics data (system metrics, OPC-UA server diagnostics)
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${{INFLUXDB_TOKEN}}"
-  organization = "${{INFLUXDB_ORG}}"
-  bucket = "${{INFLUXDB_DIAGNOSTICS_BUCKET}}"
+  token = "${INFLUXDB_TOKEN}"
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
   # Only accept diagnostics metrics
   namepass = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
-"#,
-                );
+"#.to_string();
 
                 config.push_str("\n# Output to Prometheus\n[[outputs.prometheus_client]]\n  listen = \":9273\"\n");
                 config
             } else {
-                format!(
-                    r#"# Configuration for sending metrics to InfluxDB 2.0
+                r#"# Configuration for sending metrics to InfluxDB 2.0
 # Output to InfluxDB
 [[outputs.influxdb_v2]]
   urls = ["http://influxdb:8086"]
-  token = "${{INFLUXDB_TOKEN}}"  # Using influxdb admin token
-  organization = "${{INFLUXDB_ORG}}"
-  bucket = "${{INFLUXDB_BUCKET}}"
+  token = "${INFLUXDB_TOKEN}"  # Using influxdb admin token
+  organization = "${INFLUXDB_ORG}"
+  bucket = "${INFLUXDB_BUCKET}"
 
 # Output to Prometheus
 [[outputs.prometheus_client]]
   listen = ":9273"
-"#,
-                )
+"#.to_string()
             }
         }
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics
@@ -409,7 +405,7 @@ pub fn parse_xml(
     xml_file: &str,
     namespace_infos: &mut Vec<NamespaceInfo>,
 ) -> Result<XmlParseResult, TelegrafError> {
-    let xml = std::fs::read_to_string(xml_file).map_err(|e| TelegrafError::IoError(e))?;
+    let xml = std::fs::read_to_string(xml_file).map_err(TelegrafError::IoError)?;
 
     let doc = Document::parse(&xml)
         .map_err(|e| TelegrafError::ConfigError(format!("Invalid XML format: {}", e)))?;

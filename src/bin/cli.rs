@@ -162,7 +162,7 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         Some(("backup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
-            let output_dir = sub_matches.get_one::<String>("output").map(|s| s.clone());
+            let output_dir = sub_matches.get_one::<String>("output").cloned();
 
             if let Err(e) = deployer.backup(output_dir) {
                 exit_with_error(format!("Backup failed: {}", e));

@@ -3,7 +3,6 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use dirs;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
@@ -423,7 +422,7 @@ fn add_status_message(&mut self, message: String) {
         let at_bottom = self
             .status_list_state
             .selected()
-            .map_or(true, |s| s >= len.saturating_sub(3));
+            .is_none_or(|s| s >= len.saturating_sub(3));
         if at_bottom && !self.status_messages.is_empty() {
             self.status_list_state.select(Some(len - 1));
         }
@@ -742,7 +741,7 @@ fn add_status_message(&mut self, message: String) {
                                     let config = self
                                         .file_configs
                                         .entry(full_path.clone())
-                                        .or_insert_with(|| XmlFileConfig::default());
+                                        .or_default();
                                     config.namespace = namespace_index.to_string();
                                     updated_count += 1;
                                 }
@@ -781,7 +780,7 @@ fn add_status_message(&mut self, message: String) {
                         let config = self
                             .file_configs
                             .entry(file.clone())
-                            .or_insert_with(|| XmlFileConfig::default());
+                            .or_default();
                         config.namespace = self.input_buffer.clone();
                     }
                 }
@@ -790,7 +789,7 @@ fn add_status_message(&mut self, message: String) {
                         let config = self
                             .file_configs
                             .entry(file.clone())
-                            .or_insert_with(|| XmlFileConfig::default());
+                            .or_default();
                         config.ip = self.input_buffer.clone();
                     }
                 }
@@ -799,7 +798,7 @@ fn add_status_message(&mut self, message: String) {
                         let config = self
                             .file_configs
                             .entry(file.clone())
-                            .or_insert_with(|| XmlFileConfig::default());
+                            .or_default();
                         config.interval_ms = self.input_buffer.clone();
                     }
                 }
@@ -1962,7 +1961,7 @@ fn render_files_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Line::from("h/F1   - Help"),
             Line::from("q      - Quit"),
             Line::from(""),
-            Line::from(format!("Working Directory:")),
+            Line::from("Working Directory:".to_string()),
         ];
 
         let help_block = Paragraph::new(instructions)

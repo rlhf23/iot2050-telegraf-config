@@ -144,9 +144,7 @@ impl OpcUaPoller {
         let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable before attempting connection
-        if let Err(e) = self.check_server_connectivity(&self.config.ip) {
-            return Err(e);
-        }
+        self.check_server_connectivity(&self.config.ip)?;
 
         // Get all namespace information from the server
         let namespaces = self.browse_server_namespaces(&discovery_url)?;
@@ -293,7 +291,7 @@ impl OpcUaPoller {
             reference_type_id: ReferenceTypeId::Organizes.into(),
             include_subtypes: true,
             node_class_mask: 0,
-            result_mask: BrowseDescriptionResultMask::all().bits() as u32,
+            result_mask: BrowseDescriptionResultMask::all().bits(),
         };
 
         eprintln!("Browsing ServerInterfaces node for namespace information...");
@@ -492,7 +490,7 @@ impl OpcUaPoller {
             reference_type_id: ReferenceTypeId::HierarchicalReferences.into(),
             include_subtypes: true,
             node_class_mask: 0,
-            result_mask: BrowseDescriptionResultMask::all().bits() as u32,
+            result_mask: BrowseDescriptionResultMask::all().bits(),
         };
 
         // Get a read lock on the session
@@ -562,37 +560,23 @@ impl OpcUaPoller {
                                 }
 
                                 // Extract data type
-                                if let Some(data_type) = attrs.get(&AttributeId::DataType) {
-                                    if let Some(value) = data_type {
-                                        if let Variant::NodeId(data_type_id) = value {
-                                            // Convert NodeId to string representation for data type
-                                            // Use a more readable format for better display
-                                            node.data_type = Some(format!("{:?}", data_type_id));
+                                if let Some(Some(Variant::NodeId(data_type_id))) = attrs.get(&AttributeId::DataType) {
+                                    node.data_type = Some(format!("{:?}", data_type_id));
 
-                                            // Handle special variable types that might need additional browsing
-                                            if node.display_name.contains("Icon") {
-                                                // For variables that are icons, make the display name more descriptive
-                                                // by combining the browse name and data type
-                                                if !node.browse_name.is_empty()
-                                                    && node.browse_name != "%icon"
-                                                {
-                                                    node.display_name = format!(
-                                                        "{} ({})",
-                                                        node.browse_name,
-                                                        data_type_id.to_string()
-                                                    );
-                                                }
-                                            }
-                                        }
+                                    if node.display_name.contains("Icon")
+                                        && !node.browse_name.is_empty()
+                                        && node.browse_name != "%icon"
+                                    {
+                                        node.display_name = format!(
+                                            "{} ({})",
+                                            node.browse_name,
+                                            data_type_id
+                                        );
                                     }
                                 }
 
-                                if let Some(desc) = attrs.get(&AttributeId::Description) {
-                                    if let Some(value) = desc {
-                                        if let Variant::LocalizedText(lt) = value {
-                                            node.description = Some(lt.text.to_string());
-                                        }
-                                    }
+                                if let Some(Some(Variant::LocalizedText(lt))) = attrs.get(&AttributeId::Description) {
+                                    node.description = Some(lt.text.to_string());
                                 }
                             }
                         }
@@ -855,9 +839,7 @@ impl OpcUaPoller {
         let discovery_url = format!("opc.tcp://{}/", self.config.ip);
 
         // Check if the server is reachable
-        if let Err(e) = self.check_server_connectivity(&self.config.ip) {
-            return Err(e);
-        }
+        self.check_server_connectivity(&self.config.ip)?;
 
         // Connect to the server
         let session = self.connect_to_server(&discovery_url)?;

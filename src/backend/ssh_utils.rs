@@ -84,25 +84,25 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
             if host.len() > end_bracket + 1 && &host[end_bracket + 1..end_bracket + 2] == ":" {
                 let port_part = &host[end_bracket + 2..];
                 match port_part.parse::<u16>() {
-                    Ok(port) if port > 0 => return Ok(()),
+                    Ok(port) if port > 0 => Ok(()),
                     _ => {
-                        return Err(TelegrafError::HostFormatError(format!(
+                        Err(TelegrafError::HostFormatError(format!(
                             "Invalid port in host: '{}'. Port must be a number between 1-65535",
                             host
                         )))
                     }
                 }
             } else {
-                return Err(TelegrafError::HostFormatError(format!(
+                Err(TelegrafError::HostFormatError(format!(
                     "Invalid IPv6 host format: '{}'. Expected format: [IPv6]:port (e.g., [::1]:22)",
                     host
-                )));
+                )))
             }
         } else {
-            return Err(TelegrafError::HostFormatError(format!(
+            Err(TelegrafError::HostFormatError(format!(
                 "Invalid IPv6 host format: '{}'. Missing closing bracket.",
                 host
-            )));
+            )))
         }
     } else if host.contains(':') {
         // If more than one colon and not in brackets, treat as invalid (unbracketed IPv6)
@@ -299,22 +299,17 @@ pub fn send_and_restart_telegraf_with_progress(
     // Try to send the progress update, but if it fails, continue to try the SSH operation first
     let _ = progress_sender.send("Sending configuration file...".to_string());
     // Try SSH operation, return SSH error if it fails
-    if let Err(e) = send_file_over_ssh(
+    send_file_over_ssh(
         config_path,
         remote_path,
         iot_host,
         iot_username,
         iot_password,
-    ) {
-        return Err(e);
-    }
+    )?;
     let _ = progress_sender.send("Configuration file sent successfully.".to_string());
     let _ = progress_sender.send("Restarting Telegraf service...".to_string());
     // Try SSH restart, return SSH error if it fails
-    let restart_output = match restart_telegraf_over_ssh(iot_host, iot_username, iot_password) {
-        Ok(out) => out,
-        Err(e) => return Err(e),
-    };
+    let restart_output = restart_telegraf_over_ssh(iot_host, iot_username, iot_password)?;
     let _ = progress_sender.send(restart_output);
     Ok(())
 }
@@ -1192,7 +1187,7 @@ pub fn sync_time_over_ssh(
     let mut output = String::new();
     channel
         .read_to_string(&mut output)
-        .map_err(|e| TelegrafError::IoError(e))?;
+        .map_err(TelegrafError::IoError)?;
 
     channel.wait_close()?;
 
@@ -1203,7 +1198,7 @@ pub fn sync_time_over_ssh(
     let mut device_time = String::new();
     verify_channel
         .read_to_string(&mut device_time)
-        .map_err(|e| TelegrafError::IoError(e))?;
+        .map_err(TelegrafError::IoError)?;
 
     verify_channel.wait_close()?;
 
@@ -1239,11 +1234,11 @@ pub fn run_command_with_progress(
         println!("🔧 {}", description);
     }
 
-    let command = if command.contains("sudo ") && password.is_some() {
-        let pwd = password.unwrap();
-        format!("echo '{}' | sudo -S {}", pwd, command.replace("sudo ", ""))
-    } else {
-        command.to_string()
+    let command = match password {
+        Some(pwd) if command.contains("sudo ") => {
+            format!("echo '{}' | sudo -S {}", pwd, command.replace("sudo ", ""))
+        }
+        _ => command.to_string(),
     };
 
     let mut channel = session.channel_session()?;

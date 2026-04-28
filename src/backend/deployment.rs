@@ -596,7 +596,7 @@ impl IoTDeployer {
         channel.wait_close()?;
 
         self.progress("Container Status:");
-        self.progress(&format!("{}", output));
+        self.progress(&output.to_string());
 
         // Get credentials
         let mut channel = session.channel_session()?;
@@ -608,7 +608,7 @@ impl IoTDeployer {
 
         if !credentials.trim().is_empty() {
             self.progress("\n🔑 Credentials:");
-            self.progress(&format!("{}", credentials));
+            self.progress(&credentials.to_string());
         }
 
         self.progress("\n🔗 Access URLs:");
@@ -729,7 +729,7 @@ impl IoTDeployer {
         // Download tarball locally
         self.progress(&format!("📥 Downloading tarball from {}...", self.repo_url));
         let output = Command::new("curl")
-            .args(&["-L", &self.repo_url, "-o", tar_file.to_str().unwrap()])
+            .args(["-L", &self.repo_url, "-o", tar_file.to_str().unwrap()])
             .output()
             .map_err(|e| TelegrafError::ConfigError(format!("Failed to run curl: {}", e)))?;
 
@@ -743,7 +743,7 @@ impl IoTDeployer {
         // Extract tarball locally
         self.progress("📦 Extracting tarball locally...");
         let output = Command::new("tar")
-            .args(&[
+            .args([
                 "-xzf",
                 tar_file.to_str().unwrap(),
                 "-C",
@@ -785,11 +785,11 @@ impl IoTDeployer {
 
         // Build SCP command
         let mut scp_cmd = Command::new("scp");
-        scp_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
+        scp_cmd.args(["-r", "-o", "StrictHostKeyChecking=no"]);
 
         // Add port if not default
         if self.config.port != 22 {
-            scp_cmd.args(&["-P", &self.config.port.to_string()]);
+            scp_cmd.args(["-P", &self.config.port.to_string()]);
         }
 
         // Add source (local directory contents)
@@ -810,12 +810,12 @@ impl IoTDeployer {
             if output.status.success() {
                 // Use sshpass for password authentication
                 let mut sshpass_cmd = Command::new("sshpass");
-                sshpass_cmd.args(&["-p", password]);
+                sshpass_cmd.args(["-p", password]);
                 sshpass_cmd.arg("scp");
-                sshpass_cmd.args(&["-r", "-o", "StrictHostKeyChecking=no"]);
+                sshpass_cmd.args(["-r", "-o", "StrictHostKeyChecking=no"]);
 
                 if self.config.port != 22 {
-                    sshpass_cmd.args(&["-P", &self.config.port.to_string()]);
+                    sshpass_cmd.args(["-P", &self.config.port.to_string()]);
                 }
 
                 sshpass_cmd.arg(&source);
@@ -839,7 +839,7 @@ impl IoTDeployer {
         } else if self.config.key_file.is_some() {
             // Key-based authentication
             if let Some(key_file) = &self.config.key_file {
-                scp_cmd.args(&["-i", key_file]);
+                scp_cmd.args(["-i", key_file]);
             }
 
             let output = scp_cmd
@@ -972,9 +972,7 @@ impl IoTDeployer {
                     diff_hours
                 ));
                 self.progress("⚠️  This will likely cause apt-get to fail due to certificate validation issues.");
-                self.progress(&format!(
-                    "⚠️  Device may be missing CMOS battery. Set time manually before continuing:"
-                ));
+                self.progress("⚠️  Device may be missing CMOS battery. Set time manually before continuing:");
                 self.progress("⚠️  sudo timedatectl set-time \"2025-10-01 09:11\"");
                 self.progress("⚠️  Continuing anyway...");
             } else if diff_seconds > 300 {

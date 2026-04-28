@@ -371,7 +371,7 @@ pub async fn poll_namespaces(
     info!("Successfully mapped {} out of {} file(s) to namespaces", matched_count, mappings.len());
 
     let message = if matched_count == 0 {
-        format!("Warning: No files were matched to server namespaces. All files defaulted to namespace 0.")
+        "Warning: No files were matched to server namespaces. All files defaulted to namespace 0.".to_string()
     } else if matched_count < mappings.len() {
         format!("Partially successful: {} out of {} files matched to server namespaces", matched_count, mappings.len())
     } else {

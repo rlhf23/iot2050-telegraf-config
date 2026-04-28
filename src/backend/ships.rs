@@ -35,8 +35,8 @@ pub struct ShipName {
 
 fn strip_prefix(name: &str) -> &str {
     for prefix in KNOWN_PREFIXES {
-        if name.starts_with(prefix) {
-            return &name[prefix.len()..];
+        if let Some(stripped) = name.strip_prefix(prefix) {
+            return stripped;
         }
     }
     name
