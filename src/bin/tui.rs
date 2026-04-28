@@ -419,9 +419,6 @@ impl App {
 
 fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
-        if self.status_messages.len() > 50 {
-            self.status_messages.remove(0);
-        }
         if !self.status_messages.is_empty() {
             self.status_list_state
                 .select(Some(self.status_messages.len() - 1));
@@ -2622,9 +2619,8 @@ fn render_status_messages(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let title = format!(
-        "Status ({}/{}) - s toggle, PgUp/PgDn scroll",
-        app.status_messages.len(),
-        50
+        "Status ({}) - s toggle, PgUp/PgDn scroll",
+        app.status_messages.len()
     );
     let messages_list = List::new(messages)
         .block(Block::default().borders(Borders::ALL).title(title))
