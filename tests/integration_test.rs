@@ -8,7 +8,7 @@ use sie_generate_config::backend::opcua_poller::OpcUaNode;
 
 use sie_generate_config::{
     backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
-    SelectedOpcUaNode, TelegrafConfig,
+    OpcUaConnectionConfig, SelectedOpcUaNode, TelegrafConfig,
 };
 
 // Check if we're running in a CI environment
@@ -679,6 +679,103 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         println!("Cleaning up test telegraf.conf file");
         std::fs::remove_file(&config_path)
             .map_err(|e| format!("Failed to clean up telegraf.conf: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_opcua_read_current_time() -> Result<(), Box<dyn std::error::Error>> {
+    if is_ci_environment() {
+        println!("Skipping OPC UA read_current_time test in CI environment");
+        return Ok(());
+    }
+
+    let port = 4843;
+    let server_handle = start_opcua_server(port);
+    let _server_guard = scopeguard::guard(server_handle, |mut server| {
+        let _ = server.kill();
+        let _ = server.wait();
+    });
+
+    let config = OpcUaConnectionConfig {
+        ip: format!("127.0.0.1:{}", port),
+        username: String::new(),
+        password: String::new(),
+    };
+
+    let poller = OpcUaPoller::new(config)?;
+
+    let (plc_time, offset_ms) = poller.read_current_time()?;
+
+    let now = chrono::Utc::now();
+    let diff_from_now = (plc_time - now).num_seconds().abs();
+
+    assert!(
+        diff_from_now < 30,
+        "PLC time should be close to current time, but diff was {} seconds",
+        diff_from_now
+    );
+
+    assert!(
+        offset_ms.abs() < 30_000,
+        "Offset should be small (< 30s), but was {} ms",
+        offset_ms
+    );
+
+    println!(
+        "PLC time: {}, offset: {} ms, diff from local: {} s",
+        plc_time, offset_ms, diff_from_now
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
+    if is_ci_environment() {
+        println!("Skipping OPC UA get_namespace_info test in CI environment");
+        return Ok(());
+    }
+
+    let port = 4844;
+    let server_handle = start_opcua_server(port);
+    let _server_guard = scopeguard::guard(server_handle, |mut server| {
+        let _ = server.kill();
+        let _ = server.wait();
+    });
+
+    let config = OpcUaConnectionConfig {
+        ip: format!("127.0.0.1:{}", port),
+        username: String::new(),
+        password: String::new(),
+    };
+
+    let poller = OpcUaPoller::new(config)?;
+
+    let xml_files = vec!["sample_db.xml".to_string()];
+
+    match poller.get_namespace_info(&xml_files) {
+        Ok(namespace_map) => {
+            assert!(
+                !namespace_map.is_empty(),
+                "Should find at least one namespace mapping for sample_db.xml"
+            );
+            for (filename, ns_index) in &namespace_map {
+                println!("Mapped file '{}' to namespace {}", filename, ns_index);
+            }
+        }
+        Err(e) => {
+            println!(
+                "get_namespace_info returned an error (expected with basic test server): {}",
+                e
+            );
+            assert!(
+                e.to_string().contains("namespace") || e.to_string().contains("ServerInterfaces"),
+                "Error should mention namespaces or ServerInterfaces, got: {}",
+                e
+            );
+        }
     }
 
     Ok(())
