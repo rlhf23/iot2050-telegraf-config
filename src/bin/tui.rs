@@ -2301,7 +2301,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         render_action_item(
             "⏹️ Stop Monitoring Stack",
             action_highlight && matches!(selected_action, DeviceActionField::Stop),
-            "",
+            "v=stop+rm volumes",
         ),
         render_action_item(
             "📊 Device Status",
