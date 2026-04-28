@@ -2340,7 +2340,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let local_transfer_status = if app.local_transfer { "Enabled" } else { "Disabled" };
 
     let device_name_display = if app.device_name.is_empty() {
-        "(random Culture ship name)"
+        "(random name)"
     } else {
         &app.device_name
     };
