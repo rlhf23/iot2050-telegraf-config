@@ -92,6 +92,48 @@ impl OpcUaPoller {
         Self::from_telegraf_config(config)
     }
 
+    /// Read the PLC's current time from the OPC UA ServerStatus node (i=2257)
+    /// Returns the PLC's UTC datetime and the offset in milliseconds from the host clock
+    pub fn read_current_time(&self) -> Result<(chrono::DateTime<chrono::Utc>, i64), TelegrafError> {
+        let discovery_url = format!("opc.tcp://{}/", self.config.ip);
+        self.check_server_connectivity(&self.config.ip)?;
+        let session = self.connect_to_server(&discovery_url)?;
+
+        let node_id = NodeId::new(0, 2257);
+        let read_value_id = opcua::types::ReadValueId {
+            node_id,
+            attribute_id: AttributeId::Value as u32,
+            index_range: opcua::types::UAString::null(),
+            data_encoding: opcua::types::QualifiedName::null(),
+        };
+
+        let read_lock = session.read();
+        let results = read_lock
+            .read(&[read_value_id], opcua::types::TimestampsToReturn::Server, 0.0)
+            .map_err(|e| TelegrafError::OpcUaClientError(format!("Failed to read PLC time: {}", e)))?;
+
+        let data_value = results
+            .first()
+            .ok_or_else(|| TelegrafError::OpcUaClientError("No result from PLC time read".to_string()))?;
+
+        let plc_time = match &data_value.value {
+            Some(variant) => match variant {
+                Variant::DateTime(dt) => dt.as_chrono(),
+                _ => return Err(TelegrafError::OpcUaClientError(
+                    format!("PLC time node returned unexpected type: {:?}", variant),
+                )),
+            },
+            None => return Err(TelegrafError::OpcUaClientError(
+                "PLC time node returned no value".to_string(),
+            )),
+        };
+
+        let host_time = chrono::Utc::now();
+        let offset_ms = (plc_time - host_time).num_milliseconds();
+
+        Ok((plc_time, offset_ms))
+    }
+
     /// Get namespace information for XML files by connecting to the OPC UA server once
     /// Returns a map of file names to their corresponding namespace numbers
     pub fn get_namespace_info(

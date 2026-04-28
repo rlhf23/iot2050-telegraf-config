@@ -20,7 +20,7 @@ fn wrap_up(exit_code: i32) -> ! {
     std::process::exit(exit_code)
 }
 
-fn confirm_device_name(display_name: &str, hostname: &str) -> bool {
+fn confirm_device_name(display_name: &str, _hostname: &str) -> bool {
     println!();
     println!("Device name: {}", display_name);
     println!("This will be used as the device identity, hostname, and InfluxDB bucket name.");

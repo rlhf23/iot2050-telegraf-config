@@ -587,8 +587,63 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await createSession();
             await loadFiles();
+            await loadCredentials();
             setupEventListeners();
         });
+
+        // Stored file configs from last deploy (populated by loadCredentials)
+        let storedFileConfigs = null;
+
+        // Load stored OPC UA credentials and file configs
+        async function loadCredentials() {
+            try {
+                const response = await fetch('/api/opcua/credentials', { cache: 'no-cache' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        if (data.endpoint) {
+                            document.getElementById('opcua-ip').value = data.endpoint;
+                        }
+                        if (data.username) {
+                            document.getElementById('opcua-username').value = data.username;
+                        }
+                        if (data.password) {
+                            document.getElementById('opcua-password').value = data.password;
+                        }
+                        if (data.anonymous) {
+                            document.getElementById('anonymous-auth').checked = true;
+                            document.getElementById('opcua-username').disabled = true;
+                            document.getElementById('opcua-password').disabled = true;
+                        }
+                        // Store file configs for later application
+                        if (data.file_configs && data.file_configs.length > 0) {
+                            storedFileConfigs = data.file_configs;
+                            applyStoredFileConfigs();
+                        }
+                    }
+                }
+            } catch (error) {
+                // Credentials not available yet — that's fine, user will fill in manually
+            }
+        }
+
+        // Apply stored file configs to currently uploaded files (by filename match)
+        function applyStoredFileConfigs() {
+            if (!storedFileConfigs) return;
+            let applied = false;
+            for (const fc of storedFileConfigs) {
+                if (uploadedFiles.some(f => f.name === fc.filename)) {
+                    fileConfigs[fc.filename] = {
+                        namespace: fc.namespace || 'default',
+                        interval_ms: fc.interval_ms || 1000,
+                        use_listener: fc.use_listener || false,
+                        custom_ip: fc.custom_ip || ''
+                    };
+                    applied = true;
+                }
+            }
+            if (applied) renderFileList();
+        }
 
         // Create session
         async function createSession() {
@@ -718,6 +773,7 @@
                 if (data.success) {
                     uploadedFiles = data.files;
                     renderFileList();
+                    applyStoredFileConfigs();
                     updateGenerateButton();
                 }
             } catch (error) {

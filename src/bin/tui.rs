@@ -19,7 +19,7 @@ use sie_generate_config::{
 use std::collections::HashMap;
 use std::{
     fs,
-    io::{self, Write},
+    io,
     path::PathBuf,
 };
 
@@ -37,7 +37,6 @@ enum Tab {
 enum InputMode {
     Normal,
     Editing,
-    FolderBrowsing,
 }
 
 #[derive(Default, Clone)]
@@ -55,7 +54,6 @@ enum EditField {
     IoTHost,
     IoTUsername,
     IoTPassword,
-    OutputFormat,
     FileNamespace(usize),
     FileIp(usize),
     FileInterval(usize),
@@ -66,7 +64,6 @@ enum OpcUaConfigField {
     Ip,
     Username,
     Password,
-    OutputFormat,
     Anonymous,
     TestInputs,
     OpcuaDiagnostics,
@@ -94,7 +91,7 @@ enum ActionsField {
 
 impl OpcUaConfigField {
     fn count() -> usize {
-        7 // Ip, Username, Password, OutputFormat, Anonymous, TestInputs, OpcuaDiagnostics
+        6 // Ip, Username, Password, Anonymous, TestInputs, OpcuaDiagnostics
     }
 
     fn from_index(index: usize) -> Self {
@@ -102,10 +99,9 @@ impl OpcUaConfigField {
             0 => Self::Ip,
             1 => Self::Username,
             2 => Self::Password,
-            3 => Self::OutputFormat,
-            4 => Self::Anonymous,
-            5 => Self::TestInputs,
-            6 => Self::OpcuaDiagnostics,
+            3 => Self::Anonymous,
+            4 => Self::TestInputs,
+            5 => Self::OpcuaDiagnostics,
             _ => Self::Ip, // Default fallback
         }
     }
@@ -567,12 +563,6 @@ impl App {
             EditField::IoTHost => self.config.iot_host.clone(),
             EditField::IoTUsername => self.config.iot_username.clone(),
             EditField::IoTPassword => self.config.iot_password.clone(),
-            EditField::OutputFormat => self
-                .config
-                .output_format
-                .as_ref()
-                .unwrap_or(&"influxdb".to_string())
-                .clone(),
             EditField::FileNamespace(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
                     self.file_configs
@@ -672,9 +662,6 @@ impl App {
                 EditField::IoTHost => self.config.iot_host = self.input_buffer.clone(),
                 EditField::IoTUsername => self.config.iot_username = self.input_buffer.clone(),
                 EditField::IoTPassword => self.config.iot_password = self.input_buffer.clone(),
-                EditField::OutputFormat => {
-                    self.config.output_format = Some(self.input_buffer.clone())
-                }
                 EditField::FileNamespace(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
                         let config = self
@@ -989,13 +976,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                         }
                         _ => {}
                     },
-                    InputMode::FolderBrowsing => {
-                        // Handle folder browsing mode if needed
-                        match key.code {
-                            KeyCode::Esc => app.input_mode = InputMode::Normal,
-                            _ => {}
-                        }
-                    }
                 }
             }
         }
@@ -1119,15 +1099,6 @@ fn handle_opcua_input(app: &mut App, key: KeyCode) {
                 OpcUaConfigField::Ip => app.start_editing(EditField::OpcUaIp),
                 OpcUaConfigField::Username => app.start_editing(EditField::OpcUaUsername),
                 OpcUaConfigField::Password => app.start_editing(EditField::OpcUaPassword),
-                OpcUaConfigField::OutputFormat => {
-                    // Toggle between influxdb and prometheus
-                    let current = app.config.output_format.as_deref().unwrap_or("influxdb");
-                    app.config.output_format = Some(if current == "influxdb" {
-                        "prometheus".to_string()
-                    } else {
-                        "influxdb".to_string()
-                    });
-                }
                 OpcUaConfigField::Anonymous => app.toggle_anonymous_mode(),
                 OpcUaConfigField::TestInputs => {
                     app.config.include_test_inputs = !app.config.include_test_inputs
@@ -1544,7 +1515,6 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
-            Constraint::Length(3),
         ])
         .split(chunks[0]);
 
@@ -1591,22 +1561,6 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         matches!(selected_field, OpcUaConfigField::Password),
     );
 
-    let output_format_display = app
-        .config
-        .output_format
-        .as_ref()
-        .unwrap_or(&"influxdb".to_string())
-        .clone();
-    render_config_field_with_selection(
-        f,
-        "Output Format",
-        &output_format_display,
-        false,
-        "",
-        config_chunks[3],
-        matches!(selected_field, OpcUaConfigField::OutputFormat),
-    );
-
     let anonymous_status = if app.anonymous_mode {
         "Enabled"
     } else {
@@ -1618,7 +1572,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         anonymous_status,
         false,
         "",
-        config_chunks[4],
+        config_chunks[3],
         matches!(selected_field, OpcUaConfigField::Anonymous),
     );
 
@@ -1633,7 +1587,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         test_inputs_status,
         false,
         "",
-        config_chunks[5],
+        config_chunks[4],
         matches!(selected_field, OpcUaConfigField::TestInputs),
     );
 
@@ -1648,7 +1602,7 @@ fn render_opcua_tab(f: &mut Frame, app: &mut App, area: Rect) {
         opcua_diagnostics_status,
         false,
         "",
-        config_chunks[6],
+        config_chunks[5],
         matches!(selected_field, OpcUaConfigField::OpcuaDiagnostics),
     );
 
@@ -1956,35 +1910,6 @@ fn render_action_item(text: &str, is_selected: bool, hotkey: &str) -> Line<'stat
             Span::styled(format!(" ({})", hotkey), Style::default().fg(Color::Gray)),
         ])
     }
-}
-
-fn render_config_field(
-    f: &mut Frame,
-    label: &str,
-    value: &str,
-    is_editing: bool,
-    input_buffer: &str,
-    area: Rect,
-) {
-    let display_value = if is_editing {
-        format!("{}_", input_buffer)
-    } else {
-        value.to_string()
-    };
-
-    let style = if is_editing {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-    };
-
-    let paragraph = Paragraph::new(display_value)
-        .block(Block::default().borders(Borders::ALL).title(label))
-        .style(style);
-
-    f.render_widget(paragraph, area);
 }
 
 fn render_config_field_with_selection(

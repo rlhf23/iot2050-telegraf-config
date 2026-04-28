@@ -94,6 +94,9 @@ pub fn create_app() -> Router {
         .route("/api/chronograf/dashboard/deploy", post(dashboard::deploy_chronograf_dashboard))
         // OPC-UA endpoints
         .route("/api/opcua/poll-namespaces", post(opcua::poll_namespaces))
+        .route("/api/opcua/plc-time", post(opcua::plc_time))
+        .route("/api/opcua/credentials", get(opcua::get_credentials))
+        .route("/api/opcua/plc-time-stored", get(opcua::plc_time_stored))
         .layer(cors)
         .with_state(state)
 }
