@@ -97,7 +97,7 @@ enum ActionsField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum DeviceField {
+enum DeviceActionField {
     Provision,
     Setup,
     Update,
@@ -107,11 +107,53 @@ enum DeviceField {
     Backup,
     Restore,
     SyncTime,
+}
+
+impl DeviceActionField {
+    fn count() -> usize {
+        9
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::Provision,
+            1 => Self::Setup,
+            2 => Self::Update,
+            3 => Self::Start,
+            4 => Self::Stop,
+            5 => Self::Status,
+            6 => Self::Backup,
+            7 => Self::Restore,
+            8 => Self::SyncTime,
+            _ => Self::Provision,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum DeviceConfigField {
     DeviceName,
     KeyFile,
     GitBranch,
     Minimal,
     LocalTransfer,
+}
+
+impl DeviceConfigField {
+    fn count() -> usize {
+        5
+    }
+
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => Self::DeviceName,
+            1 => Self::KeyFile,
+            2 => Self::GitBranch,
+            3 => Self::Minimal,
+            4 => Self::LocalTransfer,
+            _ => Self::DeviceName,
+        }
+    }
 }
 
 impl OpcUaConfigField {
@@ -167,32 +209,6 @@ impl ActionsField {
     }
 }
 
-impl DeviceField {
-    fn count() -> usize {
-        14 // Provision, Setup, Update, Start, Stop, Status, Backup, Restore, SyncTime, DeviceName, KeyFile, GitBranch, Minimal, LocalTransfer
-    }
-
-    fn from_index(index: usize) -> Self {
-        match index {
-            0 => Self::Provision,
-            1 => Self::Setup,
-            2 => Self::Update,
-            3 => Self::Start,
-            4 => Self::Stop,
-            5 => Self::Status,
-            6 => Self::Backup,
-            7 => Self::Restore,
-            8 => Self::SyncTime,
-            9 => Self::DeviceName,
-            10 => Self::KeyFile,
-            11 => Self::GitBranch,
-            12 => Self::Minimal,
-            13 => Self::LocalTransfer,
-            _ => Self::Provision,
-        }
-    }
-}
-
 struct App {
     // Navigation
     current_tab: Tab,
@@ -244,6 +260,8 @@ struct App {
     iot_config_selection: usize,
     actions_selection: usize,
     device_selection: usize,
+    device_config_selection: usize,
+    device_focus_right: bool,
 
     // Device deployment fields
     device_name: String,
@@ -302,6 +320,8 @@ impl App {
             iot_config_selection: 0,
             actions_selection: 0,
             device_selection: 0,
+            device_config_selection: 0,
+            device_focus_right: false,
             device_name: String::new(),
             key_file: String::new(),
             git_branch: "master".to_string(),
@@ -415,7 +435,6 @@ fn add_status_message(&mut self, message: String) {
 
     fn stop_working(&mut self) {
         self.is_working = false;
-        self.status_expanded = false;
     }
 
     fn process_worker_responses(&mut self) {
@@ -1261,7 +1280,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                         app.status_list_state.select(Some(0));
                                     }
                                 }
-                                KeyCode::Tab | KeyCode::Right => {
+                                KeyCode::Tab => {
                                     app.current_tab = match app.current_tab {
                                         Tab::Folder => Tab::Files,
                                         Tab::Files => Tab::OpcUaConfig,
@@ -1272,16 +1291,37 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                         Tab::Device => Tab::Folder,
                                     };
                                 }
+                                KeyCode::Right => {
+                                    if app.current_tab == Tab::Device && !app.device_focus_right {
+                                        app.device_focus_right = true;
+                                    } else {
+                                        app.current_tab = match app.current_tab {
+                                            Tab::Folder => Tab::Files,
+                                            Tab::Files => Tab::OpcUaConfig,
+                                            Tab::OpcUaConfig => Tab::IoTConfig,
+                                            Tab::IoTConfig => Tab::Config,
+                                            Tab::Config => Tab::Actions,
+                                            Tab::Actions => Tab::Device,
+                                            Tab::Device => Tab::Folder,
+                                        };
+                                        app.device_focus_right = false;
+                                    }
+                                }
                                 KeyCode::Left => {
-                                    app.current_tab = match app.current_tab {
-                                        Tab::Folder => Tab::Device,
-                                        Tab::Files => Tab::Folder,
-                                        Tab::OpcUaConfig => Tab::Files,
-                                        Tab::IoTConfig => Tab::OpcUaConfig,
-                                        Tab::Config => Tab::IoTConfig,
-                                        Tab::Actions => Tab::Config,
-                                        Tab::Device => Tab::Actions,
-                                    };
+                                    if app.current_tab == Tab::Device && app.device_focus_right {
+                                        app.device_focus_right = false;
+                                    } else {
+                                        app.current_tab = match app.current_tab {
+                                            Tab::Folder => Tab::Device,
+                                            Tab::Files => Tab::Folder,
+                                            Tab::OpcUaConfig => Tab::Files,
+                                            Tab::IoTConfig => Tab::OpcUaConfig,
+                                            Tab::Config => Tab::IoTConfig,
+                                            Tab::Actions => Tab::Config,
+                                            Tab::Device => Tab::Actions,
+                                        };
+                                        app.device_focus_right = false;
+                                    }
                                 }
                                 KeyCode::Char('1') => app.current_tab = Tab::Folder,
                                 KeyCode::Char('2') => app.current_tab = Tab::Files,
@@ -1569,57 +1609,78 @@ fn handle_actions_input(app: &mut App, key: KeyCode) {
 }
 
 fn handle_device_input(app: &mut App, key: KeyCode) {
-    match key {
-        KeyCode::Up => {
-            if app.device_selection > 0 {
-                app.device_selection -= 1;
-            } else {
-                app.device_selection = DeviceField::count() - 1;
-            }
-        }
-        KeyCode::Down => {
-            app.device_selection = (app.device_selection + 1) % DeviceField::count();
-        }
-        KeyCode::Enter => {
-            let selected_field = DeviceField::from_index(app.device_selection);
-            match selected_field {
-                DeviceField::Provision => app.device_provision(),
-                DeviceField::Setup => app.device_setup(),
-                DeviceField::Update => app.device_update(),
-                DeviceField::Start => app.device_start(),
-                DeviceField::Stop => app.device_stop(),
-                DeviceField::Status => app.device_status(),
-                DeviceField::Backup => app.device_backup(),
-                DeviceField::Restore => app.device_restore(),
-                DeviceField::SyncTime => app.sync_time(),
-                DeviceField::DeviceName => app.start_editing(EditField::DeviceName),
-                DeviceField::KeyFile => app.start_editing(EditField::KeyFile),
-                DeviceField::GitBranch => app.start_editing(EditField::GitBranch),
-                DeviceField::Minimal => {
-                    app.minimal = !app.minimal;
-                    app.add_status_message(format!(
-                        "Minimal mode: {}",
-                        if app.minimal { "enabled" } else { "disabled" }
-                    ));
-                }
-                DeviceField::LocalTransfer => {
-                    app.local_transfer = !app.local_transfer;
-                    app.add_status_message(format!(
-                        "Local transfer: {}",
-                        if app.local_transfer { "enabled" } else { "disabled" }
-                    ));
+    if app.device_focus_right {
+        match key {
+            KeyCode::Up => {
+                if app.device_config_selection > 0 {
+                    app.device_config_selection -= 1;
+                } else {
+                    app.device_config_selection = DeviceConfigField::count() - 1;
                 }
             }
+            KeyCode::Down => {
+                app.device_config_selection = (app.device_config_selection + 1) % DeviceConfigField::count();
+            }
+            KeyCode::Enter => {
+                let selected = DeviceConfigField::from_index(app.device_config_selection);
+                match selected {
+                    DeviceConfigField::DeviceName => app.start_editing(EditField::DeviceName),
+                    DeviceConfigField::KeyFile => app.start_editing(EditField::KeyFile),
+                    DeviceConfigField::GitBranch => app.start_editing(EditField::GitBranch),
+                    DeviceConfigField::Minimal => {
+                        app.minimal = !app.minimal;
+                        app.add_status_message(format!(
+                            "Minimal mode: {}",
+                            if app.minimal { "enabled" } else { "disabled" }
+                        ));
+                    }
+                    DeviceConfigField::LocalTransfer => {
+                        app.local_transfer = !app.local_transfer;
+                        app.add_status_message(format!(
+                            "Local transfer: {}",
+                            if app.local_transfer { "enabled" } else { "disabled" }
+                        ));
+                    }
+                }
+            }
+            _ => {}
         }
-        KeyCode::Char('p') => app.device_provision(),
-        KeyCode::Char('s') => app.device_setup(),
-        KeyCode::Char('u') => app.device_update(),
-        KeyCode::Char('g') => app.device_start(),
-        KeyCode::Char('v') => app.device_stop_with_volumes(),
-        KeyCode::Char('n') => {
-            app.start_editing(EditField::DeviceName);
+    } else {
+        match key {
+            KeyCode::Up => {
+                if app.device_selection > 0 {
+                    app.device_selection -= 1;
+                } else {
+                    app.device_selection = DeviceActionField::count() - 1;
+                }
+            }
+            KeyCode::Down => {
+                app.device_selection = (app.device_selection + 1) % DeviceActionField::count();
+            }
+            KeyCode::Enter => {
+                let selected_field = DeviceActionField::from_index(app.device_selection);
+                match selected_field {
+                    DeviceActionField::Provision => app.device_provision(),
+                    DeviceActionField::Setup => app.device_setup(),
+                    DeviceActionField::Update => app.device_update(),
+                    DeviceActionField::Start => app.device_start(),
+                    DeviceActionField::Stop => app.device_stop(),
+                    DeviceActionField::Status => app.device_status(),
+                    DeviceActionField::Backup => app.device_backup(),
+                    DeviceActionField::Restore => app.device_restore(),
+                    DeviceActionField::SyncTime => app.sync_time(),
+                }
+            }
+            KeyCode::Char('p') => app.device_provision(),
+            KeyCode::Char('s') => app.device_setup(),
+            KeyCode::Char('u') => app.device_update(),
+            KeyCode::Char('g') => app.device_start(),
+            KeyCode::Char('v') => app.device_stop_with_volumes(),
+            KeyCode::Char('n') => {
+                app.start_editing(EditField::DeviceName);
+            }
+            _ => {}
         }
-        _ => {}
     }
 }
 
@@ -2200,7 +2261,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    let selected_field = DeviceField::from_index(app.device_selection);
+    let selected_action = DeviceActionField::from_index(app.device_selection);
 
     let confirmation_warning = if app.pending_confirmation.is_some() {
         vec![
@@ -2214,57 +2275,58 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         vec![]
     };
 
+    let action_highlight = !app.device_focus_right;
     let actions = vec![
         Line::from("Device Management (↑/↓ navigate, Enter execute):"),
         Line::from(""),
         Line::from("Deployment Actions:"),
         render_action_item(
             "🚀 Provision Device",
-            matches!(selected_field, DeviceField::Provision),
+            action_highlight && matches!(selected_action, DeviceActionField::Provision),
             "p",
         ),
         render_action_item(
             "🔧 Setup Device",
-            matches!(selected_field, DeviceField::Setup),
+            action_highlight && matches!(selected_action, DeviceActionField::Setup),
             "s",
         ),
         render_action_item(
             "📦 Update Device",
-            matches!(selected_field, DeviceField::Update),
+            action_highlight && matches!(selected_action, DeviceActionField::Update),
             "u",
         ),
         Line::from(""),
         Line::from("Service Control:"),
         render_action_item(
             "▶️ Start Monitoring Stack",
-            matches!(selected_field, DeviceField::Start),
+            action_highlight && matches!(selected_action, DeviceActionField::Start),
             "g",
         ),
         render_action_item(
             "⏹️ Stop Monitoring Stack",
-            matches!(selected_field, DeviceField::Stop),
+            action_highlight && matches!(selected_action, DeviceActionField::Stop),
             "",
         ),
         render_action_item(
             "📊 Device Status",
-            matches!(selected_field, DeviceField::Status),
+            action_highlight && matches!(selected_action, DeviceActionField::Status),
             "",
         ),
         Line::from(""),
         Line::from("Data Management:"),
         render_action_item(
             "💾 Backup All Data",
-            matches!(selected_field, DeviceField::Backup),
+            action_highlight && matches!(selected_action, DeviceActionField::Backup),
             "",
         ),
         render_action_item(
             "♻️ Restore from Backup",
-            matches!(selected_field, DeviceField::Restore),
+            action_highlight && matches!(selected_action, DeviceActionField::Restore),
             "",
         ),
         render_action_item(
             "🕐 Sync Device Time",
-            matches!(selected_field, DeviceField::SyncTime),
+            action_highlight && matches!(selected_action, DeviceActionField::SyncTime),
             "",
         ),
     ];
@@ -2272,8 +2334,9 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let mut lines = actions;
     lines.extend(confirmation_warning);
 
+    let actions_title = if app.device_focus_right { "Device" } else { "Device ►" };
     let actions_block =
-        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title("Device"));
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(actions_title));
     f.render_widget(actions_block, chunks[0]);
 
     // Configuration panel
@@ -2291,28 +2354,74 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         &app.key_file
     };
 
+    let selected_config = DeviceConfigField::from_index(app.device_config_selection);
+    let config_highlight = app.device_focus_right;
+
     let config = vec![
-        Line::from("Device Configuration:"),
+        Line::from(if config_highlight { "Device Configuration (← actions):" } else { "Device Configuration:" }),
         Line::from(""),
-        Line::from(format!("Device Name: {}", device_name_display)),
-        Line::from(format!("Key File: {}", key_file_display)),
-        Line::from(format!("Git Branch: {}", app.git_branch)),
-        Line::from(format!("Minimal Mode: {}", minimal_status)),
-        Line::from(format!("Local Transfer: {}", local_transfer_status)),
+        Line::from(format!("{} Device Name: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::DeviceName) { "►" } else { " " },
+            device_name_display)),
+        Line::from(format!("{} Key File: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::KeyFile) { "►" } else { " " },
+            key_file_display)),
+        Line::from(format!("{} Git Branch: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::GitBranch) { "►" } else { " " },
+            app.git_branch)),
+        Line::from(format!("{} Minimal Mode: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) { "►" } else { " " },
+            minimal_status)),
+        Line::from(format!("{} Local Transfer: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::LocalTransfer) { "►" } else { " " },
+            local_transfer_status)),
         Line::from(""),
         Line::from("IoT Connection (from IoT Config tab):"),
         Line::from(format!("  Host: {}", app.config.iot_host)),
         Line::from(format!("  User: {}", app.config.iot_username)),
         Line::from(""),
         Line::from("Controls:"),
+        Line::from("  ←/→   - Switch panels"),
         Line::from("  ↑/↓   - Navigate"),
         Line::from("  Enter - Execute / Edit"),
-        Line::from("  n     - Edit device name"),
     ];
 
-    let config_block =
-        Paragraph::new(config).block(Block::default().borders(Borders::ALL).title("Config"));
-    f.render_widget(config_block, chunks[1]);
+    let config_title = if app.device_focus_right { "► Config" } else { "Config" };
+
+    if app.input_mode == InputMode::Editing {
+        let edit_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunks[1]);
+
+        let edit_title = if let Some(ref field) = app.current_edit_field {
+            match field {
+                EditField::DeviceName => "Edit Device Name",
+                EditField::KeyFile => "Edit Key File",
+                EditField::GitBranch => "Edit Git Branch",
+                _ => "Edit Field",
+            }
+        } else {
+            "Edit Field"
+        };
+
+        let input = Paragraph::new(app.input_buffer.as_str())
+            .style(Style::default().fg(Color::Yellow))
+            .block(Block::default().borders(Borders::ALL).title(edit_title));
+        f.render_widget(input, edit_chunks[0]);
+
+        let edit_instructions = vec![
+            Line::from("Enter  - Save changes"),
+            Line::from("Esc    - Cancel editing"),
+        ];
+        let edit_help = Paragraph::new(edit_instructions)
+            .block(Block::default().borders(Borders::ALL).title("Edit Help"));
+        f.render_widget(edit_help, edit_chunks[1]);
+    } else {
+        let config_block =
+            Paragraph::new(config).block(Block::default().borders(Borders::ALL).title(config_title));
+        f.render_widget(config_block, chunks[1]);
+    }
 }
 
 fn render_actions_tab(f: &mut Frame, app: &mut App, area: Rect) {
