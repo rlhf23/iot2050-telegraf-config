@@ -663,7 +663,7 @@ impl WorkerHandle {
                             });
                             let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
                             let result = deployer
-                                .push_images(None, minimal, skip_custom, None)
+                                .push_images(None, minimal, skip_custom, None, None, None)
                                 .map(|_| WorkerResponse::SshCommandOutput(
                                     "Push images completed successfully".to_string(),
                                 ))

@@ -1061,24 +1061,47 @@ impl IoTDeployer {
         minimal: bool,
         skip_custom: bool,
         image_filter: Option<Vec<String>>,
+        save_dir: Option<std::path::PathBuf>,
+        load_dir: Option<std::path::PathBuf>,
     ) -> Result<(), TelegrafError> {
-        self.progress("🐳 Pushing Docker images to device...");
+        if save_dir.is_some() && load_dir.is_some() {
+            return Err(TelegrafError::ConfigError(
+                "Cannot use --save-dir and --load-dir together.".to_string(),
+            ));
+        }
 
-        let arch = match architecture {
-            Some(a) => {
-                self.progress(&format!("   Using specified architecture: {}", a));
-                a
+        let (arch, needs_device) = if load_dir.is_some() {
+            (architecture.unwrap_or_else(|| "arm64".to_string()), true)
+        } else if save_dir.is_some() {
+            match architecture {
+                Some(a) => (a, false),
+                None => return Err(TelegrafError::ConfigError(
+                    "--architecture is required when using --save-dir (no device to auto-detect from).".to_string(),
+                )),
             }
-            None => {
-                self.progress("   Detecting device architecture...");
-                self.detect_architecture()?
-            }
+        } else {
+            let a = match architecture {
+                Some(a) => {
+                    self.progress(&format!("   Using specified architecture: {}", a));
+                    a
+                }
+                None => {
+                    self.progress("   Detecting device architecture...");
+                    self.detect_architecture()?
+                }
+            };
+            (a, true)
         };
 
         let platform = format!("linux/{}", arch);
         let docker_context = self.find_docker_context()?;
 
         self.progress(&format!("   Target platform: {}", platform));
+        if !needs_device {
+            self.progress("   Save-only mode: images will be saved locally (no device connection needed)");
+        } else if load_dir.is_some() {
+            self.progress("   Load-only mode: using pre-saved image tars (no Docker needed on host)");
+        }
         self.progress(&format!("   Docker context: {}", docker_context.display()));
 
         let all_images: Vec<(&str, &str)> = vec![
@@ -1118,7 +1141,7 @@ impl IoTDeployer {
             ("control-service", "control-service/Dockerfile.prebuilt"),
         ];
 
-        let services_to_build: Vec<(&str, &str)> = if skip_custom {
+        let services_to_build: Vec<(&str, &str)> = if skip_custom || load_dir.is_some() {
             vec![]
         } else if let Some(filter) = &image_filter {
             let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
@@ -1135,103 +1158,45 @@ impl IoTDeployer {
             return Ok(());
         }
 
-        self.progress(&format!("   Images to pull: {}", images_to_pull.join(", ")));
-        if !services_to_build.is_empty() {
-            let build_names: Vec<&str> = services_to_build.iter().map(|(n, _)| *n).collect();
-            self.progress(&format!("   Services to build: {}", build_names.join(", ")));
-        }
-
-        // Phase 1: Pull and save images locally
-        let temp_dir = std::env::temp_dir().join("iot2050-image-push");
-        if temp_dir.exists() {
-            std::fs::remove_dir_all(&temp_dir).map_err(|e| {
-                TelegrafError::ConfigError(format!("Failed to clean temp directory: {}", e))
+        // --- Phase 1: Pull, build, save ---
+        let output_dir = save_dir.clone().unwrap_or_else(|| {
+            std::env::temp_dir().join("iot2050-image-push")
+        });
+        if output_dir.exists() {
+            std::fs::remove_dir_all(&output_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to clean output directory: {}", e))
             })?;
         }
-        std::fs::create_dir_all(&temp_dir).map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to create temp directory: {}", e))
+        std::fs::create_dir_all(&output_dir).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create output directory: {}", e))
         })?;
 
         let mut tar_files: Vec<(String, std::path::PathBuf)> = Vec::new();
 
-        // Pull remote images
-        for image in &images_to_pull {
-            self.progress(&format!("📦 Pulling {} (platform: {})...", image, platform));
+        if load_dir.is_none() {
+            for image in &images_to_pull {
+                self.progress(&format!("📦 Pulling {} (platform: {})...", image, platform));
 
-            let pull_output = std::process::Command::new("docker")
-                .args(["pull", "--platform", &platform, image])
-                .output()
-                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker pull: {}. Is Docker installed and running?", e)))?;
-
-            if !pull_output.status.success() {
-                let stderr = String::from_utf8_lossy(&pull_output.stderr);
-                return Err(TelegrafError::ConfigError(format!(
-                    "Failed to pull image {}: {}",
-                    image, stderr
-                )));
-            }
-
-            let safe_name = image.replace('/', "_").replace(':', "-");
-            let tar_path = temp_dir.join(format!("{}.tar", safe_name));
-
-            self.progress(&format!("💾 Saving {} to tar...", image));
-
-            let save_output = std::process::Command::new("docker")
-                .args(["save", "-o", tar_path.to_str().unwrap(), image])
-                .output()
-                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
-
-            if !save_output.status.success() {
-                let stderr = String::from_utf8_lossy(&save_output.stderr);
-                return Err(TelegrafError::ConfigError(format!(
-                    "Failed to save image {}: {}",
-                    image, stderr
-                )));
-            }
-
-            tar_files.push((image.to_string(), tar_path));
-        }
-
-        // Build custom images (api-service and control-service)
-        if !services_to_build.is_empty() {
-            for (service_name, dockerfile) in &services_to_build {
-                let image_tag = format!("{}:local", service_name);
-
-                self.progress(&format!("🔨 Building custom image {}...", image_tag));
-
-                let build_output = std::process::Command::new("docker")
-                    .args([
-                        "buildx",
-                        "build",
-                        "--platform",
-                        &platform,
-                        "-f",
-                        dockerfile,
-                        "--build-arg",
-                        &format!("TARGETARCH={}", arch),
-                        "-t",
-                        &image_tag,
-                        "--load",
-                        ".",
-                    ])
-                    .current_dir(&docker_context)
+                let pull_output = std::process::Command::new("docker")
+                    .args(["pull", "--platform", &platform, image])
                     .output()
-                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker pull: {}. Is Docker installed and running?", e)))?;
 
-                if !build_output.status.success() {
-                    let stderr = String::from_utf8_lossy(&build_output.stderr);
+                if !pull_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&pull_output.stderr);
                     return Err(TelegrafError::ConfigError(format!(
-                        "Failed to build {}: {}",
-                        image_tag, stderr
+                        "Failed to pull image {}: {}",
+                        image, stderr
                     )));
                 }
 
-                let tar_path = temp_dir.join(format!("{}.tar", service_name));
+                let safe_name = image.replace('/', "_").replace(':', "-");
+                let tar_path = output_dir.join(format!("{}.tar", safe_name));
 
-                self.progress(&format!("💾 Saving {} to tar...", image_tag));
+                self.progress(&format!("💾 Saving {} to tar...", image));
 
                 let save_output = std::process::Command::new("docker")
-                    .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
+                    .args(["save", "-o", tar_path.to_str().unwrap(), image])
                     .output()
                     .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
 
@@ -1239,17 +1204,108 @@ impl IoTDeployer {
                     let stderr = String::from_utf8_lossy(&save_output.stderr);
                     return Err(TelegrafError::ConfigError(format!(
                         "Failed to save image {}: {}",
-                        image_tag, stderr
+                        image, stderr
                     )));
                 }
 
-                tar_files.push((image_tag, tar_path));
+                tar_files.push((image.to_string(), tar_path));
             }
-        } else if skip_custom {
-            self.progress("⏭️  Skipping custom service images (--skip-custom)");
+
+            if !services_to_build.is_empty() {
+                for (service_name, dockerfile) in &services_to_build {
+                    let image_tag = format!("{}:local", service_name);
+
+                    self.progress(&format!("🔨 Building custom image {}...", image_tag));
+
+                    let build_output = std::process::Command::new("docker")
+                        .args([
+                            "buildx",
+                            "build",
+                            "--platform",
+                            &platform,
+                            "-f",
+                            dockerfile,
+                            "--build-arg",
+                            &format!("TARGETARCH={}", arch),
+                            "-t",
+                            &image_tag,
+                            "--load",
+                            ".",
+                        ])
+                        .current_dir(&docker_context)
+                        .output()
+                        .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
+
+                    if !build_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&build_output.stderr);
+                        return Err(TelegrafError::ConfigError(format!(
+                            "Failed to build {}: {}",
+                            image_tag, stderr
+                        )));
+                    }
+
+                    let tar_path = output_dir.join(format!("{}.tar", service_name));
+
+                    self.progress(&format!("💾 Saving {} to tar...", image_tag));
+
+                    let save_output = std::process::Command::new("docker")
+                        .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
+                        .output()
+                        .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+
+                    if !save_output.status.success() {
+                        let stderr = String::from_utf8_lossy(&save_output.stderr);
+                        return Err(TelegrafError::ConfigError(format!(
+                            "Failed to save image {}: {}",
+                            image_tag, stderr
+                        )));
+                    }
+
+                    tar_files.push((image_tag, tar_path));
+                }
+            } else if skip_custom {
+                self.progress("⏭️  Skipping custom service images (--skip-custom)");
+            }
         }
 
-        // Phase 2: Transfer tar files to device
+        // Save-only mode: stop here
+        if save_dir.is_some() {
+            let file_count = tar_files.len();
+            self.progress(&format!(
+                "✅ Saved {} image tar(s) to {}",
+                file_count,
+                output_dir.display()
+            ));
+            return Ok(());
+        }
+
+        // --- If load_dir, discover tars from that directory ---
+        if load_dir.is_some() {
+            let dir = load_dir.as_ref().unwrap();
+            self.progress(&format!("📂 Loading tars from {}...", dir.display()));
+            for entry in std::fs::read_dir(dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to read load directory: {}", e))
+            })? {
+                let entry = entry.map_err(|e| {
+                    TelegrafError::ConfigError(format!("Failed to read directory entry: {}", e))
+                })?;
+                let path = entry.path();
+                if path.extension().map(|e| e == "tar").unwrap_or(false) {
+                    let name = path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    tar_files.push((name, path));
+                }
+            }
+            if tar_files.is_empty() {
+                return Err(TelegrafError::ConfigError(
+                    "No .tar files found in the specified directory.".to_string(),
+                ));
+            }
+        }
+
+        // --- Phase 2: Transfer tar files to device ---
         self.progress("📤 Transferring images to device...");
 
         let session = self.create_ssh_session()?;
@@ -1294,7 +1350,7 @@ impl IoTDeployer {
             })?;
         }
 
-        // Phase 3: Load images on device
+        // --- Phase 3: Load images on device ---
         self.progress("📥 Loading images on device...");
 
         for (image_name, tar_path) in &tar_files {
@@ -1309,7 +1365,7 @@ impl IoTDeployer {
             self.run_command(&session, &load_cmd, &format!("Loading image {}", image_name))?;
         }
 
-        // Clean up tars on device (optional, saves disk space)
+        // Clean up tars on device
         self.progress("🧹 Cleaning up image tars on device...");
         let _ = self.run_command(
             &session,
@@ -1317,9 +1373,12 @@ impl IoTDeployer {
             "Removing temporary image tar files",
         );
 
-        // Clean up local temp files
-        self.progress("🧹 Cleaning up local temporary files...");
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        // Clean up local temp files (only if we created them)
+        if load_dir.is_none() {
+            self.progress("🧹 Cleaning up local temporary files...");
+            let temp_dir = std::env::temp_dir().join("iot2050-image-push");
+            let _ = std::fs::remove_dir_all(temp_dir);
+        }
 
         let image_count = tar_files.len();
         self.progress(&format!(
