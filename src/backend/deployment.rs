@@ -1060,6 +1060,7 @@ impl IoTDeployer {
         architecture: Option<String>,
         minimal: bool,
         skip_custom: bool,
+        image_filter: Option<Vec<String>>,
     ) -> Result<(), TelegrafError> {
         self.progress("🐳 Pushing Docker images to device...");
 
@@ -1080,17 +1081,64 @@ impl IoTDeployer {
         self.progress(&format!("   Target platform: {}", platform));
         self.progress(&format!("   Docker context: {}", docker_context.display()));
 
-        let mut images_to_pull = vec![
-            "influxdb:2",
-            "telegraf:1.30",
-            "chronograf:1.10",
-            "nginx:alpine",
-            "alpine:3.19",
+        let all_images: Vec<(&str, &str)> = vec![
+            ("influxdb", "influxdb:2"),
+            ("telegraf", "telegraf:1.30"),
+            ("chronograf", "chronograf:1.10"),
+            ("nginx", "nginx:alpine"),
+            ("alpine", "alpine:3.19"),
+            ("grafana", "grafana/grafana:latest"),
+            ("prometheus", "prom/prometheus:latest"),
         ];
 
-        if !minimal {
-            images_to_pull.push("grafana/grafana:latest");
-            images_to_pull.push("prom/prometheus:latest");
+        let minimal_names: &[&str] = &["influxdb", "telegraf", "chronograf", "nginx", "alpine"];
+
+        let images_to_pull: Vec<&str> = match &image_filter {
+            Some(filter) => {
+                let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
+                all_images.iter()
+                    .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
+                    .map(|(_, tag)| *tag)
+                    .collect()
+            }
+            None => {
+                if minimal {
+                    all_images.iter()
+                        .filter(|(name, _)| minimal_names.contains(name))
+                        .map(|(_, tag)| *tag)
+                        .collect()
+                } else {
+                    all_images.iter().map(|(_, tag)| *tag).collect()
+                }
+            }
+        };
+
+        let custom_services: Vec<(&str, &str)> = vec![
+            ("api-service", "api-service/Dockerfile.prebuilt"),
+            ("control-service", "control-service/Dockerfile.prebuilt"),
+        ];
+
+        let services_to_build: Vec<(&str, &str)> = if skip_custom {
+            vec![]
+        } else if let Some(filter) = &image_filter {
+            let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
+            custom_services.iter()
+                .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
+                .cloned()
+                .collect()
+        } else {
+            custom_services.clone()
+        };
+
+        if images_to_pull.is_empty() && services_to_build.is_empty() {
+            self.progress("ℹ️  No images selected. Use --images to specify which images to push, or omit it to push all.");
+            return Ok(());
+        }
+
+        self.progress(&format!("   Images to pull: {}", images_to_pull.join(", ")));
+        if !services_to_build.is_empty() {
+            let build_names: Vec<&str> = services_to_build.iter().map(|(n, _)| *n).collect();
+            self.progress(&format!("   Services to build: {}", build_names.join(", ")));
         }
 
         // Phase 1: Pull and save images locally
@@ -1145,13 +1193,8 @@ impl IoTDeployer {
         }
 
         // Build custom images (api-service and control-service)
-        if !skip_custom {
-            let custom_services = [
-                ("api-service", "api-service/Dockerfile.prebuilt"),
-                ("control-service", "control-service/Dockerfile.prebuilt"),
-            ];
-
-            for (service_name, dockerfile) in &custom_services {
+        if !services_to_build.is_empty() {
+            for (service_name, dockerfile) in &services_to_build {
                 let image_tag = format!("{}:local", service_name);
 
                 self.progress(&format!("🔨 Building custom image {}...", image_tag));
@@ -1202,7 +1245,7 @@ impl IoTDeployer {
 
                 tar_files.push((image_tag, tar_path));
             }
-        } else {
+        } else if skip_custom {
             self.progress("⏭️  Skipping custom service images (--skip-custom)");
         }
 

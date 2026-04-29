@@ -135,9 +135,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let skip_custom = sub_matches.get_flag("skip_custom");
             let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
             let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
+            let image_filter = sub_matches.get_one::<String>("images").map(|s| {
+                s.split(',').map(|i| i.trim().to_string()).filter(|i| !i.is_empty()).collect()
+            });
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
-            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom) {
+            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom, image_filter) {
                 exit_with_error(format!("Push images failed: {}", e));
             }
 
@@ -741,6 +744,7 @@ fn main() {
                         .arg(clap::Arg::new("architecture").short('a').long("architecture").default_value("auto").help("Target architecture (auto, arm64, amd64). Auto-detects from device if not specified."))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Push minimal images only (skip Grafana and Prometheus)"))
                         .arg(clap::Arg::new("skip_custom").long("skip-custom").action(clap::ArgAction::SetTrue).help("Skip building and pushing custom service images (api-service, control-service)"))
+                        .arg(clap::Arg::new("images").long("images").help("Comma-separated list of specific images to push (e.g. chronograf,influxdb). Valid names: influxdb, telegraf, chronograf, nginx, alpine, grafana, prometheus, api-service, control-service"))
                 )
         )
         .subcommand(
