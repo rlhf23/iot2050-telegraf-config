@@ -129,6 +129,19 @@ fn handle_device_command(matches: &clap::ArgMatches) {
 
             wrap_up(0);
         }
+        Some(("push-images", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let minimal = sub_matches.get_flag("minimal");
+            let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
+            let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
+            let deployer = IoTDeployer::new(config).with_minimal(minimal);
+
+            if let Err(e) = deployer.push_images(architecture, minimal) {
+                exit_with_error(format!("Push images failed: {}", e));
+            }
+
+            wrap_up(0);
+        }
         Some(("stop", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
@@ -716,6 +729,16 @@ fn main() {
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("push-images")
+                        .about("Push Docker images to device for offline deployment")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("architecture").short('a').long("architecture").default_value("auto").help("Target architecture (auto, arm64, amd64). Auto-detects from device if not specified."))
+                        .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Push minimal images only (skip Grafana and Prometheus)"))
                 )
         )
         .subcommand(

@@ -1047,6 +1047,279 @@ impl PackageStatus {
 }
 
 impl IoTDeployer {
+    /// Push Docker images to the device for offline deployment.
+    ///
+    /// Pulls all required images locally (cross-arch if needed), builds custom
+    /// service images, saves them to tar files, transfers them to the device
+    /// via SFTP, and loads them into the device's Docker daemon.
+    ///
+    /// If `architecture` is None, it will be auto-detected from the device.
+    /// If `minimal` is true, Grafana and Prometheus images are skipped.
+    pub fn push_images(
+        &self,
+        architecture: Option<String>,
+        minimal: bool,
+    ) -> Result<(), TelegrafError> {
+        self.progress("🐳 Pushing Docker images to device...");
+
+        let arch = match architecture {
+            Some(a) => {
+                self.progress(&format!("   Using specified architecture: {}", a));
+                a
+            }
+            None => {
+                self.progress("   Detecting device architecture...");
+                self.detect_architecture()?
+            }
+        };
+
+        let platform = format!("linux/{}", arch);
+        let docker_context = self.find_docker_context()?;
+
+        self.progress(&format!("   Target platform: {}", platform));
+        self.progress(&format!("   Docker context: {}", docker_context.display()));
+
+        let mut images_to_pull = vec![
+            "influxdb:2",
+            "telegraf:1.30",
+            "chronograf:1.10",
+            "nginx:alpine",
+            "alpine:3.19",
+        ];
+
+        if !minimal {
+            images_to_pull.push("grafana/grafana:latest");
+            images_to_pull.push("prom/prometheus:latest");
+        }
+
+        // Phase 1: Pull and save images locally
+        let temp_dir = std::env::temp_dir().join("iot2050-image-push");
+        if temp_dir.exists() {
+            std::fs::remove_dir_all(&temp_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to clean temp directory: {}", e))
+            })?;
+        }
+        std::fs::create_dir_all(&temp_dir).map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create temp directory: {}", e))
+        })?;
+
+        let mut tar_files: Vec<(String, std::path::PathBuf)> = Vec::new();
+
+        // Pull remote images
+        for image in &images_to_pull {
+            self.progress(&format!("📦 Pulling {} (platform: {})...", image, platform));
+
+            let pull_output = std::process::Command::new("docker")
+                .args(["pull", "--platform", &platform, image])
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker pull: {}. Is Docker installed and running?", e)))?;
+
+            if !pull_output.status.success() {
+                let stderr = String::from_utf8_lossy(&pull_output.stderr);
+                return Err(TelegrafError::ConfigError(format!(
+                    "Failed to pull image {}: {}",
+                    image, stderr
+                )));
+            }
+
+            let safe_name = image.replace('/', "_").replace(':', "-");
+            let tar_path = temp_dir.join(format!("{}.tar", safe_name));
+
+            self.progress(&format!("💾 Saving {} to tar...", image));
+
+            let save_output = std::process::Command::new("docker")
+                .args(["save", "-o", tar_path.to_str().unwrap(), image])
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+
+            if !save_output.status.success() {
+                let stderr = String::from_utf8_lossy(&save_output.stderr);
+                return Err(TelegrafError::ConfigError(format!(
+                    "Failed to save image {}: {}",
+                    image, stderr
+                )));
+            }
+
+            tar_files.push((image.to_string(), tar_path));
+        }
+
+        // Build custom images (api-service and control-service)
+        let custom_services = [
+            ("api-service", "api-service/Dockerfile.prebuilt"),
+            ("control-service", "control-service/Dockerfile.prebuilt"),
+        ];
+
+        for (service_name, dockerfile) in &custom_services {
+            let image_tag = format!("{}:local", service_name);
+
+            self.progress(&format!("🔨 Building custom image {}...", image_tag));
+
+            let build_output = std::process::Command::new("docker")
+                .args([
+                    "buildx",
+                    "build",
+                    "--platform",
+                    &platform,
+                    "-f",
+                    dockerfile,
+                    "--build-arg",
+                    &format!("TARGETARCH={}", arch),
+                    "-t",
+                    &image_tag,
+                    "--load",
+                    ".",
+                ])
+                .current_dir(&docker_context)
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
+
+            if !build_output.status.success() {
+                let stderr = String::from_utf8_lossy(&build_output.stderr);
+                return Err(TelegrafError::ConfigError(format!(
+                    "Failed to build {}: {}",
+                    image_tag, stderr
+                )));
+            }
+
+            let tar_path = temp_dir.join(format!("{}.tar", service_name));
+
+            self.progress(&format!("💾 Saving {} to tar...", image_tag));
+
+            let save_output = std::process::Command::new("docker")
+                .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
+                .output()
+                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+
+            if !save_output.status.success() {
+                let stderr = String::from_utf8_lossy(&save_output.stderr);
+                return Err(TelegrafError::ConfigError(format!(
+                    "Failed to save image {}: {}",
+                    image_tag, stderr
+                )));
+            }
+
+            tar_files.push((image_tag, tar_path));
+        }
+
+        // Phase 2: Transfer tar files to device
+        self.progress("📤 Transferring images to device...");
+
+        let session = self.create_ssh_session()?;
+
+        self.run_command(
+            &session,
+            "mkdir -p ~/monitoring/images",
+            "Creating images directory on device",
+        )?;
+
+        let sftp = session.sftp().map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e))
+        })?;
+
+        let remote_base = Path::new("/home")
+            .join(self.user())
+            .join("monitoring")
+            .join("images");
+
+        for (image_name, tar_path) in &tar_files {
+            let file_size = std::fs::metadata(tar_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let size_mb = file_size as f64 / (1024.0 * 1024.0);
+            self.progress(&format!(
+                "   Uploading {} ({:.1} MB)...",
+                image_name, size_mb
+            ));
+
+            let remote_path = remote_base.join(tar_path.file_name().unwrap());
+
+            let mut local_file = std::fs::File::open(tar_path).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to open tar file: {}", e))
+            })?;
+
+            let mut remote_file = sftp.create(&remote_path).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to create remote file: {}", e))
+            })?;
+
+            std::io::copy(&mut local_file, &mut remote_file).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to upload image tar: {}", e))
+            })?;
+        }
+
+        // Phase 3: Load images on device
+        self.progress("📥 Loading images on device...");
+
+        for (image_name, tar_path) in &tar_files {
+            let tar_filename = tar_path.file_name().unwrap().to_str().unwrap();
+            self.progress(&format!("   Loading {}...", image_name));
+
+            let load_cmd = format!(
+                "docker load -i ~/monitoring/images/{}",
+                tar_filename
+            );
+
+            self.run_command(&session, &load_cmd, &format!("Loading image {}", image_name))?;
+        }
+
+        // Clean up tars on device (optional, saves disk space)
+        self.progress("🧹 Cleaning up image tars on device...");
+        let _ = self.run_command(
+            &session,
+            "rm -rf ~/monitoring/images",
+            "Removing temporary image tar files",
+        );
+
+        // Clean up local temp files
+        self.progress("🧹 Cleaning up local temporary files...");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        let image_count = tar_files.len();
+        self.progress(&format!(
+            "✅ Successfully pushed {} images to device!",
+            image_count
+        ));
+        Ok(())
+    }
+
+    /// Find the docker context directory by looking for docker-compose.yml
+    fn find_docker_context(&self) -> Result<std::path::PathBuf, TelegrafError> {
+        let exe_dir = std::env::current_exe()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to get exe path: {}", e)))?;
+        let exe_dir = exe_dir.parent().ok_or_else(|| {
+            TelegrafError::ConfigError("Failed to determine exe directory".to_string())
+        })?;
+
+        let mut search_dir = exe_dir.to_path_buf();
+        loop {
+            let candidate = search_dir.join("docker").join("docker-compose.yml");
+            if candidate.exists() {
+                return Ok(search_dir.join("docker"));
+            }
+            if !search_dir.pop() {
+                break;
+            }
+        }
+
+        let cwd = std::env::current_dir().map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to get current directory: {}", e))
+        })?;
+
+        let mut search_dir = cwd;
+        loop {
+            let candidate = search_dir.join("docker").join("docker-compose.yml");
+            if candidate.exists() {
+                return Ok(search_dir.join("docker"));
+            }
+            if !search_dir.pop() {
+                break;
+            }
+        }
+
+        Err(TelegrafError::ConfigError(
+            "Could not find docker/ directory with docker-compose.yml. Run push-images from the project root.".to_string()
+        ))
+    }
+
     /// Recursively upload a directory via SFTP
     fn upload_directory_sftp(
         &self,
