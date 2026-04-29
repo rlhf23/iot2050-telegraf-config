@@ -144,11 +144,10 @@ impl S7Client {
     /// Check if connection to PLC is actually alive by trying to get CPU status
     pub fn check_connection(&mut self) -> bool {
         // If we don't have a connection object, try to connect
-        if self.transport.is_none() {
-            if self.connect().is_err() {
+        if self.transport.is_none()
+            && self.connect().is_err() {
                 return false;
             }
-        }
 
         // Try to communicate with PLC
         match self.get_cpu_status() {
