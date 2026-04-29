@@ -1059,6 +1059,7 @@ impl IoTDeployer {
         &self,
         architecture: Option<String>,
         minimal: bool,
+        skip_custom: bool,
     ) -> Result<(), TelegrafError> {
         self.progress("🐳 Pushing Docker images to device...");
 
@@ -1144,61 +1145,65 @@ impl IoTDeployer {
         }
 
         // Build custom images (api-service and control-service)
-        let custom_services = [
-            ("api-service", "api-service/Dockerfile.prebuilt"),
-            ("control-service", "control-service/Dockerfile.prebuilt"),
-        ];
+        if !skip_custom {
+            let custom_services = [
+                ("api-service", "api-service/Dockerfile.prebuilt"),
+                ("control-service", "control-service/Dockerfile.prebuilt"),
+            ];
 
-        for (service_name, dockerfile) in &custom_services {
-            let image_tag = format!("{}:local", service_name);
+            for (service_name, dockerfile) in &custom_services {
+                let image_tag = format!("{}:local", service_name);
 
-            self.progress(&format!("🔨 Building custom image {}...", image_tag));
+                self.progress(&format!("🔨 Building custom image {}...", image_tag));
 
-            let build_output = std::process::Command::new("docker")
-                .args([
-                    "buildx",
-                    "build",
-                    "--platform",
-                    &platform,
-                    "-f",
-                    dockerfile,
-                    "--build-arg",
-                    &format!("TARGETARCH={}", arch),
-                    "-t",
-                    &image_tag,
-                    "--load",
-                    ".",
-                ])
-                .current_dir(&docker_context)
-                .output()
-                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
+                let build_output = std::process::Command::new("docker")
+                    .args([
+                        "buildx",
+                        "build",
+                        "--platform",
+                        &platform,
+                        "-f",
+                        dockerfile,
+                        "--build-arg",
+                        &format!("TARGETARCH={}", arch),
+                        "-t",
+                        &image_tag,
+                        "--load",
+                        ".",
+                    ])
+                    .current_dir(&docker_context)
+                    .output()
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
 
-            if !build_output.status.success() {
-                let stderr = String::from_utf8_lossy(&build_output.stderr);
-                return Err(TelegrafError::ConfigError(format!(
-                    "Failed to build {}: {}",
-                    image_tag, stderr
-                )));
+                if !build_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&build_output.stderr);
+                    return Err(TelegrafError::ConfigError(format!(
+                        "Failed to build {}: {}",
+                        image_tag, stderr
+                    )));
+                }
+
+                let tar_path = temp_dir.join(format!("{}.tar", service_name));
+
+                self.progress(&format!("💾 Saving {} to tar...", image_tag));
+
+                let save_output = std::process::Command::new("docker")
+                    .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
+                    .output()
+                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+
+                if !save_output.status.success() {
+                    let stderr = String::from_utf8_lossy(&save_output.stderr);
+                    return Err(TelegrafError::ConfigError(format!(
+                        "Failed to save image {}: {}",
+                        image_tag, stderr
+                    )));
+                }
+
+                tar_files.push((image_tag, tar_path));
             }
-
-            let tar_path = temp_dir.join(format!("{}.tar", service_name));
-
-            self.progress(&format!("💾 Saving {} to tar...", image_tag));
-
-            let save_output = std::process::Command::new("docker")
-                .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
-                .output()
-                .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
-
-            if !save_output.status.success() {
-                let stderr = String::from_utf8_lossy(&save_output.stderr);
-                return Err(TelegrafError::ConfigError(format!(
-                    "Failed to save image {}: {}",
-                    image_tag, stderr
-                )));
-            }
-
-            tar_files.push((image_tag, tar_path));
+        } else {
+            self.progress("⏭️  Skipping custom service images (--skip-custom)");
         }
 
         // Phase 2: Transfer tar files to device

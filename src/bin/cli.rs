@@ -132,11 +132,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         Some(("push-images", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let minimal = sub_matches.get_flag("minimal");
+            let skip_custom = sub_matches.get_flag("skip_custom");
             let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
             let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
-            if let Err(e) = deployer.push_images(architecture, minimal) {
+            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom) {
                 exit_with_error(format!("Push images failed: {}", e));
             }
 
@@ -739,6 +740,7 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("architecture").short('a').long("architecture").default_value("auto").help("Target architecture (auto, arm64, amd64). Auto-detects from device if not specified."))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Push minimal images only (skip Grafana and Prometheus)"))
+                        .arg(clap::Arg::new("skip_custom").long("skip-custom").action(clap::ArgAction::SetTrue).help("Skip building and pushing custom service images (api-service, control-service)"))
                 )
         )
         .subcommand(
