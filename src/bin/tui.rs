@@ -100,6 +100,7 @@ enum DeviceActionField {
     Provision,
     Setup,
     Update,
+    PushImages,
     Start,
     Stop,
     Status,
@@ -110,7 +111,7 @@ enum DeviceActionField {
 
 impl DeviceActionField {
     fn count() -> usize {
-        9
+        10
     }
 
     fn from_index(index: usize) -> Self {
@@ -118,12 +119,13 @@ impl DeviceActionField {
             0 => Self::Provision,
             1 => Self::Setup,
             2 => Self::Update,
-            3 => Self::Start,
-            4 => Self::Stop,
-            5 => Self::Status,
-            6 => Self::Backup,
-            7 => Self::Restore,
-            8 => Self::SyncTime,
+            3 => Self::PushImages,
+            4 => Self::Start,
+            5 => Self::Stop,
+            6 => Self::Status,
+            7 => Self::Backup,
+            8 => Self::Restore,
+            9 => Self::SyncTime,
             _ => Self::Provision,
         }
     }
@@ -136,11 +138,12 @@ enum DeviceConfigField {
     GitBranch,
     Minimal,
     LocalTransfer,
+    SkipCustom,
 }
 
 impl DeviceConfigField {
     fn count() -> usize {
-        5
+        6
     }
 
     fn from_index(index: usize) -> Self {
@@ -150,6 +153,7 @@ impl DeviceConfigField {
             2 => Self::GitBranch,
             3 => Self::Minimal,
             4 => Self::LocalTransfer,
+            5 => Self::SkipCustom,
             _ => Self::DeviceName,
         }
     }
@@ -268,6 +272,7 @@ struct App {
     git_branch: String,
     minimal: bool,
     local_transfer: bool,
+    skip_custom: bool,
 
     // Confirmation for destructive operations
     pending_confirmation: Option<String>,
@@ -326,6 +331,7 @@ impl App {
             git_branch: "master".to_string(),
             minimal: false,
             local_transfer: false,
+            skip_custom: false,
             pending_confirmation: None,
         };
 
@@ -1161,6 +1167,26 @@ fn add_status_message(&mut self, message: String) {
         self.add_status_message("⚠️ Restore requires an archive path. Use the CLI for restore with a specific archive file.".to_string());
     }
 
+    fn device_push_images(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("🐳 Pushing Docker images to device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DevicePushImages {
+                config,
+                minimal: self.minimal,
+                skip_custom: self.skip_custom,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
     fn build_deployment_config(&self) -> DeploymentConfig {
         let host = self.config.iot_host.clone();
         let user = self.config.iot_username.clone();
@@ -1636,6 +1662,13 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                             if app.local_transfer { "enabled" } else { "disabled" }
                         ));
                     }
+                    DeviceConfigField::SkipCustom => {
+                        app.skip_custom = !app.skip_custom;
+                        app.add_status_message(format!(
+                            "Skip custom images: {}",
+                            if app.skip_custom { "enabled" } else { "disabled" }
+                        ));
+                    }
                 }
             }
             _ => {}
@@ -1658,6 +1691,7 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                     DeviceActionField::Provision => app.device_provision(),
                     DeviceActionField::Setup => app.device_setup(),
                     DeviceActionField::Update => app.device_update(),
+                    DeviceActionField::PushImages => app.device_push_images(),
                     DeviceActionField::Start => app.device_start(),
                     DeviceActionField::Stop => app.device_stop(),
                     DeviceActionField::Status => app.device_status(),
@@ -1669,6 +1703,7 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
             KeyCode::Char('p') => app.device_provision(),
             KeyCode::Char('s') => app.device_setup(),
             KeyCode::Char('u') => app.device_update(),
+            KeyCode::Char('i') => app.device_push_images(),
             KeyCode::Char('g') => app.device_start(),
             KeyCode::Char('v') => app.device_stop_with_volumes(),
             KeyCode::Char('n') => {
@@ -2290,6 +2325,11 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
             action_highlight && matches!(selected_action, DeviceActionField::Update),
             "u",
         ),
+        render_action_item(
+            "🐳 Push Images",
+            action_highlight && matches!(selected_action, DeviceActionField::PushImages),
+            "i",
+        ),
         Line::from(""),
         Line::from("Service Control:"),
         render_action_item(
@@ -2337,6 +2377,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     // Configuration panel
     let minimal_status = if app.minimal { "Enabled" } else { "Disabled" };
     let local_transfer_status = if app.local_transfer { "Enabled" } else { "Disabled" };
+    let skip_custom_status = if app.skip_custom { "Enabled" } else { "Disabled" };
 
     let device_name_display = if app.device_name.is_empty() {
         "(random name)"
@@ -2370,6 +2411,9 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("{} Local Transfer: {}",
             if config_highlight && matches!(selected_config, DeviceConfigField::LocalTransfer) { "►" } else { " " },
             local_transfer_status)),
+        Line::from(format!("{} Skip Custom Images: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::SkipCustom) { "►" } else { " " },
+            skip_custom_status)),
         Line::from(""),
         Line::from("IoT Connection (from IoT Config tab):"),
         Line::from(format!("  Host: {}", app.config.iot_host)),
