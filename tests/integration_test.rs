@@ -8,7 +8,7 @@ use sie_generate_config::backend::opcua_poller::OpcUaNode;
 
 use sie_generate_config::{
     backend::{opcua_poller::OpcUaPoller, ConfigGenerator},
-    SelectedOpcUaNode, TelegrafConfig,
+    OpcUaConnectionConfig, SelectedOpcUaNode, TelegrafConfig,
 };
 
 // Check if we're running in a CI environment
@@ -159,27 +159,27 @@ fn get_bin_path(bin_name: &str) -> PathBuf {
 /// Helper function to start the OPC UA test server on the specified port
 /// Returns a handle that will kill the server when dropped
 fn start_opcua_server(port: u16) -> std::process::Child {
-    // Kill any existing server instances
-    let _ = std::process::Command::new("pkill")
-        .arg("-f")
-        .arg("opcua_test_server")
-        .status();
-
-    // Give the OS a moment to release the port
-    thread::sleep(Duration::from_secs(1));
-
+    // Start fresh — no pkill, since tests run in parallel on different ports
     println!("Starting OPC UA test server on port {}...", port);
+
     let mut server = Command::new(get_bin_path("opcua_test_server"))
         .arg("--port")
         .arg(port.to_string())
-        .stdout(Stdio::piped()) // Capture stdout for debugging
-        .stderr(Stdio::piped()) // Capture stderr for debugging
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .expect("Failed to start OPC UA test server");
 
-    // Give the server time to start up
+    // Give the server time to start up and generate its certificate
     println!("Waiting for server to start...");
     thread::sleep(Duration::from_secs(3));
+
+    // The opcua crate generates self-signed certs with the machine's hostname
+    // in the SAN, which won't match 127.0.0.1/localhost. The auto-trust
+    // mechanism doesn't reliably handle this, so we manually copy the
+    // server's cert to the trusted directory using the thumbprint-based
+    // filename that the crate expects, and clear any rejected certs.
+    trust_server_cert();
 
     // Verify the server is still running
     if let Ok(Some(status)) = server.try_wait() {
@@ -685,6 +685,88 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn test_opcua_read_current_time() -> Result<(), Box<dyn std::error::Error>> {
+    if is_ci_environment() {
+        println!("Skipping OPC UA read_current_time test in CI environment");
+        return Ok(());
+    }
+
+    let port = 4843;
+    let server_handle = start_opcua_server(port);
+    let _server_guard = scopeguard::guard(server_handle, |mut server| {
+        let _ = server.kill();
+        let _ = server.wait();
+    });
+
+    let config = OpcUaConnectionConfig {
+        ip: format!("127.0.0.1:{}", port),
+        username: String::new(),
+        password: String::new(),
+    };
+
+    let poller = OpcUaPoller::new(config)?;
+
+    let (plc_time, offset_ms) = poller.read_current_time()?;
+
+    let now = chrono::Utc::now();
+    let diff_from_now = (plc_time - now).num_seconds().abs();
+
+    assert!(
+        diff_from_now < 30,
+        "PLC time should be close to current time, but diff was {} seconds",
+        diff_from_now
+    );
+
+    assert!(
+        offset_ms.abs() < 30_000,
+        "Offset should be small (< 30s), but was {} ms",
+        offset_ms
+    );
+
+    println!(
+        "PLC time: {}, offset: {} ms, diff from local: {} s",
+        plc_time, offset_ms, diff_from_now
+    );
+
+
+     Ok(())
+}
+#[test]
+fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
+    if is_ci_environment() {
+        println!("Skipping OPC UA get_namespace_info test in CI environment");
+        return Ok(());
+    }
+    let port = 4844;
+    let server_handle = start_opcua_server(port);
+    let _server_guard = scopeguard::guard(server_handle, |mut server| {
+        let _ = server.kill();
+        let _ = server.wait();
+    });
+    let config = OpcUaConnectionConfig {
+        ip: format!("127.0.0.1:{}", port),
+        username: String::new(),
+        password: String::new(),
+    };
+    let poller = OpcUaPoller::new(config)?;
+    
+    let xml_files = vec!["sample_db.xml".to_string()];
+
+    let namespace_map = poller.get_namespace_info(&xml_files)?;
+
+    assert!(
+        !namespace_map.is_empty(),
+        "Should find at least one namespace mapping for sample_db.xml"
+    );
+
+    for (filename, ns_index) in &namespace_map {
+        println!("Mapped file '{}' to namespace {}", filename, ns_index);
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_cli_check_commands() -> Result<(), Box<dyn std::error::Error>> {
     // Skip all CLI tests in CI environments
     if is_ci_environment() {
@@ -799,4 +881,87 @@ fn test_cli_check_commands() -> Result<(), Box<dyn std::error::Error>> {
     println!("All commands handle invalid hosts gracefully and show appropriate messages.");
 
     Ok(())
+}
+
+/// Copy the OPC UA test server's self-signed certificate to the trusted directory
+/// so that the client will accept it. The opcua crate generates certs with the
+/// machine's hostname in the SAN, which won't match our test connections to
+/// 127.0.0.1. The auto-trust mechanism doesn't reliably handle this, so we
+/// manually copy the cert using the thumbprint-based filename the crate expects
+/// and clear any previously rejected certs.
+fn trust_server_cert() {
+    let pki_dir = std::path::PathBuf::from("pki");
+    let own_cert = pki_dir.join("own/cert.der");
+    if !own_cert.exists() {
+        return;
+    }
+
+    let trusted_dir = pki_dir.join("trusted");
+    let rejected_dir = pki_dir.join("rejected");
+    let _ = std::fs::create_dir_all(&trusted_dir);
+
+    // Clear any previously rejected certs
+    if rejected_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&rejected_dir) {
+            for entry in entries.flatten() {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
+    // Read the cert and compute the thumbprint-based filename that the opcua crate expects:
+    // format: "<CommonName> [<thumbprint>].der"
+    // We use openssl to extract this info, or fall back to just copying with cert.der
+    let cert_data = match std::fs::read(&own_cert) {
+        Ok(data) => data,
+        Err(_) => return,
+    };
+
+    // Use openssl to get the common name and thumbprint
+    let openssl_output = std::process::Command::new("openssl")
+        .args(["x509", "-inform", "DER", "-noout", "-subject", "-fingerprint"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+
+    if let Ok(mut child) = openssl_output {
+        use std::io::Write;
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(&cert_data);
+        }
+        if let Ok(output) = child.wait_with_output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let mut common_name = String::new();
+            let mut thumbprint = String::new();
+
+            for line in stdout.lines() {
+                if line.contains("CN =") {
+                    // Extract CN from: "subject=CN = OPC UA Test Server, O = ..."
+                    if let Some(cn_start) = line.find("CN = ") {
+                        let rest = &line[cn_start + 5..];
+                        if let Some(cn_end) = rest.find(',') {
+                            common_name = rest[..cn_end].trim().to_string();
+                        } else {
+                            common_name = rest.trim().to_string();
+                        }
+                    }
+                }
+                if line.contains("SHA1 Fingerprint") {
+                    // Extract thumbprint from: "SHA1 Fingerprint=7A:DF:B0:..."
+                    if let Some(eq_pos) = line.find('=') {
+                        thumbprint = line[eq_pos + 1..].replace(':', "").to_lowercase();
+                    }
+                }
+            }
+
+            if !common_name.is_empty() && !thumbprint.is_empty() {
+                let trusted_name = format!("{} [{}].der", common_name, thumbprint);
+                let _ = std::fs::copy(&own_cert, trusted_dir.join(&trusted_name));
+            }
+        }
+    }
+
+    // Also copy with simple name as fallback
+    let _ = std::fs::copy(&own_cert, trusted_dir.join("cert.der"));
 }
