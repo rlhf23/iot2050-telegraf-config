@@ -11,6 +11,79 @@ pub const GITHUB_REPO_OWNER: &str = "rlhf23";
 pub const GITHUB_REPO_NAME: &str = "iot2050-telegraf-config";
 pub const DEFAULT_BRANCH: &str = "master";
 
+pub const DOCKER_IMAGES: &[(&str, &str)] = &[
+    ("influxdb", "influxdb:2"),
+    ("telegraf", "telegraf:1.30"),
+    ("chronograf", "chronograf:1.10"),
+    ("nginx", "nginx:alpine"),
+    ("alpine", "alpine:3.19"),
+    ("grafana", "grafana/grafana:latest"),
+    ("prometheus", "prom/prometheus:latest"),
+];
+
+pub const MINIMAL_IMAGE_NAMES: &[&str] = &["influxdb", "telegraf", "chronograf", "nginx", "alpine"];
+
+pub const CUSTOM_SERVICES: &[(&str, &str)] = &[
+    ("api-service", "api-service/Dockerfile.prebuilt"),
+    ("control-service", "control-service/Dockerfile.prebuilt"),
+];
+
+pub fn filter_pull_images(minimal: bool, image_filter: &Option<Vec<String>>) -> Vec<&'static str> {
+    match image_filter {
+        Some(filter) => {
+            let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
+            DOCKER_IMAGES.iter()
+                .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
+                .map(|(_, tag)| *tag)
+                .collect()
+        }
+        None => {
+            if minimal {
+                DOCKER_IMAGES.iter()
+                    .filter(|(name, _)| MINIMAL_IMAGE_NAMES.contains(name))
+                    .map(|(_, tag)| *tag)
+                    .collect()
+            } else {
+                DOCKER_IMAGES.iter().map(|(_, tag)| *tag).collect()
+            }
+        }
+    }
+}
+
+pub fn filter_custom_services(skip_custom: bool, image_filter: &Option<Vec<String>>) -> Vec<(&'static str, &'static str)> {
+    if skip_custom {
+        return vec![];
+    }
+    match image_filter {
+        Some(filter) => {
+            let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
+            CUSTOM_SERVICES.iter()
+                .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
+                .cloned()
+                .collect()
+        }
+        None => CUSTOM_SERVICES.to_vec(),
+    }
+}
+
+pub fn image_tag_to_tar_filename(tag: &str) -> String {
+    format!("{}.tar", tag.replace('/', "_").replace(':', "-"))
+}
+
+pub fn validate_push_flags(
+    architecture: &Option<String>,
+    save_dir: &Option<std::path::PathBuf>,
+    load_dir: &Option<std::path::PathBuf>,
+) -> Result<(), String> {
+    if save_dir.is_some() && load_dir.is_some() {
+        return Err("Cannot use --save-dir and --load-dir together.".to_string());
+    }
+    if save_dir.is_some() && architecture.is_none() {
+        return Err("--architecture is required when using --save-dir (no device to auto-detect from).".to_string());
+    }
+    Ok(())
+}
+
 /// Sanitize a branch name for use in GitHub tarball URLs
 /// GitHub replaces '/' with '-' in archive names
 pub fn sanitize_branch_name(branch: &str) -> String {
@@ -1064,21 +1137,13 @@ impl IoTDeployer {
         save_dir: Option<std::path::PathBuf>,
         load_dir: Option<std::path::PathBuf>,
     ) -> Result<(), TelegrafError> {
-        if save_dir.is_some() && load_dir.is_some() {
-            return Err(TelegrafError::ConfigError(
-                "Cannot use --save-dir and --load-dir together.".to_string(),
-            ));
-        }
+        validate_push_flags(&architecture, &save_dir, &load_dir)
+            .map_err(TelegrafError::ConfigError)?;
 
         let (arch, needs_device) = if load_dir.is_some() {
             (architecture.unwrap_or_else(|| "arm64".to_string()), true)
         } else if save_dir.is_some() {
-            match architecture {
-                Some(a) => (a, false),
-                None => return Err(TelegrafError::ConfigError(
-                    "--architecture is required when using --save-dir (no device to auto-detect from).".to_string(),
-                )),
-            }
+            (architecture.unwrap_or_else(|| unreachable!()), false)
         } else {
             let a = match architecture {
                 Some(a) => {
@@ -1104,54 +1169,8 @@ impl IoTDeployer {
         }
         self.progress(&format!("   Docker context: {}", docker_context.display()));
 
-        let all_images: Vec<(&str, &str)> = vec![
-            ("influxdb", "influxdb:2"),
-            ("telegraf", "telegraf:1.30"),
-            ("chronograf", "chronograf:1.10"),
-            ("nginx", "nginx:alpine"),
-            ("alpine", "alpine:3.19"),
-            ("grafana", "grafana/grafana:latest"),
-            ("prometheus", "prom/prometheus:latest"),
-        ];
-
-        let minimal_names: &[&str] = &["influxdb", "telegraf", "chronograf", "nginx", "alpine"];
-
-        let images_to_pull: Vec<&str> = match &image_filter {
-            Some(filter) => {
-                let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
-                all_images.iter()
-                    .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
-                    .map(|(_, tag)| *tag)
-                    .collect()
-            }
-            None => {
-                if minimal {
-                    all_images.iter()
-                        .filter(|(name, _)| minimal_names.contains(name))
-                        .map(|(_, tag)| *tag)
-                        .collect()
-                } else {
-                    all_images.iter().map(|(_, tag)| *tag).collect()
-                }
-            }
-        };
-
-        let custom_services: Vec<(&str, &str)> = vec![
-            ("api-service", "api-service/Dockerfile.prebuilt"),
-            ("control-service", "control-service/Dockerfile.prebuilt"),
-        ];
-
-        let services_to_build: Vec<(&str, &str)> = if skip_custom || load_dir.is_some() {
-            vec![]
-        } else if let Some(filter) = &image_filter {
-            let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
-            custom_services.iter()
-                .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
-                .cloned()
-                .collect()
-        } else {
-            custom_services.clone()
-        };
+        let images_to_pull = filter_pull_images(minimal, &image_filter);
+        let services_to_build = filter_custom_services(skip_custom || load_dir.is_some(), &image_filter);
 
         if images_to_pull.is_empty() && services_to_build.is_empty() {
             self.progress("ℹ️  No images selected. Use --images to specify which images to push, or omit it to push all.");
@@ -1190,8 +1209,7 @@ impl IoTDeployer {
                     )));
                 }
 
-                let safe_name = image.replace('/', "_").replace(':', "-");
-                let tar_path = output_dir.join(format!("{}.tar", safe_name));
+                let tar_path = output_dir.join(image_tag_to_tar_filename(image));
 
                 self.progress(&format!("💾 Saving {} to tar...", image));
 
