@@ -97,6 +97,11 @@ pub enum WorkerCommand {
         archive_path: String,
         force: bool,
     },
+    DevicePushImages {
+        config: DeploymentConfig,
+        minimal: bool,
+        skip_custom: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -642,6 +647,27 @@ impl WorkerHandle {
                                     "Restore completed successfully".to_string(),
                                 ))
                                 .unwrap_or_else(|e| WorkerResponse::SshError(format!("Restore failed: {}", e)));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DevicePushImages { config, minimal, skip_custom } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
+                            let result = deployer
+                                .push_images(None, minimal, skip_custom, None, None, None)
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Push images completed successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Push images failed: {}", e)));
                             let _ = response_sender.send(result);
                         });
                         continue;

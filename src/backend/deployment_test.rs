@@ -3,8 +3,11 @@
 use super::deployment::{
     generate_repo_url, get_extracted_dir_name, sanitize_branch_name, DEFAULT_BRANCH,
     GITHUB_REPO_NAME, GITHUB_REPO_OWNER,
+    filter_pull_images, filter_custom_services, image_tag_to_tar_filename,
+    validate_push_flags, DOCKER_IMAGES, MINIMAL_IMAGE_NAMES, CUSTOM_SERVICES,
 };
 use super::deployment::{DeploymentConfig, IoTDeployer};
+use std::path::PathBuf;
 
 #[test]
 fn deployment_config_builder_methods_work() {
@@ -33,7 +36,6 @@ fn deployment_config_with_git_branch() {
 fn iot_deployer_can_be_constructed() {
     let config = DeploymentConfig::new("localhost".to_string(), "tester".to_string());
     let deployer = IoTDeployer::new(config.clone());
-    // Just check construction; config should match
     assert_eq!(deployer.host(), config.host);
     assert_eq!(deployer.user(), config.user);
 }
@@ -96,7 +98,6 @@ fn sanitize_branch_name_simple() {
 
 #[test]
 fn sanitize_branch_name_with_slashes() {
-    // GitHub replaces '/' with '-' in archive names
     assert_eq!(sanitize_branch_name("feature/login"), "feature-login");
     assert_eq!(
         sanitize_branch_name("feature/user/dashboard"),
@@ -107,7 +108,6 @@ fn sanitize_branch_name_with_slashes() {
 
 #[test]
 fn sanitize_branch_name_with_special_chars() {
-    // Branches with underscores, dots, etc. should be preserved
     assert_eq!(sanitize_branch_name("feature_user"), "feature_user");
     assert_eq!(sanitize_branch_name("release-1.0"), "release-1.0");
     assert_eq!(sanitize_branch_name("v1.2.3"), "v1.2.3");
@@ -127,7 +127,6 @@ fn generate_repo_url_master_branch() {
 fn generate_repo_url_feature_branch() {
     let url = generate_repo_url("feature/my-feature");
     assert!(url.contains("feature/my-feature.tar.gz"));
-    // URL contains the raw branch name (not sanitized)
     assert!(url.contains("refs/heads/feature/my-feature.tar.gz"));
 }
 
@@ -143,7 +142,6 @@ fn generate_repo_url_format() {
 
 #[test]
 fn get_extracted_dir_name_simple() {
-    // Simple branch names stay as-is
     let dir = get_extracted_dir_name("master");
     assert_eq!(dir, format!("{}-master", GITHUB_REPO_NAME));
 
@@ -153,7 +151,6 @@ fn get_extracted_dir_name_simple() {
 
 #[test]
 fn get_extracted_dir_name_with_slashes() {
-    // GitHub sanitizes slashes in extracted directory names
     let dir = get_extracted_dir_name("feature/login");
     assert_eq!(dir, format!("{}-feature-login", GITHUB_REPO_NAME));
 
@@ -169,10 +166,7 @@ fn default_branch_constant() {
 #[test]
 fn iot_deployer_uses_default_branch_when_none() {
     let config = DeploymentConfig::new("host.example.com".to_string(), "user".to_string());
-    let deployer = IoTDeployer::new(config);
-    // Internally, deployer should use DEFAULT_BRANCH when no branch is specified
-    // We can't directly access the branch field, but we can verify the URL is correct
-    // by checking that generate_repo_url uses the right format
+    let _deployer = IoTDeployer::new(config);
     let expected_url = generate_repo_url(DEFAULT_BRANCH);
     let actual_url = generate_repo_url("master");
     assert_eq!(expected_url, actual_url);
@@ -180,21 +174,15 @@ fn iot_deployer_uses_default_branch_when_none() {
 
 #[test]
 fn iot_deployer_default_branch_url_format() {
-    // Verify the generated URL matches expected pattern for default branch
     let config = DeploymentConfig::new("host.example.com".to_string(), "user".to_string());
     let _deployer = IoTDeployer::new(config);
-
-    // The URL should point to the master branch tarball
     let url = generate_repo_url(DEFAULT_BRANCH);
     assert!(url.ends_with(&format!("{}.tar.gz", DEFAULT_BRANCH)));
 }
 
 #[test]
 fn branch_url_components() {
-    // Verify all URL components are present and correct
     let url = generate_repo_url("test-branch");
-
-    // Check URL structure: https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.tar.gz
     assert!(url.starts_with("https://github.com/"));
     assert!(url.contains(&format!("/{}/", GITHUB_REPO_OWNER)));
     assert!(url.contains(&format!("/{}/", GITHUB_REPO_NAME)));
@@ -202,5 +190,185 @@ fn branch_url_components() {
     assert!(url.ends_with(".tar.gz"));
 }
 
-// TODO: For full coverage, refactor IoTDeployer to allow injecting a mock Session.
-// This will enable testing of run_command, test_connection, etc., without real SSH.
+// ============================================================================
+// Image filtering tests
+// ============================================================================
+
+#[test]
+fn filter_pull_images_returns_all_when_no_filter() {
+    let images = filter_pull_images(false, &None);
+    assert_eq!(images.len(), DOCKER_IMAGES.len());
+    assert!(images.contains(&"influxdb:2"));
+    assert!(images.contains(&"grafana/grafana:latest"));
+    assert!(images.contains(&"prom/prometheus:latest"));
+}
+
+#[test]
+fn filter_pull_images_minimal_excludes_full_profile() {
+    let images = filter_pull_images(true, &None);
+    assert_eq!(images.len(), MINIMAL_IMAGE_NAMES.len());
+    assert!(images.contains(&"influxdb:2"));
+    assert!(images.contains(&"chronograf:1.10"));
+    assert!(!images.contains(&"grafana/grafana:latest"));
+    assert!(!images.contains(&"prom/prometheus:latest"));
+}
+
+#[test]
+fn filter_pull_images_with_specific_filter() {
+    let filter = Some(vec!["chronograf".to_string(), "influxdb".to_string()]);
+    let images = filter_pull_images(false, &filter);
+    assert_eq!(images.len(), 2);
+    assert!(images.contains(&"chronograf:1.10"));
+    assert!(images.contains(&"influxdb:2"));
+}
+
+#[test]
+fn filter_pull_images_filter_case_insensitive() {
+    let filter = Some(vec!["Chronograf".to_string(), "INFLUXDB".to_string()]);
+    let images = filter_pull_images(false, &filter);
+    assert_eq!(images.len(), 2);
+    assert!(images.contains(&"chronograf:1.10"));
+    assert!(images.contains(&"influxdb:2"));
+}
+
+#[test]
+fn filter_pull_images_filter_overrides_minimal() {
+    // If you explicitly request grafana with --images, you get it even with --minimal
+    let filter = Some(vec!["grafana".to_string()]);
+    let images = filter_pull_images(true, &filter);
+    assert_eq!(images.len(), 1);
+    assert!(images.contains(&"grafana/grafana:latest"));
+}
+
+#[test]
+fn filter_pull_images_empty_filter_returns_nothing() {
+    let filter = Some(vec![]);
+    let images = filter_pull_images(false, &filter);
+    assert!(images.is_empty());
+}
+
+#[test]
+fn filter_pull_images_unknown_name_returns_nothing() {
+    let filter = Some(vec!["nonexistent".to_string()]);
+    let images = filter_pull_images(false, &filter);
+    assert!(images.is_empty());
+}
+
+#[test]
+fn filter_custom_services_default() {
+    let services = filter_custom_services(false, &None);
+    assert_eq!(services.len(), CUSTOM_SERVICES.len());
+    assert!(services.iter().any(|(n, _)| *n == "api-service"));
+    assert!(services.iter().any(|(n, _)| *n == "control-service"));
+}
+
+#[test]
+fn filter_custom_services_skip() {
+    let services = filter_custom_services(true, &None);
+    assert!(services.is_empty());
+}
+
+#[test]
+fn filter_custom_services_with_image_filter() {
+    let filter = Some(vec!["api-service".to_string()]);
+    let services = filter_custom_services(false, &filter);
+    assert_eq!(services.len(), 1);
+    assert_eq!(services[0].0, "api-service");
+}
+
+#[test]
+fn filter_custom_services_filter_case_insensitive() {
+    let filter = Some(vec!["API-Service".to_string()]);
+    let services = filter_custom_services(false, &filter);
+    assert_eq!(services.len(), 1);
+    assert_eq!(services[0].0, "api-service");
+}
+
+#[test]
+fn filter_custom_services_empty_filter_returns_nothing() {
+    let filter = Some(vec![]);
+    let services = filter_custom_services(false, &filter);
+    assert!(services.is_empty());
+}
+
+#[test]
+fn filter_custom_services_skip_overrides_filter() {
+    // skip_custom=true always returns empty even with filter
+    let filter = Some(vec!["api-service".to_string()]);
+    let services = filter_custom_services(true, &filter);
+    assert!(services.is_empty());
+}
+
+// ============================================================================
+// Tar filename tests
+// ============================================================================
+
+#[test]
+fn image_tag_to_tar_filename_simple() {
+    assert_eq!(image_tag_to_tar_filename("influxdb:2"), "influxdb-2.tar");
+    assert_eq!(image_tag_to_tar_filename("nginx:alpine"), "nginx-alpine.tar");
+    assert_eq!(image_tag_to_tar_filename("telegraf:1.30"), "telegraf-1.30.tar");
+}
+
+#[test]
+fn image_tag_to_tar_filename_with_registry() {
+    assert_eq!(image_tag_to_tar_filename("grafana/grafana:latest"), "grafana_grafana-latest.tar");
+    assert_eq!(image_tag_to_tar_filename("prom/prometheus:latest"), "prom_prometheus-latest.tar");
+}
+
+#[test]
+fn image_tag_to_tar_filename_no_tag() {
+    assert_eq!(image_tag_to_tar_filename("alpine:3.19"), "alpine-3.19.tar");
+}
+
+#[test]
+fn image_tag_to_tar_filename_custom_service() {
+    assert_eq!(image_tag_to_tar_filename("api-service:local"), "api-service-local.tar");
+    assert_eq!(image_tag_to_tar_filename("control-service:local"), "control-service-local.tar");
+}
+
+// ============================================================================
+// Flag validation tests
+// ============================================================================
+
+#[test]
+fn validate_push_flags_normal() {
+    assert!(validate_push_flags(&None, &None, &None).is_ok());
+}
+
+#[test]
+fn validate_push_flags_save_dir_requires_architecture() {
+    let result = validate_push_flags(&None, &Some(PathBuf::from("/tmp/images")), &None);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("--architecture is required"));
+}
+
+#[test]
+fn validate_push_flags_save_dir_with_architecture() {
+    let result = validate_push_flags(&Some("arm64".to_string()), &Some(PathBuf::from("/tmp/images")), &None);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_push_flags_cannot_use_both() {
+    let result = validate_push_flags(
+        &Some("arm64".to_string()),
+        &Some(PathBuf::from("/tmp/images")),
+        &Some(PathBuf::from("/tmp/images")),
+    );
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Cannot use --save-dir and --load-dir together"));
+}
+
+#[test]
+fn validate_push_flags_load_dir_without_architecture() {
+    // load-dir defaults to arm64 if no architecture given
+    let result = validate_push_flags(&None, &None, &Some(PathBuf::from("/tmp/images")));
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validate_push_flags_load_dir_with_architecture() {
+    let result = validate_push_flags(&Some("amd64".to_string()), &None, &Some(PathBuf::from("/tmp/images")));
+    assert!(result.is_ok());
+}

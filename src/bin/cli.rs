@@ -129,6 +129,25 @@ fn handle_device_command(matches: &clap::ArgMatches) {
 
             wrap_up(0);
         }
+        Some(("push-images", sub_matches)) => {
+            let config = create_deployment_config(sub_matches);
+            let minimal = sub_matches.get_flag("minimal");
+            let skip_custom = sub_matches.get_flag("skip_custom");
+            let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
+            let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
+            let image_filter = sub_matches.get_one::<String>("images").map(|s| {
+                s.split(',').map(|i| i.trim().to_string()).filter(|i| !i.is_empty()).collect()
+            });
+            let save_dir = sub_matches.get_one::<String>("save_dir").map(|s| std::path::PathBuf::from(s));
+            let load_dir = sub_matches.get_one::<String>("load_dir").map(|s| std::path::PathBuf::from(s));
+            let deployer = IoTDeployer::new(config).with_minimal(minimal);
+
+            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom, image_filter, save_dir, load_dir) {
+                exit_with_error(format!("Push images failed: {}", e));
+            }
+
+            wrap_up(0);
+        }
         Some(("stop", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
@@ -716,6 +735,20 @@ fn main() {
                         .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
                         .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                )
+                .subcommand(
+                    Command::new("push-images")
+                        .about("Push Docker images to device for offline deployment")
+                        .arg(clap::Arg::new("host").help("Device IP address").default_value(env!("DEFAULT_IOT_IP")))
+                        .arg(clap::Arg::new("iot_username").short('u').long("iot-username").default_value(env!("DEFAULT_IOT_USERNAME")).help("SSH username"))
+                        .arg(clap::Arg::new("iot_password").short('p').long("iot-password").default_value(env!("DEFAULT_IOT_PASSWORD")).help("SSH password"))
+                        .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
+                        .arg(clap::Arg::new("architecture").short('a').long("architecture").default_value("auto").help("Target architecture (auto, arm64, amd64). Auto-detects from device if not specified."))
+                        .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Push minimal images only (skip Grafana and Prometheus)"))
+                        .arg(clap::Arg::new("skip_custom").long("skip-custom").action(clap::ArgAction::SetTrue).help("Skip building and pushing custom service images (api-service, control-service)"))
+                        .arg(clap::Arg::new("images").long("images").help("Comma-separated list of specific images to push (e.g. chronograf,influxdb). Valid names: influxdb, telegraf, chronograf, nginx, alpine, grafana, prometheus, api-service, control-service"))
+                        .arg(clap::Arg::new("save_dir").long("save-dir").help("Save image tars to this directory instead of pushing to device (airgap: step 1). Requires --architecture"))
+                        .arg(clap::Arg::new("load_dir").long("load-dir").help("Load image tars from this directory and push to device (airgap: step 2). No Docker needed on host"))
                 )
         )
         .subcommand(
