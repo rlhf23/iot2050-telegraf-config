@@ -61,6 +61,7 @@ enum EditField {
     DeviceName,
     KeyFile,
     GitBranch,
+    Architecture,
     FileNamespace(usize),
     FileIp(usize),
     FileInterval(usize),
@@ -101,6 +102,8 @@ enum DeviceActionField {
     Setup,
     Update,
     PushImages,
+    SaveImages,
+    LoadImages,
     Start,
     Stop,
     Status,
@@ -111,7 +114,7 @@ enum DeviceActionField {
 
 impl DeviceActionField {
     fn count() -> usize {
-        10
+        12
     }
 
     fn from_index(index: usize) -> Self {
@@ -120,12 +123,14 @@ impl DeviceActionField {
             1 => Self::Setup,
             2 => Self::Update,
             3 => Self::PushImages,
-            4 => Self::Start,
-            5 => Self::Stop,
-            6 => Self::Status,
-            7 => Self::Backup,
-            8 => Self::Restore,
-            9 => Self::SyncTime,
+            4 => Self::SaveImages,
+            5 => Self::LoadImages,
+            6 => Self::Start,
+            7 => Self::Stop,
+            8 => Self::Status,
+            9 => Self::Backup,
+            10 => Self::Restore,
+            11 => Self::SyncTime,
             _ => Self::Provision,
         }
     }
@@ -136,6 +141,7 @@ enum DeviceConfigField {
     DeviceName,
     KeyFile,
     GitBranch,
+    Architecture,
     Minimal,
     LocalTransfer,
     SkipCustom,
@@ -143,7 +149,7 @@ enum DeviceConfigField {
 
 impl DeviceConfigField {
     fn count() -> usize {
-        6
+        7
     }
 
     fn from_index(index: usize) -> Self {
@@ -151,9 +157,10 @@ impl DeviceConfigField {
             0 => Self::DeviceName,
             1 => Self::KeyFile,
             2 => Self::GitBranch,
-            3 => Self::Minimal,
-            4 => Self::LocalTransfer,
-            5 => Self::SkipCustom,
+            3 => Self::Architecture,
+            4 => Self::Minimal,
+            5 => Self::LocalTransfer,
+            6 => Self::SkipCustom,
             _ => Self::DeviceName,
         }
     }
@@ -273,6 +280,7 @@ struct App {
     minimal: bool,
     local_transfer: bool,
     skip_custom: bool,
+    architecture: String,
 
     // Confirmation for destructive operations
     pending_confirmation: Option<String>,
@@ -332,6 +340,7 @@ impl App {
             minimal: false,
             local_transfer: false,
             skip_custom: false,
+            architecture: "auto".to_string(),
             pending_confirmation: None,
         };
 
@@ -679,6 +688,7 @@ fn add_status_message(&mut self, message: String) {
             EditField::DeviceName => self.device_name.clone(),
             EditField::KeyFile => self.key_file.clone(),
             EditField::GitBranch => self.git_branch.clone(),
+            EditField::Architecture => self.architecture.clone(),
             EditField::FileNamespace(idx) => {
                 if let Some(file) = self.xml_files.get(idx) {
                     self.file_configs
@@ -781,6 +791,7 @@ fn add_status_message(&mut self, message: String) {
                 EditField::DeviceName => self.device_name = self.input_buffer.clone(),
                 EditField::KeyFile => self.key_file = self.input_buffer.clone(),
                 EditField::GitBranch => self.git_branch = self.input_buffer.clone(),
+                EditField::Architecture => self.architecture = self.input_buffer.clone(),
                 EditField::FileNamespace(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
                         let config = self
@@ -1180,6 +1191,45 @@ fn add_status_message(&mut self, message: String) {
                 config,
                 minimal: self.minimal,
                 skip_custom: self.skip_custom,
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_save_images(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("💾 Saving Docker images to ./iot2050-images/...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceSaveImages {
+                config,
+                minimal: self.minimal,
+                skip_custom: self.skip_custom,
+                architecture: self.architecture.clone(),
+            }) {
+                self.add_status_message(format!("❌ Failed to send command: {}", e));
+                self.stop_working();
+            }
+        }
+    }
+
+    fn device_load_images(&mut self) {
+        if self.worker.is_none() {
+            self.add_status_message("❌ Worker not available".to_string());
+            return;
+        }
+        self.start_working();
+        self.add_status_message("📤 Loading images from ./iot2050-images/ to device...".to_string());
+        if let Some(worker) = &self.worker {
+            let config = self.build_deployment_config();
+            if let Err(e) = worker.send_command(WorkerCommand::DeviceLoadImages {
+                config,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1648,6 +1698,14 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                     DeviceConfigField::DeviceName => app.start_editing(EditField::DeviceName),
                     DeviceConfigField::KeyFile => app.start_editing(EditField::KeyFile),
                     DeviceConfigField::GitBranch => app.start_editing(EditField::GitBranch),
+                    DeviceConfigField::Architecture => {
+                        app.architecture = match app.architecture.as_str() {
+                            "auto" => "arm64".to_string(),
+                            "arm64" => "amd64".to_string(),
+                            _ => "auto".to_string(),
+                        };
+                        app.add_status_message(format!("Architecture: {}", app.architecture));
+                    }
                     DeviceConfigField::Minimal => {
                         app.minimal = !app.minimal;
                         app.add_status_message(format!(
@@ -1692,6 +1750,8 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                     DeviceActionField::Setup => app.device_setup(),
                     DeviceActionField::Update => app.device_update(),
                     DeviceActionField::PushImages => app.device_push_images(),
+                    DeviceActionField::SaveImages => app.device_save_images(),
+                    DeviceActionField::LoadImages => app.device_load_images(),
                     DeviceActionField::Start => app.device_start(),
                     DeviceActionField::Stop => app.device_stop(),
                     DeviceActionField::Status => app.device_status(),
@@ -1704,6 +1764,8 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
             KeyCode::Char('s') => app.device_setup(),
             KeyCode::Char('u') => app.device_update(),
             KeyCode::Char('i') => app.device_push_images(),
+            KeyCode::Char('o') => app.device_save_images(),
+            KeyCode::Char('l') => app.device_load_images(),
             KeyCode::Char('g') => app.device_start(),
             KeyCode::Char('v') => app.device_stop_with_volumes(),
             KeyCode::Char('n') => {
@@ -2330,6 +2392,16 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
             action_highlight && matches!(selected_action, DeviceActionField::PushImages),
             "i",
         ),
+        render_action_item(
+            "💾 Save Images",
+            action_highlight && matches!(selected_action, DeviceActionField::SaveImages),
+            "o",
+        ),
+        render_action_item(
+            "📤 Load Images",
+            action_highlight && matches!(selected_action, DeviceActionField::LoadImages),
+            "l",
+        ),
         Line::from(""),
         Line::from("Service Control:"),
         render_action_item(
@@ -2405,6 +2477,9 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("{} Git Branch: {}",
             if config_highlight && matches!(selected_config, DeviceConfigField::GitBranch) { "►" } else { " " },
             app.git_branch)),
+        Line::from(format!("{} Architecture: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Architecture) { "►" } else { " " },
+            app.architecture)),
         Line::from(format!("{} Minimal Mode: {}",
             if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) { "►" } else { " " },
             minimal_status)),

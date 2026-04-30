@@ -102,6 +102,15 @@ pub enum WorkerCommand {
         minimal: bool,
         skip_custom: bool,
     },
+    DeviceSaveImages {
+        config: DeploymentConfig,
+        minimal: bool,
+        skip_custom: bool,
+        architecture: String,
+    },
+    DeviceLoadImages {
+        config: DeploymentConfig,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -668,6 +677,50 @@ impl WorkerHandle {
                                     "Push images completed successfully".to_string(),
                                 ))
                                 .unwrap_or_else(|e| WorkerResponse::SshError(format!("Push images failed: {}", e)));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceSaveImages { config, minimal, skip_custom, architecture } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
+                            let save_dir = std::path::PathBuf::from("./iot2050-images");
+                            let result = deployer
+                                .push_images(Some(architecture), minimal, skip_custom, None, Some(save_dir), None)
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Save images completed successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Save images failed: {}", e)));
+                            let _ = response_sender.send(result);
+                        });
+                        continue;
+                    }
+                    WorkerCommand::DeviceLoadImages { config } => {
+                        let response_sender = response_sender.clone();
+                        std::thread::spawn(move || {
+                            let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
+                            let sender_clone = response_sender.clone();
+                            std::thread::spawn(move || {
+                                while let Ok(msg) = progress_rx.recv() {
+                                    let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
+                                }
+                            });
+                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let load_dir = std::path::PathBuf::from("./iot2050-images");
+                            let result = deployer
+                                .push_images(None, false, false, None, None, Some(load_dir))
+                                .map(|_| WorkerResponse::SshCommandOutput(
+                                    "Load images completed successfully".to_string(),
+                                ))
+                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Load images failed: {}", e)));
                             let _ = response_sender.send(result);
                         });
                         continue;

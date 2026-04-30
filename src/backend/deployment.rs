@@ -1143,7 +1143,19 @@ impl IoTDeployer {
         let (arch, needs_device) = if load_dir.is_some() {
             (architecture.unwrap_or_else(|| "arm64".to_string()), true)
         } else if save_dir.is_some() {
-            (architecture.unwrap_or_else(|| unreachable!()), false)
+            let a = match architecture {
+                Some(a) => a,
+                None => {
+                    self.progress("   Detecting device architecture...");
+                    match self.detect_architecture() {
+                        Ok(a) => a,
+                        Err(_) => return Err(TelegrafError::ConfigError(
+                            "--architecture is required when using --save-dir and device is not reachable for auto-detection.".to_string(),
+                        )),
+                    }
+                }
+            };
+            (a, false)
         } else {
             let a = match architecture {
                 Some(a) => {
