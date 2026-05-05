@@ -637,8 +637,7 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
 
 fn main() {
     let matches = Command::new("IOT2050 config handler")
-        .version("0.11")
-        .about("Generates Telegraf configs and deploys monitoring stack to IoT devices")
+        .about(concat!("v", env!("CARGO_PKG_VERSION"), " - Generates Telegraf configs and deploys monitoring stack to IoT devices"))
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
@@ -831,7 +830,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("No command specified");
+            println!("IOT2050 config handler v{}", env!("CARGO_PKG_VERSION"));
             wrap_up(1);
         }
     }

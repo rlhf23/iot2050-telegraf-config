@@ -1801,13 +1801,13 @@ fn ui(f: &mut Frame, app: &mut App) {
 
     // Render tabs
     let tab_title = if app.is_working {
-        "IoT2050 Config TUI ⏳ Working..."
+        format!("IoT2050 Config TUI v{} ⏳ Working...", env!("CARGO_PKG_VERSION"))
     } else if app.pending_confirmation.is_some() {
-        "IoT2050 Config TUI ⚠️ Confirm?"
+        format!("IoT2050 Config TUI v{} ⚠️ Confirm?", env!("CARGO_PKG_VERSION"))
     } else if app.status_expanded {
-        "IoT2050 Config TUI  [s: hide status]"
+        format!("IoT2050 Config TUI v{}  [s: hide status]", env!("CARGO_PKG_VERSION"))
     } else {
-        "IoT2050 Config TUI  [s: show status]"
+        format!("IoT2050 Config TUI v{}  [s: show status]", env!("CARGO_PKG_VERSION"))
     };
     let tab_titles = vec![
         "Folder",
