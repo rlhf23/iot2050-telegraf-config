@@ -1333,10 +1333,20 @@ impl IoTDeployer {
         let output_dir = save_dir.clone().unwrap_or_else(|| {
             std::env::temp_dir().join("iot2050-image-push")
         });
+        // Create the output directory if it doesn't exist. When using --save-dir,
+        // we only clean up previous .tar files from prior runs rather than wiping
+        // the entire directory, so that config from `update --save-dir` (which
+        // writes docker/ alongside the images) is preserved.
         if output_dir.exists() {
-            std::fs::remove_dir_all(&output_dir).map_err(|e| {
-                TelegrafError::ConfigError(format!("Failed to clean output directory: {}", e))
-            })?;
+            for entry in std::fs::read_dir(&output_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to read output directory: {}", e))
+            })? {
+                let entry = entry.map_err(|e| TelegrafError::ConfigError(format!("Failed to read entry: {}", e)))?;
+                let path = entry.path();
+                if path.extension().map(|e| e == "tar").unwrap_or(false) {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
         }
         std::fs::create_dir_all(&output_dir).map_err(|e| {
             TelegrafError::ConfigError(format!("Failed to create output directory: {}", e))
