@@ -68,6 +68,7 @@ pub enum WorkerCommand {
     },
     DeviceProvision {
         config: DeploymentConfig,
+        local_transfer: bool,
         save_dir: Option<String>,
         load_dir: Option<String>,
     },
@@ -77,6 +78,7 @@ pub enum WorkerCommand {
     },
     DeviceUpdate {
         config: DeploymentConfig,
+        use_local: bool,
         save_dir: Option<String>,
         load_dir: Option<String>,
     },
@@ -467,7 +469,7 @@ impl WorkerHandle {
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceProvision { config, save_dir, load_dir } => {
+                    WorkerCommand::DeviceProvision { config, local_transfer, save_dir, load_dir } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -482,14 +484,14 @@ impl WorkerHandle {
                             let load_path = load_dir.as_ref().map(std::path::PathBuf::from);
                             let result = if save_path.is_some() {
                                 deployer
-                                    .provision_with_options(false, save_path, load_path)
+                                    .provision_with_options(local_transfer, save_path, load_path)
                                     .map_err(|e| format!("Provisioning failed: {}", e))
                             } else {
                                 deployer
                                     .test_connection()
                                     .map_err(|e| format!("Connection failed: {}", e))
                                     .and_then(|_| {
-                                        deployer.provision_with_options(false, None, load_path)
+                                        deployer.provision_with_options(local_transfer, None, load_path)
                                             .map_err(|e| format!("Provisioning failed: {}", e))
                                     })
                             }
@@ -527,7 +529,7 @@ impl WorkerHandle {
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceUpdate { config, save_dir, load_dir } => {
+                    WorkerCommand::DeviceUpdate { config, use_local, save_dir, load_dir } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -542,14 +544,14 @@ impl WorkerHandle {
                             let load_path = load_dir.as_ref().map(std::path::PathBuf::from);
                             let result = if save_path.is_some() {
                                 deployer
-                                    .update_with_options(false, save_path, load_path)
+                                    .update_with_options(use_local, save_path, load_path)
                                     .map_err(|e| format!("Update failed: {}", e))
                             } else {
                                 deployer
                                     .test_connection()
                                     .map_err(|e| format!("Connection failed: {}", e))
                                     .and_then(|_| {
-                                        deployer.update_with_options(false, None, load_path)
+                                        deployer.update_with_options(use_local, None, load_path)
                                             .map_err(|e| format!("Update failed: {}", e))
                                     })
                             }

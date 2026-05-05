@@ -98,6 +98,7 @@ enum ActionsField {
 #[derive(Debug, Clone, PartialEq)]
 enum DeployMode {
     Online,
+    LocalTransfer,
     SaveLocal,
     LoadLocal,
 }
@@ -1007,14 +1008,16 @@ fn add_status_message(&mut self, message: String) {
         }
         self.start_working();
 
-        let (save_dir, load_dir) = match self.deploy_mode {
-            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
-            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
-            DeployMode::Online => (None, None),
+        let (save_dir, load_dir, local_transfer) = match self.deploy_mode {
+            DeployMode::Online => (None, None, false),
+            DeployMode::LocalTransfer => (None, None, true),
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None, false),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string()), false),
         };
 
         self.add_status_message(match self.deploy_mode {
             DeployMode::Online => "🚀 Provisioning device...".to_string(),
+            DeployMode::LocalTransfer => "📡 Provisioning (local transfer)...".to_string(),
             DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
             DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
         });
@@ -1023,6 +1026,7 @@ fn add_status_message(&mut self, message: String) {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceProvision {
                 config,
+                local_transfer,
                 save_dir,
                 load_dir,
             }) {
@@ -1058,14 +1062,16 @@ fn add_status_message(&mut self, message: String) {
         }
         self.start_working();
 
-        let (save_dir, load_dir) = match self.deploy_mode {
-            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
-            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
-            DeployMode::Online => (None, None),
+        let (save_dir, load_dir, use_local) = match self.deploy_mode {
+            DeployMode::Online => (None, None, false),
+            DeployMode::LocalTransfer => (None, None, true),
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None, false),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string()), false),
         };
 
         self.add_status_message(match self.deploy_mode {
             DeployMode::Online => "📦 Updating device...".to_string(),
+            DeployMode::LocalTransfer => "📡 Updating (local transfer)...".to_string(),
             DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
             DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
         });
@@ -1074,6 +1080,7 @@ fn add_status_message(&mut self, message: String) {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceUpdate {
                 config,
+                use_local,
                 save_dir,
                 load_dir,
             }) {
@@ -1212,13 +1219,15 @@ fn add_status_message(&mut self, message: String) {
         self.start_working();
 
         let (save_dir, load_dir) = match self.deploy_mode {
+            DeployMode::Online => (None, None),
+            DeployMode::LocalTransfer => (None, None),
             DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
             DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
-            DeployMode::Online => (None, None),
         };
 
         self.add_status_message(match self.deploy_mode {
             DeployMode::Online => "🐳 Pushing Docker images to device...".to_string(),
+            DeployMode::LocalTransfer => "🐳 Pushing Docker images to device...".to_string(),
             DeployMode::SaveLocal => "📥 Saving Docker images locally...".to_string(),
             DeployMode::LoadLocal => "📤 Loading Docker images to device...".to_string(),
         });
@@ -1708,7 +1717,8 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                     }
                     DeviceConfigField::DeployMode => {
                         app.deploy_mode = match app.deploy_mode {
-                            DeployMode::Online => DeployMode::SaveLocal,
+                            DeployMode::Online => DeployMode::LocalTransfer,
+                            DeployMode::LocalTransfer => DeployMode::SaveLocal,
                             DeployMode::SaveLocal => DeployMode::LoadLocal,
                             DeployMode::LoadLocal => DeployMode::Online,
                         };
@@ -1716,6 +1726,7 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                             "Deploy mode: {}",
                             match app.deploy_mode {
                                 DeployMode::Online => "Online",
+                                DeployMode::LocalTransfer => "Local Transfer",
                                 DeployMode::SaveLocal => "Save Local",
                                 DeployMode::LoadLocal => "Load Local",
                             }
@@ -2445,6 +2456,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let minimal_status = if app.minimal { "Enabled" } else { "Disabled" };
     let deploy_mode_status = match app.deploy_mode {
         DeployMode::Online => "Online",
+        DeployMode::LocalTransfer => "Local Transfer",
         DeployMode::SaveLocal => "Save Local",
         DeployMode::LoadLocal => "Load Local",
     };
