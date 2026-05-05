@@ -514,23 +514,30 @@ impl IoTDeployer {
 
             let extract_dir = temp_dir.join("extracted");
             std::fs::create_dir_all(&extract_dir)?;
+
+            // Extract only the docker/ directory, stripping the top-level branch prefix.
+            // This avoids extracting .direnv, .git, etc. and works on Windows
+            // where symlinks in those directories would cause tar to fail.
             let extract_output = std::process::Command::new("tar")
-                .arg("-xzf")
-                .arg(&tarball_path)
-                .arg("-C")
-                .arg(&extract_dir)
+                .args([
+                    "-xzf",
+                    tarball_path.to_str().unwrap(),
+                    "-C",
+                    extract_dir.to_str().unwrap(),
+                    "--strip-components=1",
+                    &format!("{}/docker", get_extracted_dir_name(&self.branch)),
+                ])
                 .output()
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
 
             if !extract_output.status.success() {
+                let _ = std::fs::remove_dir_all(&temp_dir);
                 return Err(TelegrafError::ConfigError(
                     "Failed to extract tarball".to_string(),
                 ));
             }
 
-            let docker_path = extract_dir
-                .join(get_extracted_dir_name(&self.branch))
-                .join("docker");
+            let docker_path = extract_dir.join("docker");
 
             let sftp = session.sftp().map_err(|e| {
                 TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e))
@@ -822,6 +829,15 @@ impl IoTDeployer {
             save_dir.display()
         ));
 
+        let target_dir = save_dir.join("docker");
+
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to remove existing directory: {}", e))
+            })?;
+        }
+        std::fs::create_dir_all(save_dir)?;
+
         let temp_dir = std::env::temp_dir().join(format!("iot2050-config-save-{}", self.branch));
 
         if temp_dir.exists() {
@@ -832,8 +848,6 @@ impl IoTDeployer {
         std::fs::create_dir_all(&temp_dir)?;
 
         let tarball_path = temp_dir.join("docker.tar.gz");
-        let extract_dir = temp_dir.join("extracted");
-        std::fs::create_dir_all(&extract_dir)?;
 
         let output = std::process::Command::new("curl")
             .args(["-L", &self.repo_url, "-o"])
@@ -842,46 +856,35 @@ impl IoTDeployer {
             .map_err(|e| TelegrafError::ConfigError(format!("Failed to run curl: {}", e)))?;
 
         if !output.status.success() {
+            let _ = std::fs::remove_dir_all(&temp_dir);
             return Err(TelegrafError::ConfigError(format!(
                 "Failed to download tarball: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
 
-        self.progress("📦 Extracting tarball...");
+        self.progress("📦 Extracting docker/ directory...");
 
+        // Extract only the docker/ directory, stripping the top-level branch prefix.
+        // This avoids extracting .direnv, .git, etc. and works on Windows
+        // where symlinks in those directories would cause tar to fail.
         let extract_output = std::process::Command::new("tar")
-            .args(["-xzf", tarball_path.to_str().unwrap(), "-C", extract_dir.to_str().unwrap()])
+            .args([
+                "-xzf", tarball_path.to_str().unwrap(),
+                "-C", save_dir.to_str().unwrap(),
+                "--strip-components=1",
+                &format!("{}/docker", get_extracted_dir_name(&self.branch)),
+            ])
             .output()
             .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
 
         if !extract_output.status.success() {
+            let _ = std::fs::remove_dir_all(&temp_dir);
             return Err(TelegrafError::ConfigError(format!(
                 "Failed to extract tarball: {}",
                 String::from_utf8_lossy(&extract_output.stderr)
             )));
         }
-
-        let docker_path = extract_dir
-            .join(get_extracted_dir_name(&self.branch))
-            .join("docker");
-
-        if !docker_path.exists() {
-            return Err(TelegrafError::ConfigError(
-                "Downloaded archive does not contain expected docker directory".to_string(),
-            ));
-        }
-
-        let target_dir = save_dir.join("docker");
-
-        if target_dir.exists() {
-            std::fs::remove_dir_all(&target_dir).map_err(|e| {
-                TelegrafError::ConfigError(format!("Failed to remove existing directory: {}", e))
-            })?;
-        }
-
-        std::fs::create_dir_all(save_dir)?;
-        self.copy_directory_recursive(&docker_path, save_dir)?;
 
         let _ = std::fs::remove_dir_all(&temp_dir);
 
@@ -919,37 +922,6 @@ impl IoTDeployer {
             &docker_path,
             Path::new("/home").join(self.user()).join("monitoring"),
         )?;
-
-        Ok(())
-    }
-
-    /// Recursively copy a directory into another directory.
-    /// Copies `src_dir/*` into `dst_dir/`, creating `dst_dir/src_dir_name/` inside.
-    fn copy_directory_recursive(
-        &self,
-        src_dir: &std::path::Path,
-        dst_dir: &std::path::Path,
-    ) -> Result<(), TelegrafError> {
-        let dir_name = src_dir.file_name()
-            .ok_or_else(|| TelegrafError::ConfigError("Invalid source directory path".to_string()))?;
-        let dest = dst_dir.join(dir_name);
-        std::fs::create_dir_all(&dest).map_err(|e| {
-            TelegrafError::ConfigError(format!("Failed to create directory: {}", e))
-        })?;
-
-        for entry in std::fs::read_dir(src_dir)
-            .map_err(|e| TelegrafError::ConfigError(format!("Failed to read directory: {}", e)))?
-        {
-            let entry = entry.map_err(|e| TelegrafError::ConfigError(format!("Failed to read entry: {}", e)))?;
-            let src_path = entry.path();
-
-            if src_path.is_dir() {
-                self.copy_directory_recursive(&src_path, &dest)?;
-            } else {
-                std::fs::copy(&src_path, dest.join(entry.file_name()))
-                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to copy file: {}", e)))?;
-            }
-        }
 
         Ok(())
     }
