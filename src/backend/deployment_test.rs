@@ -372,3 +372,73 @@ fn validate_push_flags_load_dir_with_architecture() {
     let result = validate_push_flags(&Some("amd64".to_string()), &None, &Some(PathBuf::from("/tmp/images")));
     assert!(result.is_ok());
 }
+
+// ============================================================================
+// Airgap options tests
+// ============================================================================
+
+#[test]
+fn update_with_options_rejects_save_and_load_together() {
+    let config = DeploymentConfig::new("host.example.com".to_string(), "user".to_string());
+    let deployer = IoTDeployer::new(config);
+    let result = deployer.update_with_options(
+        false,
+        Some(PathBuf::from("/tmp/save")),
+        Some(PathBuf::from("/tmp/load")),
+    );
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("Cannot use --save-dir and --load-dir together"));
+}
+
+#[test]
+fn provision_with_options_rejects_save_and_load_together() {
+    let config = DeploymentConfig::new("host.example.com".to_string(), "user".to_string());
+    let deployer = IoTDeployer::new(config);
+    let result = deployer.provision_with_options(
+        false,
+        Some(PathBuf::from("/tmp/save")),
+        Some(PathBuf::from("/tmp/load")),
+    );
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("Cannot use --save-dir and --load-dir together"));
+}
+
+#[test]
+fn save_config_to_dir_fails_with_bad_branch() {
+    let config = DeploymentConfig::new("host.example.com".to_string(), "user".to_string())
+        .with_git_branch("nonexistent-branch-for-test-xyz".to_string());
+    let deployer = IoTDeployer::new(config);
+    let save_dir = std::env::temp_dir().join("iot2050_test_save_config");
+
+    let _ = std::fs::remove_dir_all(&save_dir);
+
+    let result = deployer.save_config_to_dir(&save_dir);
+    assert!(result.is_err(), "save_config_to_dir should fail with nonexistent branch");
+
+    let _ = std::fs::remove_dir_all(&save_dir);
+}
+
+#[test]
+fn update_with_options_save_dir_returns_early_without_connection() {
+    // save_dir mode should not need SSH at all — it returns after downloading.
+    // We test that it attempts the download (which will fail with a bad branch)
+    // rather than failing to connect to the device.
+    let config = DeploymentConfig::new("nonexistent-host-for-test.local".to_string(), "user".to_string())
+        .with_git_branch("nonexistent-branch-for-test-xyz".to_string());
+    let deployer = IoTDeployer::new(config);
+    let save_dir = std::env::temp_dir().join("iot2050_test_update_save");
+
+    let _ = std::fs::remove_dir_all(&save_dir);
+
+    // This should fail because the branch doesn't exist, NOT because SSH failed
+    let result = deployer.update_with_options(false, Some(save_dir.clone()), None);
+    assert!(result.is_err());
+
+    // Verify it's not an SSH error — it should be a download/extraction error
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(!err_msg.contains("SSH"), "Should not be an SSH error, got: {}", err_msg);
+
+    let _ = std::fs::remove_dir_all(&save_dir);
+}
