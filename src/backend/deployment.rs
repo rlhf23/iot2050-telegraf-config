@@ -1544,14 +1544,6 @@ impl IoTDeployer {
             self.run_command(&session, &load_cmd, &format!("Loading image {}", image_name))?;
         }
 
-        // Clean up tars on device
-        self.progress("🧹 Cleaning up image tars on device...");
-        let _ = self.run_command(
-            &session,
-            "rm -rf ~/monitoring/images",
-            "Removing temporary image tar files",
-        );
-
         // Clean up local temp files (only if we created them)
         if load_dir.is_none() {
             self.progress("🧹 Cleaning up local temporary files...");
