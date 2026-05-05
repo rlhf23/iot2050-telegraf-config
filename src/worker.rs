@@ -469,7 +469,12 @@ impl WorkerHandle {
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceProvision { config, local_transfer, save_dir, load_dir } => {
+                    WorkerCommand::DeviceProvision {
+                        config,
+                        local_transfer,
+                        save_dir,
+                        load_dir,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -479,7 +484,8 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let save_path = save_dir.as_ref().map(std::path::PathBuf::from);
                             let load_path = load_dir.as_ref().map(std::path::PathBuf::from);
                             let result = if save_path.is_some() {
@@ -491,13 +497,16 @@ impl WorkerHandle {
                                     .test_connection()
                                     .map_err(|e| format!("Connection failed: {}", e))
                                     .and_then(|_| {
-                                        deployer.provision_with_options(local_transfer, None, load_path)
+                                        deployer
+                                            .provision_with_options(local_transfer, None, load_path)
                                             .map_err(|e| format!("Provisioning failed: {}", e))
                                     })
                             }
-                            .map(|_| WorkerResponse::SshCommandOutput(
-                                "Device provisioned successfully".to_string(),
-                            ))
+                            .map(|_| {
+                                WorkerResponse::SshCommandOutput(
+                                    "Device provisioned successfully".to_string(),
+                                )
+                            })
                             .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
@@ -513,23 +522,31 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
+                            let deployer = IoTDeployer::new(config)
+                                .with_minimal(minimal)
+                                .with_progress_sender(progress_tx);
                             let result = deployer
                                 .test_connection()
                                 .map_err(|e| format!("Connection failed: {}", e))
                                 .and_then(|_| {
-                                    deployer.setup()
-                                        .map_err(|e| format!("Setup failed: {}", e))
+                                    deployer.setup().map_err(|e| format!("Setup failed: {}", e))
                                 })
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    "Device setup completed successfully".to_string(),
-                                ))
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(
+                                        "Device setup completed successfully".to_string(),
+                                    )
+                                })
                                 .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceUpdate { config, use_local, save_dir, load_dir } => {
+                    WorkerCommand::DeviceUpdate {
+                        config,
+                        use_local,
+                        save_dir,
+                        load_dir,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -539,7 +556,8 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let save_path = save_dir.as_ref().map(std::path::PathBuf::from);
                             let load_path = load_dir.as_ref().map(std::path::PathBuf::from);
                             let result = if save_path.is_some() {
@@ -551,13 +569,16 @@ impl WorkerHandle {
                                     .test_connection()
                                     .map_err(|e| format!("Connection failed: {}", e))
                                     .and_then(|_| {
-                                        deployer.update_with_options(use_local, None, load_path)
+                                        deployer
+                                            .update_with_options(use_local, None, load_path)
                                             .map_err(|e| format!("Update failed: {}", e))
                                     })
                             }
-                            .map(|_| WorkerResponse::SshCommandOutput(
-                                "Device updated successfully".to_string(),
-                            ))
+                            .map(|_| {
+                                WorkerResponse::SshCommandOutput(
+                                    "Device updated successfully".to_string(),
+                                )
+                            })
                             .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
@@ -573,19 +594,25 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .start()
                                 .map_err(|e| format!("Start failed: {}", e))
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    "Monitoring stack started successfully".to_string(),
-                                ))
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(
+                                        "Monitoring stack started successfully".to_string(),
+                                    )
+                                })
                                 .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceStop { config, remove_volumes } => {
+                    WorkerCommand::DeviceStop {
+                        config,
+                        remove_volumes,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -595,17 +622,18 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .stop_with_volumes(remove_volumes)
                                 .map_err(|e| format!("Stop failed: {}", e))
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    if remove_volumes {
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(if remove_volumes {
                                         "Monitoring stack stopped and volumes removed".to_string()
                                     } else {
                                         "Monitoring stack stopped successfully".to_string()
-                                    },
-                                ))
+                                    })
+                                })
                                 .unwrap_or_else(WorkerResponse::SshError);
                             let _ = response_sender.send(result);
                         });
@@ -621,13 +649,18 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .status()
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    "Status check completed".to_string(),
-                                ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Status check failed: {}", e)));
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(
+                                        "Status check completed".to_string(),
+                                    )
+                                })
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Status check failed: {}", e))
+                                });
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -642,18 +675,28 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .backup(output_dir)
-                                .map(|output| WorkerResponse::SshCommandOutput(
-                                    format!("Backup completed: {}", output),
-                                ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Backup failed: {}", e)));
+                                .map(|output| {
+                                    WorkerResponse::SshCommandOutput(format!(
+                                        "Backup completed: {}",
+                                        output
+                                    ))
+                                })
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Backup failed: {}", e))
+                                });
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::DeviceRestore { config, archive_path, force } => {
+                    WorkerCommand::DeviceRestore {
+                        config,
+                        archive_path,
+                        force,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -663,18 +706,30 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_progress_sender(progress_tx);
+                            let deployer =
+                                IoTDeployer::new(config).with_progress_sender(progress_tx);
                             let result = deployer
                                 .restore(archive_path, force)
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    "Restore completed successfully".to_string(),
-                                ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Restore failed: {}", e)));
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(
+                                        "Restore completed successfully".to_string(),
+                                    )
+                                })
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Restore failed: {}", e))
+                                });
                             let _ = response_sender.send(result);
                         });
                         continue;
                     }
-                    WorkerCommand::DevicePushImages { config, minimal, skip_custom, architecture, save_dir, load_dir } => {
+                    WorkerCommand::DevicePushImages {
+                        config,
+                        minimal,
+                        skip_custom,
+                        architecture,
+                        save_dir,
+                        load_dir,
+                    } => {
                         let response_sender = response_sender.clone();
                         std::thread::spawn(move || {
                             let (progress_tx, progress_rx) = std::sync::mpsc::channel::<String>();
@@ -684,16 +739,28 @@ impl WorkerHandle {
                                     let _ = sender_clone.send(WorkerResponse::ProgressUpdate(msg));
                                 }
                             });
-                            let deployer = IoTDeployer::new(config).with_minimal(minimal).with_progress_sender(progress_tx);
-                            let arch = architecture.as_deref().and_then(|a| if a == "auto" { None } else { Some(a.to_string()) });
+                            let deployer = IoTDeployer::new(config)
+                                .with_minimal(minimal)
+                                .with_progress_sender(progress_tx);
+                            let arch = architecture.as_deref().and_then(|a| {
+                                if a == "auto" {
+                                    None
+                                } else {
+                                    Some(a.to_string())
+                                }
+                            });
                             let save_path = save_dir.as_ref().map(std::path::PathBuf::from);
                             let load_path = load_dir.as_ref().map(std::path::PathBuf::from);
                             let result = deployer
                                 .push_images(arch, minimal, skip_custom, None, save_path, load_path)
-                                .map(|_| WorkerResponse::SshCommandOutput(
-                                    "Push images completed successfully".to_string(),
-                                ))
-                                .unwrap_or_else(|e| WorkerResponse::SshError(format!("Push images failed: {}", e)));
+                                .map(|_| {
+                                    WorkerResponse::SshCommandOutput(
+                                        "Push images completed successfully".to_string(),
+                                    )
+                                })
+                                .unwrap_or_else(|e| {
+                                    WorkerResponse::SshError(format!("Push images failed: {}", e))
+                                });
                             let _ = response_sender.send(result);
                         });
                         continue;
@@ -729,9 +796,7 @@ impl WorkerHandle {
         {
             Ok(response) => Some(response),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                None
-            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => None,
         }
     }
 }

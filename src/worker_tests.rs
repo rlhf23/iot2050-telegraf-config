@@ -40,8 +40,8 @@ fn create_test_config() -> TelegrafConfig {
         include_opcua_diagnostics: false,
         selected_opcua_nodes: vec![],
         use_source_timestamp: false,
-            ship_display_name: None,
-            ship_hostname: None,
+        ship_display_name: None,
+        ship_hostname: None,
     }
 }
 

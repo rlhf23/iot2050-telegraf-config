@@ -89,7 +89,8 @@ pub fn format_config_header(
   bucket = "${INFLUXDB_DIAGNOSTICS_BUCKET}"
   # Only accept diagnostics metrics
   namepass = ["opcua_diagnostics", "internal*", "cpu", "mem", "disk", "net", "system", "swap"]
-"#.to_string();
+"#
+                .to_string();
 
                 config.push_str("\n# Output to Prometheus\n[[outputs.prometheus_client]]\n  listen = \":9273\"\n");
                 config
@@ -105,7 +106,8 @@ pub fn format_config_header(
 # Output to Prometheus
 [[outputs.prometheus_client]]
   listen = ":9273"
-"#.to_string()
+"#
+                .to_string()
             }
         }
         OutputFormat::Prometheus => r#"# Configuration for exposing Prometheus metrics

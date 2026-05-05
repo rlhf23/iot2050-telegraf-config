@@ -1,10 +1,9 @@
 // Basic regression and construction tests for deployment.rs
 
 use super::deployment::{
-    generate_repo_url, get_extracted_dir_name, sanitize_branch_name, DEFAULT_BRANCH,
-    GITHUB_REPO_NAME, GITHUB_REPO_OWNER,
-    filter_pull_images, filter_custom_services, image_tag_to_tar_filename,
-    validate_push_flags, DOCKER_IMAGES, MINIMAL_IMAGE_NAMES, CUSTOM_SERVICES,
+    filter_custom_services, filter_pull_images, generate_repo_url, get_extracted_dir_name,
+    image_tag_to_tar_filename, sanitize_branch_name, validate_push_flags, CUSTOM_SERVICES,
+    DEFAULT_BRANCH, DOCKER_IMAGES, GITHUB_REPO_NAME, GITHUB_REPO_OWNER, MINIMAL_IMAGE_NAMES,
 };
 use super::deployment::{DeploymentConfig, IoTDeployer};
 use std::path::PathBuf;
@@ -306,14 +305,26 @@ fn filter_custom_services_skip_overrides_filter() {
 #[test]
 fn image_tag_to_tar_filename_simple() {
     assert_eq!(image_tag_to_tar_filename("influxdb:2"), "influxdb-2.tar");
-    assert_eq!(image_tag_to_tar_filename("nginx:alpine"), "nginx-alpine.tar");
-    assert_eq!(image_tag_to_tar_filename("telegraf:1.30"), "telegraf-1.30.tar");
+    assert_eq!(
+        image_tag_to_tar_filename("nginx:alpine"),
+        "nginx-alpine.tar"
+    );
+    assert_eq!(
+        image_tag_to_tar_filename("telegraf:1.30"),
+        "telegraf-1.30.tar"
+    );
 }
 
 #[test]
 fn image_tag_to_tar_filename_with_registry() {
-    assert_eq!(image_tag_to_tar_filename("grafana/grafana:latest"), "grafana_grafana-latest.tar");
-    assert_eq!(image_tag_to_tar_filename("prom/prometheus:latest"), "prom_prometheus-latest.tar");
+    assert_eq!(
+        image_tag_to_tar_filename("grafana/grafana:latest"),
+        "grafana_grafana-latest.tar"
+    );
+    assert_eq!(
+        image_tag_to_tar_filename("prom/prometheus:latest"),
+        "prom_prometheus-latest.tar"
+    );
 }
 
 #[test]
@@ -323,8 +334,14 @@ fn image_tag_to_tar_filename_no_tag() {
 
 #[test]
 fn image_tag_to_tar_filename_custom_service() {
-    assert_eq!(image_tag_to_tar_filename("api-service:local"), "api-service-local.tar");
-    assert_eq!(image_tag_to_tar_filename("control-service:local"), "control-service-local.tar");
+    assert_eq!(
+        image_tag_to_tar_filename("api-service:local"),
+        "api-service-local.tar"
+    );
+    assert_eq!(
+        image_tag_to_tar_filename("control-service:local"),
+        "control-service-local.tar"
+    );
 }
 
 // ============================================================================
@@ -345,7 +362,11 @@ fn validate_push_flags_save_dir_requires_architecture() {
 
 #[test]
 fn validate_push_flags_save_dir_with_architecture() {
-    let result = validate_push_flags(&Some("arm64".to_string()), &Some(PathBuf::from("/tmp/images")), &None);
+    let result = validate_push_flags(
+        &Some("arm64".to_string()),
+        &Some(PathBuf::from("/tmp/images")),
+        &None,
+    );
     assert!(result.is_ok());
 }
 
@@ -357,7 +378,9 @@ fn validate_push_flags_cannot_use_both() {
         &Some(PathBuf::from("/tmp/images")),
     );
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Cannot use --save-dir and --load-dir together"));
+    assert!(result
+        .unwrap_err()
+        .contains("Cannot use --save-dir and --load-dir together"));
 }
 
 #[test]
@@ -369,7 +392,11 @@ fn validate_push_flags_load_dir_without_architecture() {
 
 #[test]
 fn validate_push_flags_load_dir_with_architecture() {
-    let result = validate_push_flags(&Some("amd64".to_string()), &None, &Some(PathBuf::from("/tmp/images")));
+    let result = validate_push_flags(
+        &Some("amd64".to_string()),
+        &None,
+        &Some(PathBuf::from("/tmp/images")),
+    );
     assert!(result.is_ok());
 }
 
@@ -415,7 +442,10 @@ fn save_config_to_dir_fails_with_bad_branch() {
     let _ = std::fs::remove_dir_all(&save_dir);
 
     let result = deployer.save_config_to_dir(&save_dir);
-    assert!(result.is_err(), "save_config_to_dir should fail with nonexistent branch");
+    assert!(
+        result.is_err(),
+        "save_config_to_dir should fail with nonexistent branch"
+    );
 
     let _ = std::fs::remove_dir_all(&save_dir);
 }
@@ -425,8 +455,11 @@ fn update_with_options_save_dir_returns_early_without_connection() {
     // save_dir mode should not need SSH at all — it returns after downloading.
     // We test that it attempts the download (which will fail with a bad branch)
     // rather than failing to connect to the device.
-    let config = DeploymentConfig::new("nonexistent-host-for-test.local".to_string(), "user".to_string())
-        .with_git_branch("nonexistent-branch-for-test-xyz".to_string());
+    let config = DeploymentConfig::new(
+        "nonexistent-host-for-test.local".to_string(),
+        "user".to_string(),
+    )
+    .with_git_branch("nonexistent-branch-for-test-xyz".to_string());
     let deployer = IoTDeployer::new(config);
     let save_dir = std::env::temp_dir().join("iot2050_test_update_save");
 
@@ -438,7 +471,11 @@ fn update_with_options_save_dir_returns_early_without_connection() {
 
     // Verify it's not an SSH error — it should be a download/extraction error
     let err_msg = format!("{}", result.unwrap_err());
-    assert!(!err_msg.contains("SSH"), "Should not be an SSH error, got: {}", err_msg);
+    assert!(
+        !err_msg.contains("SSH"),
+        "Should not be an SSH error, got: {}",
+        err_msg
+    );
 
     let _ = std::fs::remove_dir_all(&save_dir);
 }
