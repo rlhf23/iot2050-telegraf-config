@@ -96,6 +96,13 @@ enum ActionsField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+enum DeployMode {
+    Online,
+    SaveLocal,
+    LoadLocal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum DeviceActionField {
     Provision,
     Setup,
@@ -137,13 +144,14 @@ enum DeviceConfigField {
     KeyFile,
     GitBranch,
     Minimal,
-    LocalTransfer,
+    DeployMode,
+    Architecture,
     SkipCustom,
 }
 
 impl DeviceConfigField {
     fn count() -> usize {
-        6
+        7
     }
 
     fn from_index(index: usize) -> Self {
@@ -152,8 +160,9 @@ impl DeviceConfigField {
             1 => Self::KeyFile,
             2 => Self::GitBranch,
             3 => Self::Minimal,
-            4 => Self::LocalTransfer,
-            5 => Self::SkipCustom,
+            4 => Self::DeployMode,
+            5 => Self::Architecture,
+            6 => Self::SkipCustom,
             _ => Self::DeviceName,
         }
     }
@@ -271,7 +280,8 @@ struct App {
     key_file: String,
     git_branch: String,
     minimal: bool,
-    local_transfer: bool,
+    deploy_mode: DeployMode,
+    architecture: String,
     skip_custom: bool,
 
     // Confirmation for destructive operations
@@ -330,7 +340,8 @@ impl App {
             key_file: String::new(),
             git_branch: "master".to_string(),
             minimal: false,
-            local_transfer: false,
+            deploy_mode: DeployMode::Online,
+            architecture: "auto".to_string(),
             skip_custom: false,
             pending_confirmation: None,
         };
@@ -995,12 +1006,25 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("🚀 Provisioning device...".to_string());
+
+        let (save_dir, load_dir) = match self.deploy_mode {
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
+            DeployMode::Online => (None, None),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "🚀 Provisioning device...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceProvision {
                 config,
-                local_transfer: self.local_transfer,
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1033,12 +1057,25 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("📦 Updating device...".to_string());
+
+        let (save_dir, load_dir) = match self.deploy_mode {
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
+            DeployMode::Online => (None, None),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "📦 Updating device...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceUpdate {
                 config,
-                use_local: self.local_transfer,
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1173,13 +1210,28 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("🐳 Pushing Docker images to device...".to_string());
+
+        let (save_dir, load_dir) = match self.deploy_mode {
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
+            DeployMode::Online => (None, None),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "🐳 Pushing Docker images to device...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving Docker images locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading Docker images to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DevicePushImages {
                 config,
                 minimal: self.minimal,
                 skip_custom: self.skip_custom,
+                architecture: Some(self.architecture.clone()),
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1655,12 +1707,28 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                             if app.minimal { "enabled" } else { "disabled" }
                         ));
                     }
-                    DeviceConfigField::LocalTransfer => {
-                        app.local_transfer = !app.local_transfer;
+                    DeviceConfigField::DeployMode => {
+                        app.deploy_mode = match app.deploy_mode {
+                            DeployMode::Online => DeployMode::SaveLocal,
+                            DeployMode::SaveLocal => DeployMode::LoadLocal,
+                            DeployMode::LoadLocal => DeployMode::Online,
+                        };
                         app.add_status_message(format!(
-                            "Local transfer: {}",
-                            if app.local_transfer { "enabled" } else { "disabled" }
+                            "Deploy mode: {}",
+                            match app.deploy_mode {
+                                DeployMode::Online => "Online",
+                                DeployMode::SaveLocal => "Save Local",
+                                DeployMode::LoadLocal => "Load Local",
+                            }
                         ));
+                    }
+                    DeviceConfigField::Architecture => {
+                        app.architecture = match app.architecture.as_str() {
+                            "auto" => "arm64".to_string(),
+                            "arm64" => "amd64".to_string(),
+                            _ => "auto".to_string(),
+                        };
+                        app.add_status_message(format!("Architecture: {}", app.architecture));
                     }
                     DeviceConfigField::SkipCustom => {
                         app.skip_custom = !app.skip_custom;
@@ -2376,7 +2444,11 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Configuration panel
     let minimal_status = if app.minimal { "Enabled" } else { "Disabled" };
-    let local_transfer_status = if app.local_transfer { "Enabled" } else { "Disabled" };
+    let deploy_mode_status = match app.deploy_mode {
+        DeployMode::Online => "Online",
+        DeployMode::SaveLocal => "Save Local",
+        DeployMode::LoadLocal => "Load Local",
+    };
     let skip_custom_status = if app.skip_custom { "Enabled" } else { "Disabled" };
 
     let device_name_display = if app.device_name.is_empty() {
@@ -2408,9 +2480,12 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from(format!("{} Minimal Mode: {}",
             if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) { "►" } else { " " },
             minimal_status)),
-        Line::from(format!("{} Local Transfer: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::LocalTransfer) { "►" } else { " " },
-            local_transfer_status)),
+        Line::from(format!("{} Deploy Mode: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::DeployMode) { "►" } else { " " },
+            deploy_mode_status)),
+        Line::from(format!("{} Architecture: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Architecture) { "►" } else { " " },
+            app.architecture)),
         Line::from(format!("{} Skip Custom Images: {}",
             if config_highlight && matches!(selected_config, DeviceConfigField::SkipCustom) { "►" } else { " " },
             skip_custom_status)),
