@@ -39,7 +39,7 @@ vendored-openssl = ["openssl-sys/vendored"]  # Enable vendored OpenSSL for cross
 # Core dependencies (always included)
 clap = { version = "4.5.4", features = ["derive", "string"] }
 roxmltree = "0.20.0"
-ssh2 = "0.9.4"
+ssh2 = "0.9.5"
 chrono = { version = "0.4.34", features = ["serde"] }
 dotenv = "0.15.0"
 ctrlc = "3.4"
