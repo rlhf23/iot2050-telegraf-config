@@ -21,16 +21,43 @@ jobs:
           override: true
 
       - name: Install vcpkg and OpenSSL
+        shell: pwsh
         run: |
-          # Install vcpkg
-          git clone https://github.com/microsoft/vcpkg
-          .\vcpkg\bootstrap-vcpkg.bat
-          .\vcpkg\vcpkg install openssl:x64-windows
-          echo "VCPKG_ROOT=$pwd\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "VCPKGRS_DYNAMIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Clone vcpkg
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+          
+          # Bootstrap vcpkg
+          ./bootstrap-vcpkg.bat -disableMetrics
+          
+          # Install static OpenSSL (same as binary-release.yml)
+          ./vcpkg install openssl:x64-windows-static-md
+          
+          # Set environment variables for static linking
+          echo "OPENSSL_DIR=$PWD/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKG_ROOT=$PWD" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
         run: cargo build --verbose
         env:
-          VCPKGRS_DYNAMIC: 1
-          VCPKG_ROOT: ${{ github.workspace }}\vcpkg
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Run tests
+        run: cargo test --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+          CI: "true"
