@@ -22,7 +22,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libssl-dev
+          sudo apt-get install -y libgtk-3-dev libssl-dev openssh-server
 
       - name: Set up Rust
         uses: actions-rs/toolchain@v1
@@ -36,10 +36,10 @@ jobs:
 
       - name: Configure SSH server
         run: |
-          # Start sshd (pre-installed on ubuntu-latest)
-          sudo systemctl start sshd
+          # Generate host keys
+          sudo ssh-keygen -A
 
-          # Create test user
+          # Create test user with a home directory and bash shell
           sudo useradd -m -s /bin/bash ssh_test_user
           echo "ssh_test_user:testpass123" | sudo chpasswd
 
@@ -47,21 +47,23 @@ jobs:
           # (OpenSSH 8.8+ prefers curve25519 and deprecates older DH groups).
           # This is the exact configuration that triggers KEX_FAILURE on a
           # Windows build lacking curve25519 or group-exchange support.
-          sudo bash -c 'cat >> /etc/ssh/sshd_config << EOF
+          sudo tee -a /etc/ssh/sshd_config > /dev/null << 'KEXCONF'
 
           # SSH connection test: restrict kex to modern algorithms
           KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
-          EOF'
+          PasswordAuthentication yes
+          KEXCONF
 
-          # Generate host keys if missing
-          sudo ssh-keygen -A
-          sudo systemctl restart sshd
+          # Start ssh (service is called "ssh" on Ubuntu, not "sshd")
+          sudo systemctl start ssh || sudo systemctl start sshd
 
-          # Wait for sshd to be ready
+          # Wait for sshd to accept connections
           for i in $(seq 1 30); do
-            if ssh -o StrictHostKeyChecking=no -o BatchMode=yes ssh_test_user@127.0.0.1 echo "sshd ready" 2>/dev/null; then
+            if nc -z 127.0.0.1 22 2>/dev/null; then
+              echo "sshd is listening on port 22"
               break
             fi
+            echo "Waiting for sshd... ($i)"
             sleep 1
           done
 
@@ -153,39 +155,41 @@ jobs:
           if (-Not (Test-Path "C:\ProgramData\ssh")) {
             New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
           }
+
+          # Build the config content - use simple string concat to avoid here-string issues
+          $kexConfig = ""
+          $kexConfig += "# SSH connection test: restrict kex to modern algorithms`r`n"
+          $kexConfig += "KexAlgorithms curve25519-sha256,diffie-hellman-group-exchange-sha256`r`n"
+          $kexConfig += "PasswordAuthentication yes`r`n"
+
           if (Test-Path $sshdConfig) {
-            $config = Get-Content $sshdConfig
-            # Add modern kex algorithms
-            $config += "`n# SSH connection test: restrict kex to modern algorithms"
-            $config += "`nKexAlgorithms curve25519-sha256,diffie-hellman-group-exchange-sha256"
-            $config | Set-Content $sshdConfig
+            $existing = Get-Content $sshdConfig -Raw
+            $existing + "`r`n" + $kexConfig | Set-Content $sshdConfig -NoNewline
           } else {
-            $defaultConfig = @"
-            # SSH connection test: restrict kex to modern algorithms
-            KexAlgorithms curve25519-sha256,diffie-hellman-group-exchange-sha256
-            PasswordAuthentication yes
-            "@
-            $defaultConfig | Set-Content $sshdConfig
+            $kexConfig | Set-Content $sshdConfig -NoNewline
           }
 
           # Restart sshd to pick up config changes
           Restart-Service sshd
 
-          # Wait for sshd to be ready
+          # Wait for sshd to accept connections
           $ready = $false
           for ($i = 0; $i -lt 30; $i++) {
             try {
               $tcp = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 22)
               $tcp.Close()
               $ready = $true
+              Write-Host "sshd is listening on port 22"
               break
             } catch {
+              Write-Host "Waiting for sshd... ($i)"
               Start-Sleep -Seconds 1
             }
           }
           if (-not $ready) {
             Write-Error "sshd did not start within 30 seconds"
             Get-Service sshd | Format-List *
+            exit 1
           }
 
       - name: Build
