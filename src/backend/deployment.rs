@@ -1353,11 +1353,12 @@ impl IoTDeployer {
         let output_dir = save_dir
             .clone()
             .unwrap_or_else(|| std::env::temp_dir().join("iot2050-image-push"));
-        if output_dir.exists() {
-            std::fs::remove_dir_all(&output_dir).map_err(|e| {
-                TelegrafError::ConfigError(format!("Failed to clean output directory: {}", e))
-            })?;
-        }
+        // Create the output directory if it doesn't exist.
+        // We do NOT delete existing .tar files here: the airgap workflow
+        // allows incremental saves (e.g. --images influxdb, then --images
+        // api-service) into the same directory.  docker save -o overwrites
+        // any existing file of the same name, so stale tars from a previous
+        // run are replaced naturally.
         std::fs::create_dir_all(&output_dir).map_err(|e| {
             TelegrafError::ConfigError(format!("Failed to create output directory: {}", e))
         })?;
@@ -1567,14 +1568,6 @@ impl IoTDeployer {
                 &format!("Loading image {}", image_name),
             )?;
         }
-
-        // Clean up tars on device
-        self.progress("🧹 Cleaning up image tars on device...");
-        let _ = self.run_command(
-            &session,
-            "rm -rf ~/monitoring/images",
-            "Removing temporary image tar files",
-        );
 
         // Clean up local temp files (only if we created them)
         if load_dir.is_none() {

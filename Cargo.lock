@@ -263,7 +263,7 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
- "parking_lot 0.12.3",
+ "parking_lot",
  "windows-sys 0.48.0",
  "x11rb",
 ]
@@ -949,7 +949,7 @@ dependencies = [
  "bitflags 2.8.0",
  "crossterm_winapi",
  "mio",
- "parking_lot 0.12.3",
+ "parking_lot",
  "rustix",
  "signal-hook",
  "signal-hook-mio",
@@ -1181,7 +1181,7 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
- "parking_lot 0.12.3",
+ "parking_lot",
  "percent-encoding 2.3.1",
  "profiling",
  "raw-window-handle",
@@ -1344,7 +1344,7 @@ dependencies = [
  "epaint_default_fonts",
  "log",
  "nohash-hasher",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
 ]
 
@@ -2075,15 +2075,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "instant"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2214,9 +2205,9 @@ dependencies = [
 
 [[package]]
 name = "libssh2-sys"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dc8a030b787e2119a731f1951d6a773e2280c660f8ec4b0f5e1505a386e71ee"
+checksum = "220e4f05ad4a218192533b300327f5150e809b54c4ec83b5a1d91833601811b9"
 dependencies = [
  "cc",
  "libc",
@@ -2768,7 +2759,7 @@ dependencies = [
  "log",
  "openssl",
  "openssl-sys",
- "parking_lot 0.12.3",
+ "parking_lot",
  "regex",
  "serde",
  "serde_derive",
@@ -2879,37 +2870,12 @@ checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "parking_lot"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
-dependencies = [
- "instant",
- "lock_api",
- "parking_lot_core 0.8.6",
-]
-
-[[package]]
-name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
 dependencies = [
  "lock_api",
- "parking_lot_core 0.9.10",
-]
-
-[[package]]
-name = "parking_lot_core"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60a2cfe6f0ad2bfc16aefa463b497d5c7a5ecd44a23efa72aa342d90177356dc"
-dependencies = [
- "cfg-if",
- "instant",
- "libc",
- "redox_syscall 0.2.16",
- "smallvec",
- "winapi",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -3230,15 +3196,6 @@ checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
 
 [[package]]
 name = "redox_syscall"
-version = "0.2.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
-dependencies = [
- "bitflags 1.3.2",
-]
-
-[[package]]
-name = "redox_syscall"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4722d768eff46b75989dd134e5c353f0d6296e5aaa3132e776cbdb56be7731aa"
@@ -3482,7 +3439,7 @@ dependencies = [
 
 [[package]]
 name = "sie_generate_config"
-version = "0.10.6"
+version = "0.10.8"
 dependencies = [
  "chrono",
  "clap",
@@ -3641,14 +3598,14 @@ dependencies = [
 
 [[package]]
 name = "ssh2"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e7fe461910559f6d5604c3731d00d2aafc4a83d1665922e280f42f9a168d5455"
+checksum = "2f84d13b3b8a0d4e91a2629911e951db1bb8671512f5c09d7d4ba34500ba68c8"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.8.0",
  "libc",
  "libssh2-sys",
- "parking_lot 0.11.2",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3864,7 +3821,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot 0.12.3",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -4373,7 +4330,7 @@ dependencies = [
  "document-features",
  "js-sys",
  "log",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
  "raw-window-handle",
  "smallvec",
@@ -4401,7 +4358,7 @@ dependencies = [
  "log",
  "naga",
  "once_cell",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
  "raw-window-handle",
  "rustc-hash",
@@ -4439,7 +4396,7 @@ dependencies = [
  "objc",
  "once_cell",
  "ordered-float",
- "parking_lot 0.12.3",
+ "parking_lot",
  "profiling",
  "raw-window-handle",
  "renderdoc-sys",

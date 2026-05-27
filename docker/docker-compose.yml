@@ -229,6 +229,7 @@ services:
       start_period: 30s
 
   api-service:
+    image: api-service:local
     build:
       context: .
       dockerfile: api-service/Dockerfile.prebuilt
@@ -256,6 +257,7 @@ services:
       start_period: 10s
 
   control-service:
+    image: control-service:local
     build:
       context: .
       dockerfile: control-service/Dockerfile.prebuilt
