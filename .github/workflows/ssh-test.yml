@@ -140,38 +140,29 @@ jobs:
             Add-WindowsCapability -Online -Name $cap.Name
           }
 
-          # Start the SSH service
-          Start-Service sshd
-
-          # Set service to start automatically
-          Set-Service -Name sshd -StartupType Automatic
-
           # Create test user with a password that meets Windows complexity requirements
           # (uppercase, lowercase, digit, special char, 12+ chars)
           net user CiTestUser "SshTest@Pass42" /add
           net localgroup Administrators CiTestUser /add
 
-          # Configure sshd to restrict kex algorithms (mimics modern OpenSSH defaults)
-          $sshdConfig = "C:\ProgramData\ssh\sshd_config"
+          # Ensure sshd config directory exists
           if (-Not (Test-Path "C:\ProgramData\ssh")) {
             New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
           }
 
-          # Build the config content - use simple string concat to avoid here-string issues
-          $kexConfig = ""
-          $kexConfig += "# SSH connection test: restrict kex to modern algorithms`r`n"
-          $kexConfig += "KexAlgorithms curve25519-sha256,diffie-hellman-group-exchange-sha256`r`n"
-          $kexConfig += "PasswordAuthentication yes`r`n"
+          # Write a minimal sshd_config that enables password auth.
+          # We do NOT restrict KexAlgorithms on Windows because Windows OpenSSH
+          # may not support the same algorithm names as Linux OpenSSH.
+          # The Linux test job with restricted kex is what reproduces the
+          # NanoPi KEX_FAILURE bug. The Windows job verifies that the SSH
+          # client stack works end-to-end on the Windows build.
+          $config = "PasswordAuthentication yes`r`n"
+          $config += "PubkeyAuthentication no`r`n"
+          Set-Content -Path "C:\ProgramData\ssh\sshd_config" -Value $config -NoNewline
 
-          if (Test-Path $sshdConfig) {
-            $existing = Get-Content $sshdConfig -Raw
-            $existing + "`r`n" + $kexConfig | Set-Content $sshdConfig -NoNewline
-          } else {
-            $kexConfig | Set-Content $sshdConfig -NoNewline
-          }
-
-          # Restart sshd to pick up config changes
-          Restart-Service sshd
+          # Start the SSH service
+          Start-Service sshd
+          Set-Service -Name sshd -StartupType Automatic
 
           # Wait for sshd to accept connections
           $ready = $false
