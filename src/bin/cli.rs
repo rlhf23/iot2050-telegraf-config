@@ -40,7 +40,9 @@ fn handle_device_command(matches: &clap::ArgMatches) {
     match matches.subcommand() {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
-            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+            if let (Some(display_name), Some(hostname)) =
+                (&config.ship_display_name, &config.ship_hostname)
+            {
                 if !confirm_device_name(display_name, hostname) {
                     println!("Aborted.");
                     wrap_up(1);
@@ -48,13 +50,25 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             }
             let deployer = IoTDeployer::new(config);
             let local_transfer = sub_matches.get_flag("local_transfer");
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
 
-            if let Err(e) = deployer.test_connection() {
-                exit_with_error(format!("Connection failed: {}", e));
-            }
-
-            if let Err(e) = deployer.provision_with_transfer_mode(local_transfer) {
-                exit_with_error(format!("Provisioning failed: {}", e));
+            if save_dir.is_some() {
+                if let Err(e) = deployer.provision_with_options(local_transfer, save_dir, load_dir)
+                {
+                    exit_with_error(format!("Provisioning failed: {}", e));
+                }
+            } else {
+                if let Err(e) = deployer.test_connection() {
+                    exit_with_error(format!("Connection failed: {}", e));
+                }
+                if let Err(e) = deployer.provision_with_options(local_transfer, None, load_dir) {
+                    exit_with_error(format!("Provisioning failed: {}", e));
+                }
             }
 
             wrap_up(0);
@@ -63,12 +77,20 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
             let use_local = sub_matches.get_flag("local");
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
 
-            if let Err(e) = deployer.test_connection() {
-                exit_with_error(format!("Connection failed: {}", e));
+            if save_dir.is_none() {
+                if let Err(e) = deployer.test_connection() {
+                    exit_with_error(format!("Connection failed: {}", e));
+                }
             }
 
-            if let Err(e) = deployer.update(use_local) {
+            if let Err(e) = deployer.update_with_options(use_local, save_dir, load_dir) {
                 exit_with_error(format!("Update failed: {}", e));
             }
 
@@ -76,7 +98,9 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         }
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
-            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+            if let (Some(display_name), Some(hostname)) =
+                (&config.ship_display_name, &config.ship_hostname)
+            {
                 if !confirm_device_name(display_name, hostname) {
                     println!("Aborted.");
                     wrap_up(1);
@@ -134,15 +158,33 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let minimal = sub_matches.get_flag("minimal");
             let skip_custom = sub_matches.get_flag("skip_custom");
             let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
-            let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
+            let architecture = if arch_arg == "auto" {
+                None
+            } else {
+                Some(arch_arg.clone())
+            };
             let image_filter = sub_matches.get_one::<String>("images").map(|s| {
-                s.split(',').map(|i| i.trim().to_string()).filter(|i| !i.is_empty()).collect()
+                s.split(',')
+                    .map(|i| i.trim().to_string())
+                    .filter(|i| !i.is_empty())
+                    .collect()
             });
-            let save_dir = sub_matches.get_one::<String>("save_dir").map(|s| std::path::PathBuf::from(s));
-            let load_dir = sub_matches.get_one::<String>("load_dir").map(|s| std::path::PathBuf::from(s));
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
-            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom, image_filter, save_dir, load_dir) {
+            if let Err(e) = deployer.push_images(
+                architecture,
+                minimal,
+                skip_custom,
+                image_filter,
+                save_dir,
+                load_dir,
+            ) {
                 exit_with_error(format!("Push images failed: {}", e));
             }
 
@@ -626,8 +668,7 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
 
 fn main() {
     let matches = Command::new("IOT2050 config handler")
-        .version("0.11")
-        .about("Generates Telegraf configs and deploys monitoring stack to IoT devices")
+        .about(concat!("v", env!("CARGO_PKG_VERSION"), " - Generates Telegraf configs and deploys monitoring stack to IoT devices"))
         .subcommand_required(true)
         .arg_required_else_help(true)
         .subcommand(
@@ -662,6 +703,8 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use for deployment"))
                         .arg(clap::Arg::new("local_transfer").long("local-transfer").action(ArgAction::SetTrue).help("Download to local machine first, then transfer to device (offline-capable)"))
+                        .arg(clap::Arg::new("save_dir").long("save-dir").help("Save configuration package to this directory instead of deploying (airgap: step 1). No device connection needed."))
+                        .arg(clap::Arg::new("load_dir").long("load-dir").help("Load configuration package from this directory and deploy to device (airgap: step 2). No internet needed."))
                         .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
                 )
                 .subcommand(
@@ -673,6 +716,8 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("git_branch").short('b').long("git-branch").default_value("master").help("Git branch to use"))
                         .arg(clap::Arg::new("local").short('l').long("local").action(clap::ArgAction::SetTrue).help("Download locally and transfer via SCP (no internet needed on device)"))
+                        .arg(clap::Arg::new("save_dir").long("save-dir").help("Save configuration package to this directory instead of deploying (airgap: step 1). No device connection needed."))
+                        .arg(clap::Arg::new("load_dir").long("load-dir").help("Load configuration package from this directory and deploy to device (airgap: step 2). No internet needed."))
                 )
                 .subcommand(
                     Command::new("setup")
@@ -816,7 +861,7 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("No command specified");
+            println!("IOT2050 config handler v{}", env!("CARGO_PKG_VERSION"));
             wrap_up(1);
         }
     }

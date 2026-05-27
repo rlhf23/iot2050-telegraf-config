@@ -32,14 +32,16 @@ pub fn filter_pull_images(minimal: bool, image_filter: &Option<Vec<String>>) -> 
     match image_filter {
         Some(filter) => {
             let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
-            DOCKER_IMAGES.iter()
+            DOCKER_IMAGES
+                .iter()
                 .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
                 .map(|(_, tag)| *tag)
                 .collect()
         }
         None => {
             if minimal {
-                DOCKER_IMAGES.iter()
+                DOCKER_IMAGES
+                    .iter()
                     .filter(|(name, _)| MINIMAL_IMAGE_NAMES.contains(name))
                     .map(|(_, tag)| *tag)
                     .collect()
@@ -50,14 +52,18 @@ pub fn filter_pull_images(minimal: bool, image_filter: &Option<Vec<String>>) -> 
     }
 }
 
-pub fn filter_custom_services(skip_custom: bool, image_filter: &Option<Vec<String>>) -> Vec<(&'static str, &'static str)> {
+pub fn filter_custom_services(
+    skip_custom: bool,
+    image_filter: &Option<Vec<String>>,
+) -> Vec<(&'static str, &'static str)> {
     if skip_custom {
         return vec![];
     }
     match image_filter {
         Some(filter) => {
             let filter_lower: Vec<String> = filter.iter().map(|s| s.to_lowercase()).collect();
-            CUSTOM_SERVICES.iter()
+            CUSTOM_SERVICES
+                .iter()
                 .filter(|(name, _)| filter_lower.iter().any(|f| f == &name.to_lowercase()))
                 .cloned()
                 .collect()
@@ -79,7 +85,10 @@ pub fn validate_push_flags(
         return Err("Cannot use --save-dir and --load-dir together.".to_string());
     }
     if save_dir.is_some() && architecture.is_none() {
-        return Err("--architecture is required when using --save-dir (no device to auto-detect from).".to_string());
+        return Err(
+            "--architecture is required when using --save-dir (no device to auto-detect from)."
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -279,6 +288,27 @@ impl IoTDeployer {
 
     /// Provision with option to download locally first (offline-capable)
     pub fn provision_with_transfer_mode(&self, local_transfer: bool) -> Result<(), TelegrafError> {
+        self.provision_with_options(local_transfer, None, None)
+    }
+
+    /// Provision with full options including airgap support
+    pub fn provision_with_options(
+        &self,
+        local_transfer: bool,
+        save_dir: Option<std::path::PathBuf>,
+        load_dir: Option<std::path::PathBuf>,
+    ) -> Result<(), TelegrafError> {
+        if save_dir.is_some() && load_dir.is_some() {
+            return Err(TelegrafError::ConfigError(
+                "Cannot use --save-dir and --load-dir together.".to_string(),
+            ));
+        }
+
+        // Save-only mode: download from GitHub and save locally, no device needed
+        if let Some(dir) = &save_dir {
+            return self.save_config_to_dir(dir);
+        }
+
         self.progress("🚀 Starting device provisioning...");
 
         let session = self.create_ssh_session()?;
@@ -373,8 +403,11 @@ impl IoTDeployer {
             "Creating monitoring directory",
         )?;
 
-        // Download docker folder - either directly on device or via local transfer
-        if local_transfer {
+        // Download docker folder
+        if let Some(dir) = &load_dir {
+            self.progress("📥 Loading configuration from local directory...");
+            self.transfer_config_to_device(&session, dir)?;
+        } else if local_transfer {
             self.progress(&format!(
                 "📥 Downloading docker configuration locally from branch '{}'...",
                 self.branch
@@ -407,6 +440,27 @@ impl IoTDeployer {
 
     /// Update monitoring configuration on the device (download fresh copy from git)
     pub fn update(&self, use_local: bool) -> Result<(), TelegrafError> {
+        self.update_with_options(use_local, None, None)
+    }
+
+    /// Update with full options including airgap support
+    pub fn update_with_options(
+        &self,
+        use_local: bool,
+        save_dir: Option<std::path::PathBuf>,
+        load_dir: Option<std::path::PathBuf>,
+    ) -> Result<(), TelegrafError> {
+        if save_dir.is_some() && load_dir.is_some() {
+            return Err(TelegrafError::ConfigError(
+                "Cannot use --save-dir and --load-dir together.".to_string(),
+            ));
+        }
+
+        // Save-only mode: download from GitHub and save locally, no device needed
+        if let Some(dir) = &save_dir {
+            return self.save_config_to_dir(dir);
+        }
+
         self.progress("🔄 Updating monitoring configuration...");
 
         let session = self.create_ssh_session()?;
@@ -438,18 +492,20 @@ impl IoTDeployer {
             "Creating monitoring directory",
         )?;
 
-        if use_local {
+        if let Some(dir) = &load_dir {
+            // Airgap mode: upload from local directory
+            self.progress("📥 Loading configuration from local directory...");
+            self.transfer_config_to_device(&session, dir)?;
+        } else if use_local {
             // Download locally and transfer via SFTP
             self.progress(&format!(
                 "📥 Downloading docker configuration locally from branch '{}'...",
                 self.branch
             ));
 
-            // Create temp directory
             let temp_dir = std::env::temp_dir().join(format!("monitoring-{}", self.branch));
             std::fs::create_dir_all(&temp_dir)?;
 
-            // Download tarball locally
             let tarball_path = temp_dir.join("docker.tar.gz");
             let output = std::process::Command::new("curl")
                 .arg("-L")
@@ -465,42 +521,43 @@ impl IoTDeployer {
                 ));
             }
 
-            // Extract locally
             let extract_dir = temp_dir.join("extracted");
             std::fs::create_dir_all(&extract_dir)?;
+
+            // Extract only the docker/ directory, stripping the top-level branch prefix.
+            // This avoids extracting .direnv, .git, etc. and works on Windows
+            // where symlinks in those directories would cause tar to fail.
             let extract_output = std::process::Command::new("tar")
-                .arg("-xzf")
-                .arg(&tarball_path)
-                .arg("-C")
-                .arg(&extract_dir)
+                .args([
+                    "-xzf",
+                    tarball_path.to_str().unwrap(),
+                    "-C",
+                    extract_dir.to_str().unwrap(),
+                    "--strip-components=1",
+                    &format!("{}/docker", get_extracted_dir_name(&self.branch)),
+                ])
                 .output()
                 .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
 
             if !extract_output.status.success() {
+                let _ = std::fs::remove_dir_all(&temp_dir);
                 return Err(TelegrafError::ConfigError(
                     "Failed to extract tarball".to_string(),
                 ));
             }
 
-            let docker_path = extract_dir
-                .join(get_extracted_dir_name(&self.branch))
-                .join("docker");
+            let docker_path = extract_dir.join("docker");
 
-            self.progress("📤 Transferring files to device via SFTP...");
-
-            // Use SFTP through the existing SSH session
             let sftp = session.sftp().map_err(|e| {
                 TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e))
             })?;
 
-            // Recursively upload the docker folder
             self.upload_directory_sftp(
                 &sftp,
                 &docker_path,
                 Path::new("/home").join(self.user()).join("monitoring"),
             )?;
 
-            // Cleanup temp directory
             let _ = std::fs::remove_dir_all(&temp_dir);
         } else {
             // Download directly on the device (requires internet)
@@ -509,8 +566,6 @@ impl IoTDeployer {
                 self.branch
             ));
 
-            // Check if device has internet connectivity
-            self.progress("🌐 Checking device internet connectivity...");
             let has_internet =
                 self.check_command(&session, "ping -c 1 www.google.com > /dev/null 2>&1")?;
 
@@ -600,7 +655,10 @@ impl IoTDeployer {
 
         let setup_cmd = if self.minimal {
             self.progress("📦 Using minimal profile (TICK stack only)");
-            format!("cd ~/monitoring && {} ./scripts/setup.sh --minimal", env_vars)
+            format!(
+                "cd ~/monitoring && {} ./scripts/setup.sh --minimal",
+                env_vars
+            )
         } else {
             format!("cd ~/monitoring && {} ./scripts/setup.sh", env_vars)
         };
@@ -772,6 +830,111 @@ impl IoTDeployer {
             force,
             self.progress_sender.as_ref(),
         )
+    }
+
+    /// Download configuration from GitHub and save to a local directory (airgap step 1).
+    /// No device connection needed.
+    pub fn save_config_to_dir(&self, save_dir: &std::path::Path) -> Result<(), TelegrafError> {
+        self.progress(&format!(
+            "📥 Downloading configuration from branch '{}' to {}...",
+            self.branch,
+            save_dir.display()
+        ));
+
+        let target_dir = save_dir.join("docker");
+
+        if target_dir.exists() {
+            std::fs::remove_dir_all(&target_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to remove existing directory: {}", e))
+            })?;
+        }
+        std::fs::create_dir_all(save_dir)?;
+
+        let temp_dir = std::env::temp_dir().join(format!("iot2050-config-save-{}", self.branch));
+
+        if temp_dir.exists() {
+            std::fs::remove_dir_all(&temp_dir).map_err(|e| {
+                TelegrafError::ConfigError(format!("Failed to clean temp directory: {}", e))
+            })?;
+        }
+        std::fs::create_dir_all(&temp_dir)?;
+
+        let tarball_path = temp_dir.join("docker.tar.gz");
+
+        let output = std::process::Command::new("curl")
+            .args(["-L", &self.repo_url, "-o"])
+            .arg(&tarball_path)
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to run curl: {}", e)))?;
+
+        if !output.status.success() {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to download tarball: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        self.progress("📦 Extracting docker/ directory...");
+
+        // Extract only the docker/ directory, stripping the top-level branch prefix.
+        // This avoids extracting .direnv, .git, etc. and works on Windows
+        // where symlinks in those directories would cause tar to fail.
+        let extract_output = std::process::Command::new("tar")
+            .args([
+                "-xzf",
+                tarball_path.to_str().unwrap(),
+                "-C",
+                save_dir.to_str().unwrap(),
+                "--strip-components=1",
+                &format!("{}/docker", get_extracted_dir_name(&self.branch)),
+            ])
+            .output()
+            .map_err(|e| TelegrafError::ConfigError(format!("Failed to extract: {}", e)))?;
+
+        if !extract_output.status.success() {
+            let _ = std::fs::remove_dir_all(&temp_dir);
+            return Err(TelegrafError::ConfigError(format!(
+                "Failed to extract tarball: {}",
+                String::from_utf8_lossy(&extract_output.stderr)
+            )));
+        }
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        self.progress(&format!("✅ Configuration saved to {}", save_dir.display()));
+        Ok(())
+    }
+
+    /// Upload a local config directory to the device (airgap step 2 for update).
+    /// Expects `load_dir/docker/` to contain the configuration files.
+    fn transfer_config_to_device(
+        &self,
+        session: &Session,
+        load_dir: &std::path::Path,
+    ) -> Result<(), TelegrafError> {
+        let docker_path = load_dir.join("docker");
+
+        if !docker_path.exists() {
+            return Err(TelegrafError::ConfigError(format!(
+                "Expected directory not found: {}. Run with --save-dir first.",
+                docker_path.display()
+            )));
+        }
+
+        self.progress("📤 Transferring configuration files to device via SFTP...");
+
+        let sftp = session.sftp().map_err(|e| {
+            TelegrafError::ConfigError(format!("Failed to create SFTP session: {}", e))
+        })?;
+
+        self.upload_directory_sftp(
+            &sftp,
+            &docker_path,
+            Path::new("/home").join(self.user()).join("monitoring"),
+        )?;
+
+        Ok(())
     }
 
     /// Download monitoring folder locally and transfer to device
@@ -1045,7 +1208,9 @@ impl IoTDeployer {
                     diff_hours
                 ));
                 self.progress("⚠️  This will likely cause apt-get to fail due to certificate validation issues.");
-                self.progress("⚠️  Device may be missing CMOS battery. Set time manually before continuing:");
+                self.progress(
+                    "⚠️  Device may be missing CMOS battery. Set time manually before continuing:",
+                );
                 self.progress("⚠️  sudo timedatectl set-time \"2025-10-01 09:11\"");
                 self.progress("⚠️  Continuing anyway...");
             } else if diff_seconds > 300 {
@@ -1055,7 +1220,9 @@ impl IoTDeployer {
                     diff_seconds,
                     diff_seconds / 60
                 ));
-                self.progress("⚠️  This may cause issues. Consider syncing time if problems occur.");
+                self.progress(
+                    "⚠️  This may cause issues. Consider syncing time if problems occur.",
+                );
             } else {
                 self.progress(&format!(
                     "✅ System time is within {} seconds of local time",
@@ -1175,14 +1342,19 @@ impl IoTDeployer {
 
         self.progress(&format!("   Target platform: {}", platform));
         if !needs_device {
-            self.progress("   Save-only mode: images will be saved locally (no device connection needed)");
+            self.progress(
+                "   Save-only mode: images will be saved locally (no device connection needed)",
+            );
         } else if load_dir.is_some() {
-            self.progress("   Load-only mode: using pre-saved image tars (no Docker needed on host)");
+            self.progress(
+                "   Load-only mode: using pre-saved image tars (no Docker needed on host)",
+            );
         }
         self.progress(&format!("   Docker context: {}", docker_context.display()));
 
         let images_to_pull = filter_pull_images(minimal, &image_filter);
-        let services_to_build = filter_custom_services(skip_custom || load_dir.is_some(), &image_filter);
+        let services_to_build =
+            filter_custom_services(skip_custom || load_dir.is_some(), &image_filter);
 
         if images_to_pull.is_empty() && services_to_build.is_empty() {
             self.progress("ℹ️  No images selected. Use --images to specify which images to push, or omit it to push all.");
@@ -1190,9 +1362,9 @@ impl IoTDeployer {
         }
 
         // --- Phase 1: Pull, build, save ---
-        let output_dir = save_dir.clone().unwrap_or_else(|| {
-            std::env::temp_dir().join("iot2050-image-push")
-        });
+        let output_dir = save_dir
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join("iot2050-image-push"));
         if output_dir.exists() {
             std::fs::remove_dir_all(&output_dir).map_err(|e| {
                 TelegrafError::ConfigError(format!("Failed to clean output directory: {}", e))
@@ -1211,7 +1383,12 @@ impl IoTDeployer {
                 let pull_output = std::process::Command::new("docker")
                     .args(["pull", "--platform", &platform, image])
                     .output()
-                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker pull: {}. Is Docker installed and running?", e)))?;
+                    .map_err(|e| {
+                        TelegrafError::ConfigError(format!(
+                            "Failed to run docker pull: {}. Is Docker installed and running?",
+                            e
+                        ))
+                    })?;
 
                 if !pull_output.status.success() {
                     let stderr = String::from_utf8_lossy(&pull_output.stderr);
@@ -1228,7 +1405,9 @@ impl IoTDeployer {
                 let save_output = std::process::Command::new("docker")
                     .args(["save", "-o", tar_path.to_str().unwrap(), image])
                     .output()
-                    .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+                    .map_err(|e| {
+                        TelegrafError::ConfigError(format!("Failed to run docker save: {}", e))
+                    })?;
 
                 if !save_output.status.success() {
                     let stderr = String::from_utf8_lossy(&save_output.stderr);
@@ -1264,7 +1443,12 @@ impl IoTDeployer {
                         ])
                         .current_dir(&docker_context)
                         .output()
-                        .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker buildx: {}", e)))?;
+                        .map_err(|e| {
+                            TelegrafError::ConfigError(format!(
+                                "Failed to run docker buildx: {}",
+                                e
+                            ))
+                        })?;
 
                     if !build_output.status.success() {
                         let stderr = String::from_utf8_lossy(&build_output.stderr);
@@ -1281,7 +1465,9 @@ impl IoTDeployer {
                     let save_output = std::process::Command::new("docker")
                         .args(["save", "-o", tar_path.to_str().unwrap(), &image_tag])
                         .output()
-                        .map_err(|e| TelegrafError::ConfigError(format!("Failed to run docker save: {}", e)))?;
+                        .map_err(|e| {
+                            TelegrafError::ConfigError(format!("Failed to run docker save: {}", e))
+                        })?;
 
                     if !save_output.status.success() {
                         let stderr = String::from_utf8_lossy(&save_output.stderr);
@@ -1310,8 +1496,7 @@ impl IoTDeployer {
         }
 
         // --- If load_dir, discover tars from that directory ---
-        if load_dir.is_some() {
-            let dir = load_dir.as_ref().unwrap();
+        if let Some(dir) = &load_dir {
             self.progress(&format!("📂 Loading tars from {}...", dir.display()));
             for entry in std::fs::read_dir(dir).map_err(|e| {
                 TelegrafError::ConfigError(format!("Failed to read load directory: {}", e))
@@ -1321,7 +1506,8 @@ impl IoTDeployer {
                 })?;
                 let path = entry.path();
                 if path.extension().map(|e| e == "tar").unwrap_or(false) {
-                    let name = path.file_stem()
+                    let name = path
+                        .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("unknown")
                         .to_string();
@@ -1356,9 +1542,7 @@ impl IoTDeployer {
             .join("images");
 
         for (image_name, tar_path) in &tar_files {
-            let file_size = std::fs::metadata(tar_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let file_size = std::fs::metadata(tar_path).map(|m| m.len()).unwrap_or(0);
             let size_mb = file_size as f64 / (1024.0 * 1024.0);
             self.progress(&format!(
                 "   Uploading {} ({:.1} MB)...",
@@ -1387,12 +1571,13 @@ impl IoTDeployer {
             let tar_filename = tar_path.file_name().unwrap().to_str().unwrap();
             self.progress(&format!("   Loading {}...", image_name));
 
-            let load_cmd = format!(
-                "docker load -i ~/monitoring/images/{}",
-                tar_filename
-            );
+            let load_cmd = format!("docker load -i ~/monitoring/images/{}", tar_filename);
 
-            self.run_command(&session, &load_cmd, &format!("Loading image {}", image_name))?;
+            self.run_command(
+                &session,
+                &load_cmd,
+                &format!("Loading image {}", image_name),
+            )?;
         }
 
         // Clean up tars on device

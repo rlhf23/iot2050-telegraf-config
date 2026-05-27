@@ -125,6 +125,10 @@ jobs:
           echo "OPENSSL_DIR=$PWD/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "VCPKG_ROOT=$PWD" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # Prevent libssh2-sys from using vcpkg's pre-built libssh2,
+          # which may lack curve25519 support. Compiling from the bundled
+          # libssh2 source with OpenSSL backend enables LIBSSH2_ED25519.
+          echo "VCPKGRS_DISABLE=1" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2

@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -13,18 +13,12 @@ use ratatui::{
 };
 use sie_generate_config::{
     backend::{
-        deployment::DeploymentConfig,
-        opcua_poller::OpcUaPoller,
-        ConfigGenerator, ServiceType,
+        deployment::DeploymentConfig, opcua_poller::OpcUaPoller, ConfigGenerator, ServiceType,
     },
     TelegrafConfig, WorkerCommand, WorkerHandle, WorkerResponse,
 };
 use std::collections::HashMap;
-use std::{
-    fs,
-    io,
-    path::PathBuf,
-};
+use std::{fs, io, path::PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Tab {
@@ -97,6 +91,14 @@ enum ActionsField {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+enum DeployMode {
+    Online,
+    LocalTransfer,
+    SaveLocal,
+    LoadLocal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum DeviceActionField {
     Provision,
     Setup,
@@ -143,7 +145,8 @@ enum DeviceConfigField {
     GitBranch,
     Architecture,
     Minimal,
-    LocalTransfer,
+    DeployMode,
+    Architecture,
     SkipCustom,
 }
 
@@ -157,9 +160,9 @@ impl DeviceConfigField {
             0 => Self::DeviceName,
             1 => Self::KeyFile,
             2 => Self::GitBranch,
-            3 => Self::Architecture,
-            4 => Self::Minimal,
-            5 => Self::LocalTransfer,
+            3 => Self::Minimal,
+            4 => Self::DeployMode,
+            5 => Self::Architecture,
             6 => Self::SkipCustom,
             _ => Self::DeviceName,
         }
@@ -278,7 +281,8 @@ struct App {
     key_file: String,
     git_branch: String,
     minimal: bool,
-    local_transfer: bool,
+    deploy_mode: DeployMode,
+    architecture: String,
     skip_custom: bool,
     architecture: String,
 
@@ -338,7 +342,8 @@ impl App {
             key_file: String::new(),
             git_branch: "master".to_string(),
             minimal: false,
-            local_transfer: false,
+            deploy_mode: DeployMode::Online,
+            architecture: "auto".to_string(),
             skip_custom: false,
             architecture: "auto".to_string(),
             pending_confirmation: None,
@@ -431,7 +436,7 @@ impl App {
         }
     }
 
-fn add_status_message(&mut self, message: String) {
+    fn add_status_message(&mut self, message: String) {
         self.status_messages.push(message);
         let len = self.status_messages.len();
         let at_bottom = self
@@ -754,10 +759,8 @@ fn add_status_message(&mut self, message: String) {
                                         .unwrap_or(false)
                                 }) {
                                     // Update the namespace for this file
-                                    let config = self
-                                        .file_configs
-                                        .entry(full_path.clone())
-                                        .or_default();
+                                    let config =
+                                        self.file_configs.entry(full_path.clone()).or_default();
                                     config.namespace = namespace_index.to_string();
                                     updated_count += 1;
                                 }
@@ -794,28 +797,19 @@ fn add_status_message(&mut self, message: String) {
                 EditField::Architecture => self.architecture = self.input_buffer.clone(),
                 EditField::FileNamespace(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self
-                            .file_configs
-                            .entry(file.clone())
-                            .or_default();
+                        let config = self.file_configs.entry(file.clone()).or_default();
                         config.namespace = self.input_buffer.clone();
                     }
                 }
                 EditField::FileIp(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self
-                            .file_configs
-                            .entry(file.clone())
-                            .or_default();
+                        let config = self.file_configs.entry(file.clone()).or_default();
                         config.ip = self.input_buffer.clone();
                     }
                 }
                 EditField::FileInterval(idx) => {
                     if let Some(file) = self.xml_files.get(*idx) {
-                        let config = self
-                            .file_configs
-                            .entry(file.clone())
-                            .or_default();
+                        let config = self.file_configs.entry(file.clone()).or_default();
                         config.interval_ms = self.input_buffer.clone();
                     }
                 }
@@ -1006,12 +1000,28 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("🚀 Provisioning device...".to_string());
+
+        let (save_dir, load_dir, local_transfer) = match self.deploy_mode {
+            DeployMode::Online => (None, None, false),
+            DeployMode::LocalTransfer => (None, None, true),
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None, false),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string()), false),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "🚀 Provisioning device...".to_string(),
+            DeployMode::LocalTransfer => "📡 Provisioning (local transfer)...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceProvision {
                 config,
-                local_transfer: self.local_transfer,
+                local_transfer,
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1044,12 +1054,28 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("📦 Updating device...".to_string());
+
+        let (save_dir, load_dir, use_local) = match self.deploy_mode {
+            DeployMode::Online => (None, None, false),
+            DeployMode::LocalTransfer => (None, None, true),
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None, false),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string()), false),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "📦 Updating device...".to_string(),
+            DeployMode::LocalTransfer => "📡 Updating (local transfer)...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving configuration package locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading configuration package to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DeviceUpdate {
                 config,
-                use_local: self.local_transfer,
+                use_local,
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1100,14 +1126,18 @@ fn add_status_message(&mut self, message: String) {
         }
 
         self.pending_confirmation = Some("stop_volumes".to_string());
-        self.add_status_message("⚠️ Stop and REMOVE ALL DATA? Press 'y' to confirm or 'n' to cancel.".to_string());
+        self.add_status_message(
+            "⚠️ Stop and REMOVE ALL DATA? Press 'y' to confirm or 'n' to cancel.".to_string(),
+        );
     }
 
     fn device_stop_confirmed(&mut self, remove_volumes: bool) {
         self.pending_confirmation = None;
         self.start_working();
         if remove_volumes {
-            self.add_status_message("⏹️ Stopping monitoring stack and removing volumes...".to_string());
+            self.add_status_message(
+                "⏹️ Stopping monitoring stack and removing volumes...".to_string(),
+            );
         } else {
             self.add_status_message("⏹️ Stopping monitoring stack...".to_string());
         }
@@ -1184,13 +1214,30 @@ fn add_status_message(&mut self, message: String) {
             return;
         }
         self.start_working();
-        self.add_status_message("🐳 Pushing Docker images to device...".to_string());
+
+        let (save_dir, load_dir) = match self.deploy_mode {
+            DeployMode::Online => (None, None),
+            DeployMode::LocalTransfer => (None, None),
+            DeployMode::SaveLocal => (Some("./iot2050-package".to_string()), None),
+            DeployMode::LoadLocal => (None, Some("./iot2050-package".to_string())),
+        };
+
+        self.add_status_message(match self.deploy_mode {
+            DeployMode::Online => "🐳 Pushing Docker images to device...".to_string(),
+            DeployMode::LocalTransfer => "🐳 Pushing Docker images to device...".to_string(),
+            DeployMode::SaveLocal => "📥 Saving Docker images locally...".to_string(),
+            DeployMode::LoadLocal => "📤 Loading Docker images to device...".to_string(),
+        });
+
         if let Some(worker) = &self.worker {
             let config = self.build_deployment_config();
             if let Err(e) = worker.send_command(WorkerCommand::DevicePushImages {
                 config,
                 minimal: self.minimal,
                 skip_custom: self.skip_custom,
+                architecture: Some(self.architecture.clone()),
+                save_dir,
+                load_dir,
             }) {
                 self.add_status_message(format!("❌ Failed to send command: {}", e));
                 self.stop_working();
@@ -1243,7 +1290,10 @@ fn add_status_message(&mut self, message: String) {
 
         let (hostname, port) = if host.contains(':') {
             let parts: Vec<&str> = host.splitn(2, ':').collect();
-            let port = parts.get(1).and_then(|p| p.parse::<u16>().ok()).unwrap_or(22);
+            let port = parts
+                .get(1)
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(22);
             (parts[0].to_string(), port)
         } else {
             (host, 22)
@@ -1277,7 +1327,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -1287,11 +1337,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -1312,60 +1358,56 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                 if key.kind == KeyEventKind::Press {
                     match app.input_mode {
                         InputMode::Normal => {
-                        if app.pending_confirmation.is_some() {
-                            match key.code {
-                                KeyCode::Char('y') | KeyCode::Char('Y') => {
-                                    let confirmation = app.pending_confirmation.clone();
-                                    match confirmation.as_deref() {
-                                        Some("stop_normal") => app.device_stop_confirmed(false),
-                                        Some("stop_volumes") => app.device_stop_confirmed(true),
-                                        Some("restore") => app.device_restore_confirmed(),
-                                        _ => {
-                                            app.pending_confirmation = None;
-                                            app.add_status_message("Confirmation cancelled.".to_string());
+                            if app.pending_confirmation.is_some() {
+                                match key.code {
+                                    KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                        let confirmation = app.pending_confirmation.clone();
+                                        match confirmation.as_deref() {
+                                            Some("stop_normal") => app.device_stop_confirmed(false),
+                                            Some("stop_volumes") => app.device_stop_confirmed(true),
+                                            Some("restore") => app.device_restore_confirmed(),
+                                            _ => {
+                                                app.pending_confirmation = None;
+                                                app.add_status_message(
+                                                    "Confirmation cancelled.".to_string(),
+                                                );
+                                            }
                                         }
                                     }
-                                }
-                                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                                    app.pending_confirmation = None;
-                                    app.add_status_message("Action cancelled.".to_string());
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            match key.code {
-                                KeyCode::Char('q') => return Ok(()),
-                                KeyCode::Char('h') => app.show_help = !app.show_help,
-                                KeyCode::Char('s') => app.status_expanded = !app.status_expanded,
-                                KeyCode::PageUp => {
-                                    if let Some(selected) = app.status_list_state.selected() {
-                                        app.status_list_state.select(Some(selected.saturating_sub(10)));
-                                    } else if !app.status_messages.is_empty() {
-                                        app.status_list_state.select(Some(app.status_messages.len() - 1));
+                                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                                        app.pending_confirmation = None;
+                                        app.add_status_message("Action cancelled.".to_string());
                                     }
+                                    _ => {}
                                 }
-                                KeyCode::PageDown => {
-                                    if let Some(selected) = app.status_list_state.selected() {
-                                        app.status_list_state.select(Some((selected + 10).min(app.status_messages.len().saturating_sub(1))));
-                                    } else if !app.status_messages.is_empty() {
-                                        app.status_list_state.select(Some(0));
+                            } else {
+                                match key.code {
+                                    KeyCode::Char('q') => return Ok(()),
+                                    KeyCode::Char('h') => app.show_help = !app.show_help,
+                                    KeyCode::Char('s') => {
+                                        app.status_expanded = !app.status_expanded
                                     }
-                                }
-                                KeyCode::Tab => {
-                                    app.current_tab = match app.current_tab {
-                                        Tab::Folder => Tab::Files,
-                                        Tab::Files => Tab::OpcUaConfig,
-                                        Tab::OpcUaConfig => Tab::IoTConfig,
-                                        Tab::IoTConfig => Tab::Config,
-                                        Tab::Config => Tab::Actions,
-                                        Tab::Actions => Tab::Device,
-                                        Tab::Device => Tab::Folder,
-                                    };
-                                }
-                                KeyCode::Right => {
-                                    if app.current_tab == Tab::Device && !app.device_focus_right {
-                                        app.device_focus_right = true;
-                                    } else {
+                                    KeyCode::PageUp => {
+                                        if let Some(selected) = app.status_list_state.selected() {
+                                            app.status_list_state
+                                                .select(Some(selected.saturating_sub(10)));
+                                        } else if !app.status_messages.is_empty() {
+                                            app.status_list_state
+                                                .select(Some(app.status_messages.len() - 1));
+                                        }
+                                    }
+                                    KeyCode::PageDown => {
+                                        if let Some(selected) = app.status_list_state.selected() {
+                                            app.status_list_state.select(Some(
+                                                (selected + 10).min(
+                                                    app.status_messages.len().saturating_sub(1),
+                                                ),
+                                            ));
+                                        } else if !app.status_messages.is_empty() {
+                                            app.status_list_state.select(Some(0));
+                                        }
+                                    }
+                                    KeyCode::Tab => {
                                         app.current_tab = match app.current_tab {
                                             Tab::Folder => Tab::Files,
                                             Tab::Files => Tab::OpcUaConfig,
@@ -1375,44 +1417,60 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, mut app: App) -> io::Result<(
                                             Tab::Actions => Tab::Device,
                                             Tab::Device => Tab::Folder,
                                         };
-                                        app.device_focus_right = false;
                                     }
-                                }
-                                KeyCode::Left => {
-                                    if app.current_tab == Tab::Device && app.device_focus_right {
-                                        app.device_focus_right = false;
-                                    } else {
-                                        app.current_tab = match app.current_tab {
-                                            Tab::Folder => Tab::Device,
-                                            Tab::Files => Tab::Folder,
-                                            Tab::OpcUaConfig => Tab::Files,
-                                            Tab::IoTConfig => Tab::OpcUaConfig,
-                                            Tab::Config => Tab::IoTConfig,
-                                            Tab::Actions => Tab::Config,
-                                            Tab::Device => Tab::Actions,
-                                        };
-                                        app.device_focus_right = false;
+                                    KeyCode::Right => {
+                                        if app.current_tab == Tab::Device && !app.device_focus_right
+                                        {
+                                            app.device_focus_right = true;
+                                        } else {
+                                            app.current_tab = match app.current_tab {
+                                                Tab::Folder => Tab::Files,
+                                                Tab::Files => Tab::OpcUaConfig,
+                                                Tab::OpcUaConfig => Tab::IoTConfig,
+                                                Tab::IoTConfig => Tab::Config,
+                                                Tab::Config => Tab::Actions,
+                                                Tab::Actions => Tab::Device,
+                                                Tab::Device => Tab::Folder,
+                                            };
+                                            app.device_focus_right = false;
+                                        }
                                     }
+                                    KeyCode::Left => {
+                                        if app.current_tab == Tab::Device && app.device_focus_right
+                                        {
+                                            app.device_focus_right = false;
+                                        } else {
+                                            app.current_tab = match app.current_tab {
+                                                Tab::Folder => Tab::Device,
+                                                Tab::Files => Tab::Folder,
+                                                Tab::OpcUaConfig => Tab::Files,
+                                                Tab::IoTConfig => Tab::OpcUaConfig,
+                                                Tab::Config => Tab::IoTConfig,
+                                                Tab::Actions => Tab::Config,
+                                                Tab::Device => Tab::Actions,
+                                            };
+                                            app.device_focus_right = false;
+                                        }
+                                    }
+                                    KeyCode::Char('1') => app.current_tab = Tab::Folder,
+                                    KeyCode::Char('2') => app.current_tab = Tab::Files,
+                                    KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
+                                    KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
+                                    KeyCode::Char('5') => app.current_tab = Tab::Config,
+                                    KeyCode::Char('6') => app.current_tab = Tab::Actions,
+                                    KeyCode::Char('7') => app.current_tab = Tab::Device,
+                                    _ => match app.current_tab {
+                                        Tab::Folder => handle_folder_input(&mut app, key.code),
+                                        Tab::Files => handle_files_input(&mut app, key.code),
+                                        Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
+                                        Tab::IoTConfig => handle_iot_input(&mut app, key.code),
+                                        Tab::Device => handle_device_input(&mut app, key.code),
+                                        Tab::Config => handle_config_input(&mut app, key.code),
+                                        Tab::Actions => handle_actions_input(&mut app, key.code),
+                                    },
                                 }
-                                KeyCode::Char('1') => app.current_tab = Tab::Folder,
-                                KeyCode::Char('2') => app.current_tab = Tab::Files,
-                                KeyCode::Char('3') => app.current_tab = Tab::OpcUaConfig,
-                                KeyCode::Char('4') => app.current_tab = Tab::IoTConfig,
-                                KeyCode::Char('5') => app.current_tab = Tab::Config,
-                                KeyCode::Char('6') => app.current_tab = Tab::Actions,
-                                KeyCode::Char('7') => app.current_tab = Tab::Device,
-                                _ => match app.current_tab {
-                                    Tab::Folder => handle_folder_input(&mut app, key.code),
-                                    Tab::Files => handle_files_input(&mut app, key.code),
-                                    Tab::OpcUaConfig => handle_opcua_input(&mut app, key.code),
-                                    Tab::IoTConfig => handle_iot_input(&mut app, key.code),
-                                    Tab::Device => handle_device_input(&mut app, key.code),
-                                    Tab::Config => handle_config_input(&mut app, key.code),
-                                    Tab::Actions => handle_actions_input(&mut app, key.code),
-                                },
                             }
                         }
-                    }
                         InputMode::Editing => match key.code {
                             KeyCode::Enter => app.finish_editing(),
                             KeyCode::Esc => app.cancel_editing(),
@@ -1690,7 +1748,8 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                 }
             }
             KeyCode::Down => {
-                app.device_config_selection = (app.device_config_selection + 1) % DeviceConfigField::count();
+                app.device_config_selection =
+                    (app.device_config_selection + 1) % DeviceConfigField::count();
             }
             KeyCode::Enter => {
                 let selected = DeviceConfigField::from_index(app.device_config_selection);
@@ -1713,18 +1772,40 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                             if app.minimal { "enabled" } else { "disabled" }
                         ));
                     }
-                    DeviceConfigField::LocalTransfer => {
-                        app.local_transfer = !app.local_transfer;
+                    DeviceConfigField::DeployMode => {
+                        app.deploy_mode = match app.deploy_mode {
+                            DeployMode::Online => DeployMode::LocalTransfer,
+                            DeployMode::LocalTransfer => DeployMode::SaveLocal,
+                            DeployMode::SaveLocal => DeployMode::LoadLocal,
+                            DeployMode::LoadLocal => DeployMode::Online,
+                        };
                         app.add_status_message(format!(
-                            "Local transfer: {}",
-                            if app.local_transfer { "enabled" } else { "disabled" }
+                            "Deploy mode: {}",
+                            match app.deploy_mode {
+                                DeployMode::Online => "Online",
+                                DeployMode::LocalTransfer => "Local Transfer",
+                                DeployMode::SaveLocal => "Save Local",
+                                DeployMode::LoadLocal => "Load Local",
+                            }
                         ));
+                    }
+                    DeviceConfigField::Architecture => {
+                        app.architecture = match app.architecture.as_str() {
+                            "auto" => "arm64".to_string(),
+                            "arm64" => "amd64".to_string(),
+                            _ => "auto".to_string(),
+                        };
+                        app.add_status_message(format!("Architecture: {}", app.architecture));
                     }
                     DeviceConfigField::SkipCustom => {
                         app.skip_custom = !app.skip_custom;
                         app.add_status_message(format!(
                             "Skip custom images: {}",
-                            if app.skip_custom { "enabled" } else { "disabled" }
+                            if app.skip_custom {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            }
                         ));
                     }
                 }
@@ -1782,27 +1863,39 @@ fn ui(f: &mut Frame, app: &mut App) {
         .margin(1)
         .constraints(if app.status_expanded {
             vec![
-                Constraint::Length(3),       // Tabs
-                Constraint::Min(0),          // Main content
-                Constraint::Percentage(65),        // Status messages
+                Constraint::Length(3),      // Tabs
+                Constraint::Min(0),         // Main content
+                Constraint::Percentage(65), // Status messages
             ]
         } else {
             vec![
-                Constraint::Length(3),       // Tabs
-                Constraint::Min(0),          // Main content
+                Constraint::Length(3), // Tabs
+                Constraint::Min(0),    // Main content
             ]
         })
         .split(f.area());
 
     // Render tabs
     let tab_title = if app.is_working {
-        "IoT2050 Config TUI ⏳ Working..."
+        format!(
+            "IoT2050 Config TUI v{} ⏳ Working...",
+            env!("CARGO_PKG_VERSION")
+        )
     } else if app.pending_confirmation.is_some() {
-        "IoT2050 Config TUI ⚠️ Confirm?"
+        format!(
+            "IoT2050 Config TUI v{} ⚠️ Confirm?",
+            env!("CARGO_PKG_VERSION")
+        )
     } else if app.status_expanded {
-        "IoT2050 Config TUI  [s: hide status]"
+        format!(
+            "IoT2050 Config TUI v{}  [s: hide status]",
+            env!("CARGO_PKG_VERSION")
+        )
     } else {
-        "IoT2050 Config TUI  [s: show status]"
+        format!(
+            "IoT2050 Config TUI v{}  [s: show status]",
+            env!("CARGO_PKG_VERSION")
+        )
     };
     let tab_titles = vec![
         "Folder",
@@ -1824,11 +1917,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     };
 
     let tabs = Tabs::new(tab_titles)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(tab_title),
-        )
+        .block(Block::default().borders(Borders::ALL).title(tab_title))
         .select(selected_tab)
         .style(Style::default().fg(Color::Cyan))
         .highlight_style(
@@ -2441,15 +2530,28 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let mut lines = actions;
     lines.extend(confirmation_warning);
 
-    let actions_title = if app.device_focus_right { "Device" } else { "Device ►" };
+    let actions_title = if app.device_focus_right {
+        "Device"
+    } else {
+        "Device ►"
+    };
     let actions_block =
         Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(actions_title));
     f.render_widget(actions_block, chunks[0]);
 
     // Configuration panel
     let minimal_status = if app.minimal { "Enabled" } else { "Disabled" };
-    let local_transfer_status = if app.local_transfer { "Enabled" } else { "Disabled" };
-    let skip_custom_status = if app.skip_custom { "Enabled" } else { "Disabled" };
+    let deploy_mode_status = match app.deploy_mode {
+        DeployMode::Online => "Online",
+        DeployMode::LocalTransfer => "Local Transfer",
+        DeployMode::SaveLocal => "Save Local",
+        DeployMode::LoadLocal => "Load Local",
+    };
+    let skip_custom_status = if app.skip_custom {
+        "Enabled"
+    } else {
+        "Disabled"
+    };
 
     let device_name_display = if app.device_name.is_empty() {
         "(random name)"
@@ -2466,29 +2568,75 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     let config_highlight = app.device_focus_right;
 
     let config = vec![
-        Line::from(if config_highlight { "Device Configuration (← actions):" } else { "Device Configuration:" }),
+        Line::from(if config_highlight {
+            "Device Configuration (← actions):"
+        } else {
+            "Device Configuration:"
+        }),
         Line::from(""),
-        Line::from(format!("{} Device Name: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::DeviceName) { "►" } else { " " },
-            device_name_display)),
-        Line::from(format!("{} Key File: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::KeyFile) { "►" } else { " " },
-            key_file_display)),
-        Line::from(format!("{} Git Branch: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::GitBranch) { "►" } else { " " },
-            app.git_branch)),
-        Line::from(format!("{} Architecture: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::Architecture) { "►" } else { " " },
-            app.architecture)),
-        Line::from(format!("{} Minimal Mode: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) { "►" } else { " " },
-            minimal_status)),
-        Line::from(format!("{} Local Transfer: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::LocalTransfer) { "►" } else { " " },
-            local_transfer_status)),
-        Line::from(format!("{} Skip Custom Images: {}",
-            if config_highlight && matches!(selected_config, DeviceConfigField::SkipCustom) { "►" } else { " " },
-            skip_custom_status)),
+        Line::from(format!(
+            "{} Device Name: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::DeviceName) {
+                "►"
+            } else {
+                " "
+            },
+            device_name_display
+        )),
+        Line::from(format!(
+            "{} Key File: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::KeyFile) {
+                "►"
+            } else {
+                " "
+            },
+            key_file_display
+        )),
+        Line::from(format!(
+            "{} Git Branch: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::GitBranch) {
+                "►"
+            } else {
+                " "
+            },
+            app.git_branch
+        )),
+        Line::from(format!(
+            "{} Minimal Mode: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Minimal) {
+                "►"
+            } else {
+                " "
+            },
+            minimal_status
+        )),
+        Line::from(format!(
+            "{} Deploy Mode: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::DeployMode) {
+                "►"
+            } else {
+                " "
+            },
+            deploy_mode_status
+        )),
+        Line::from(format!(
+            "{} Architecture: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Architecture) {
+                "►"
+            } else {
+                " "
+            },
+            app.architecture
+        )),
+        Line::from(format!(
+            "{} Skip Custom Images: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::SkipCustom) {
+                "►"
+            } else {
+                " "
+            },
+            skip_custom_status
+        )),
         Line::from(""),
         Line::from("IoT Connection (from IoT Config tab):"),
         Line::from(format!("  Host: {}", app.config.iot_host)),
@@ -2500,7 +2648,11 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         Line::from("  Enter - Execute / Edit"),
     ];
 
-    let config_title = if app.device_focus_right { "► Config" } else { "Config" };
+    let config_title = if app.device_focus_right {
+        "► Config"
+    } else {
+        "Config"
+    };
 
     if app.input_mode == InputMode::Editing {
         let edit_chunks = Layout::default()
@@ -2532,8 +2684,8 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
             .block(Block::default().borders(Borders::ALL).title("Edit Help"));
         f.render_widget(edit_help, edit_chunks[1]);
     } else {
-        let config_block =
-            Paragraph::new(config).block(Block::default().borders(Borders::ALL).title(config_title));
+        let config_block = Paragraph::new(config)
+            .block(Block::default().borders(Borders::ALL).title(config_title));
         f.render_widget(config_block, chunks[1]);
     }
 }
@@ -2826,8 +2978,7 @@ fn render_confirmation_overlay(f: &mut Frame, app: &mut App) {
         Line::from("Press 'y' to confirm or 'n' to cancel")
             .style(Style::default().fg(Color::Yellow)),
         Line::from(""),
-        Line::from("This action cannot be undone.")
-            .style(Style::default().fg(Color::DarkGray)),
+        Line::from("This action cannot be undone.").style(Style::default().fg(Color::DarkGray)),
     ];
 
     let warning_paragraph = Paragraph::new(warning_text)
