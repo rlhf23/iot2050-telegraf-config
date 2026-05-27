@@ -442,21 +442,31 @@ fn parse_datasource_name_complex_json() {
 fn extract_top_dir_from_typical_tar_listing() {
     let listing = "monitoring_backup_20260421_130407/\nmonitoring_backup_20260421_130407/influxdb/\nmonitoring_backup_20260421_130407/grafana/\n";
     let result = extract_top_dir_from_tar_listing(listing);
-    assert_eq!(result, Some("monitoring_backup_20260421_130407".to_string()));
+    assert_eq!(
+        result,
+        Some("monitoring_backup_20260421_130407".to_string())
+    );
 }
 
 #[test]
 fn extract_top_dir_without_trailing_slash() {
     let listing = "monitoring_backup_20240101_120000\nmonitoring_backup_20240101_120000/influxdb\n";
     let result = extract_top_dir_from_tar_listing(listing);
-    assert_eq!(result, Some("monitoring_backup_20240101_120000".to_string()));
+    assert_eq!(
+        result,
+        Some("monitoring_backup_20240101_120000".to_string())
+    );
 }
 
 #[test]
 fn extract_top_dir_renamed_archive() {
-    let listing = "monitoring_backup_20260421_130407/\nmonitoring_backup_20260421_130407/influxdb/\n";
+    let listing =
+        "monitoring_backup_20260421_130407/\nmonitoring_backup_20260421_130407/influxdb/\n";
     let result = extract_top_dir_from_tar_listing(listing);
-    assert_eq!(result, Some("monitoring_backup_20260421_130407".to_string()));
+    assert_eq!(
+        result,
+        Some("monitoring_backup_20260421_130407".to_string())
+    );
 }
 
 #[test]
@@ -480,7 +490,8 @@ fn extract_top_dir_single_dir() {
 
 #[test]
 fn extract_top_dir_with_leading_dot_slash() {
-    let listing = "./monitoring_backup_20260421_130407/\n./monitoring_backup_20260421_130407/influxdb/\n";
+    let listing =
+        "./monitoring_backup_20260421_130407/\n./monitoring_backup_20260421_130407/influxdb/\n";
     let result = extract_top_dir_from_tar_listing(listing);
     assert_eq!(result, Some(".".to_string()));
 }

@@ -109,23 +109,34 @@ impl OpcUaPoller {
 
         let read_lock = session.read();
         let results = read_lock
-            .read(&[read_value_id], opcua::types::TimestampsToReturn::Server, 0.0)
-            .map_err(|e| TelegrafError::OpcUaClientError(format!("Failed to read PLC time: {}", e)))?;
+            .read(
+                &[read_value_id],
+                opcua::types::TimestampsToReturn::Server,
+                0.0,
+            )
+            .map_err(|e| {
+                TelegrafError::OpcUaClientError(format!("Failed to read PLC time: {}", e))
+            })?;
 
-        let data_value = results
-            .first()
-            .ok_or_else(|| TelegrafError::OpcUaClientError("No result from PLC time read".to_string()))?;
+        let data_value = results.first().ok_or_else(|| {
+            TelegrafError::OpcUaClientError("No result from PLC time read".to_string())
+        })?;
 
         let plc_time = match &data_value.value {
             Some(variant) => match variant {
                 Variant::DateTime(dt) => dt.as_chrono(),
-                _ => return Err(TelegrafError::OpcUaClientError(
-                    format!("PLC time node returned unexpected type: {:?}", variant),
-                )),
+                _ => {
+                    return Err(TelegrafError::OpcUaClientError(format!(
+                        "PLC time node returned unexpected type: {:?}",
+                        variant
+                    )))
+                }
             },
-            None => return Err(TelegrafError::OpcUaClientError(
-                "PLC time node returned no value".to_string(),
-            )),
+            None => {
+                return Err(TelegrafError::OpcUaClientError(
+                    "PLC time node returned no value".to_string(),
+                ))
+            }
         };
 
         let host_time = chrono::Utc::now();
@@ -562,22 +573,23 @@ impl OpcUaPoller {
                                 }
 
                                 // Extract data type
-                                if let Some(Some(Variant::NodeId(data_type_id))) = attrs.get(&AttributeId::DataType) {
+                                if let Some(Some(Variant::NodeId(data_type_id))) =
+                                    attrs.get(&AttributeId::DataType)
+                                {
                                     node.data_type = Some(format!("{:?}", data_type_id));
 
                                     if node.display_name.contains("Icon")
                                         && !node.browse_name.is_empty()
                                         && node.browse_name != "%icon"
                                     {
-                                        node.display_name = format!(
-                                            "{} ({})",
-                                            node.browse_name,
-                                            data_type_id
-                                        );
+                                        node.display_name =
+                                            format!("{} ({})", node.browse_name, data_type_id);
                                     }
                                 }
 
-                                if let Some(Some(Variant::LocalizedText(lt))) = attrs.get(&AttributeId::Description) {
+                                if let Some(Some(Variant::LocalizedText(lt))) =
+                                    attrs.get(&AttributeId::Description)
+                                {
                                     node.description = Some(lt.text.to_string());
                                 }
                             }

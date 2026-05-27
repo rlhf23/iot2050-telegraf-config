@@ -60,7 +60,10 @@ fn slugify(s: &str) -> String {
     while result.contains("--") {
         result = result.replace("--", "-");
     }
-    result.trim_start_matches('-').trim_end_matches('-').to_string()
+    result
+        .trim_start_matches('-')
+        .trim_end_matches('-')
+        .to_string()
 }
 
 fn truncate_at_word_boundary(s: &str, max_len: usize) -> String {
@@ -129,19 +132,39 @@ mod tests {
 
     #[test]
     fn test_strip_prefix() {
-        assert_eq!(strip_prefix("GSV Anticipation Of A New Lover's Arrival, The"), "Anticipation Of A New Lover's Arrival, The");
+        assert_eq!(
+            strip_prefix("GSV Anticipation Of A New Lover's Arrival, The"),
+            "Anticipation Of A New Lover's Arrival, The"
+        );
         assert_eq!(strip_prefix("GCU Arbitrary"), "Arbitrary");
         assert_eq!(strip_prefix("ROU Killing Time"), "Killing Time");
         assert_eq!(strip_prefix("(D)GOU Limiting Factor"), "Limiting Factor");
-        assert_eq!(strip_prefix("FP/(D)ROU Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity"), "Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity");
-        assert_eq!(strip_prefix("Beastly To The Animals"), "Beastly To The Animals");
-        assert_eq!(strip_prefix("(ex-)GCU Smile Tolerantly"), "Smile Tolerantly");
-        assert_eq!(strip_prefix("OU/e Mistake Not\u{2026}"), "Mistake Not\u{2026}");
+        assert_eq!(
+            strip_prefix(
+                "FP/(D)ROU Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity"
+            ),
+            "Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity"
+        );
+        assert_eq!(
+            strip_prefix("Beastly To The Animals"),
+            "Beastly To The Animals"
+        );
+        assert_eq!(
+            strip_prefix("(ex-)GCU Smile Tolerantly"),
+            "Smile Tolerantly"
+        );
+        assert_eq!(
+            strip_prefix("OU/e Mistake Not\u{2026}"),
+            "Mistake Not\u{2026}"
+        );
     }
 
     #[test]
     fn test_slugify() {
-        assert_eq!(slugify("Anticipation Of A New Lover's Arrival, The"), "anticipation-of-a-new-lovers-arrival-the");
+        assert_eq!(
+            slugify("Anticipation Of A New Lover's Arrival, The"),
+            "anticipation-of-a-new-lovers-arrival-the"
+        );
         assert_eq!(slugify("Arbitrary"), "arbitrary");
         assert_eq!(slugify("Killing Time"), "killing-time");
         assert_eq!(slugify("Grey Area"), "grey-area");
@@ -168,7 +191,9 @@ mod tests {
 
     #[test]
     fn test_derive_hostname_very_long() {
-        let hostname = derive_hostname("FP/(D)ROU Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity");
+        let hostname = derive_hostname(
+            "FP/(D)ROU Refreshingly Unconcerned With The Vulgar Exigencies Of Veracity",
+        );
         assert!(hostname.len() <= MAX_HOSTNAME_LEN);
         assert!(!hostname.ends_with('-'));
     }
@@ -236,7 +261,11 @@ mod tests {
         let h = derive_hostname("012_xk=11");
         assert!(h.contains("012"), "hostname should contain 012: got {}", h);
         assert!(!h.contains("="), "hostname should not contain =: got {}", h);
-        assert!(!h.contains("_"), "hostname should not contain underscore: got {}", h);
+        assert!(
+            !h.contains("_"),
+            "hostname should not contain underscore: got {}",
+            h
+        );
 
         // Spaces become hyphens
         assert_eq!(derive_hostname("iot device 7"), "iot-device-7");
@@ -260,17 +289,39 @@ mod tests {
 
     #[test]
     fn test_derive_hostname_hostnames_are_valid() {
-        let names = vec!["001", "012_xk=11", "iot device 7", "GSV Sleeper Service", "ROU Killing Time"];
+        let names = vec![
+            "001",
+            "012_xk=11",
+            "iot device 7",
+            "GSV Sleeper Service",
+            "ROU Killing Time",
+        ];
         for name in names {
             let hostname = derive_hostname(name);
             assert!(!hostname.is_empty(), "empty hostname from '{}'", name);
-            assert!(hostname.len() <= MAX_HOSTNAME_LEN, "hostname too long: '{}'", hostname);
             assert!(
-                hostname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
-                "invalid chars in hostname '{}' from '{}'", hostname, name
+                hostname.len() <= MAX_HOSTNAME_LEN,
+                "hostname too long: '{}'",
+                hostname
             );
-            assert!(!hostname.starts_with('-'), "hostname starts with '-': '{}'", hostname);
-            assert!(!hostname.ends_with('-'), "hostname ends with '-': '{}'", hostname);
+            assert!(
+                hostname
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+                "invalid chars in hostname '{}' from '{}'",
+                hostname,
+                name
+            );
+            assert!(
+                !hostname.starts_with('-'),
+                "hostname starts with '-': '{}'",
+                hostname
+            );
+            assert!(
+                !hostname.ends_with('-'),
+                "hostname ends with '-': '{}'",
+                hostname
+            );
         }
     }
 
@@ -281,8 +332,11 @@ mod tests {
         assert!(!name.hostname.is_empty());
         assert!(name.hostname.len() <= MAX_HOSTNAME_LEN);
         assert!(
-            name.hostname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
-            "hostname has invalid chars: '{}'", name.hostname
+            name.hostname
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "hostname has invalid chars: '{}'",
+            name.hostname
         );
     }
 

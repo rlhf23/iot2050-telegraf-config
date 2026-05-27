@@ -47,7 +47,7 @@ pub struct TelegrafConfig {
     pub selected_opcua_nodes: Vec<SelectedOpcUaNode>, // Selected OPC UA nodes from browser
     pub use_source_timestamp: bool,    // Use "source" instead of "gather" for timestamp
     pub ship_display_name: Option<String>, // Full Culture ship name (e.g. "ROU Killing Time")
-    pub ship_hostname: Option<String>,    // Short hostname slug (e.g. "killing-time")
+    pub ship_hostname: Option<String>, // Short hostname slug (e.g. "killing-time")
 }
 
 impl OpcUaConnectionConfig {

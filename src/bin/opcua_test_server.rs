@@ -99,8 +99,7 @@ fn main() -> Result<(), TelegrafError> {
 }
 
 fn load_nodes_from_xml(server: &mut Server, xml_file_path: &str) -> Result<(), TelegrafError> {
-    let xml_content =
-        std::fs::read_to_string(xml_file_path).map_err(TelegrafError::IoError)?;
+    let xml_content = std::fs::read_to_string(xml_file_path).map_err(TelegrafError::IoError)?;
 
     let doc = roxmltree::Document::parse(&xml_content)
         .map_err(|e| TelegrafError::ConfigError(format!("Failed to parse XML: {}", e)))?;
@@ -387,12 +386,7 @@ fn add_server_interfaces_namespace(server: &mut Server) {
     let db_node_id = NodeId::new(2u16, "Sample_DB");
     let db_ok = {
         let mut address_space = address_space.write();
-        address_space.add_folder_with_id(
-            &db_node_id,
-            "Sample_DB",
-            "Sample_DB",
-            &si_node_id,
-        )
+        address_space.add_folder_with_id(&db_node_id, "Sample_DB", "Sample_DB", &si_node_id)
     };
     if db_ok {
         println!("Created Sample_DB data block at ns=2;s=Sample_DB under ServerInterfaces");
@@ -402,9 +396,24 @@ fn add_server_interfaces_namespace(server: &mut Server) {
 
     // Add some variables under the Sample_DB data block in ns=2
     let vars = vec![
-        Variable::new(&NodeId::new(2u16, "SI_Real_1"), "SI_Real_1", "SI_Real_1", 0.0f32),
-        Variable::new(&NodeId::new(2u16, "SI_Real_2"), "SI_Real_2", "SI_Real_2", 0.0f32),
-        Variable::new(&NodeId::new(2u16, "SI_Real_3"), "SI_Real_3", "SI_Real_3", 0.0f32),
+        Variable::new(
+            &NodeId::new(2u16, "SI_Real_1"),
+            "SI_Real_1",
+            "SI_Real_1",
+            0.0f32,
+        ),
+        Variable::new(
+            &NodeId::new(2u16, "SI_Real_2"),
+            "SI_Real_2",
+            "SI_Real_2",
+            0.0f32,
+        ),
+        Variable::new(
+            &NodeId::new(2u16, "SI_Real_3"),
+            "SI_Real_3",
+            "SI_Real_3",
+            0.0f32,
+        ),
     ];
     {
         let mut address_space = address_space.write();

@@ -106,15 +106,25 @@ mod tests {
 
         // Create a simple XML file for testing
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-        <UANodeSet>
+        <UANodeSet xmlns:si="http://www.siemens.com/OPCUA/2017/SimaticNodeSetExtensions">
             <UAObject NodeId="ns=2;i=1">
                 <DisplayName>TestDevice</DisplayName>
             </UAObject>
-            <UAVariable NodeId="ns=2;i=2">
-                <BrowseName>Temperature</BrowseName>
+            <UAVariable NodeId="ns=2;i=2" BrowseName="Temperature">
+                <DisplayName>Temperature</DisplayName>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"TestDevice"."Temperature"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
             </UAVariable>
-            <UAVariable NodeId="ns=2;i=3">
-                <BrowseName>Pressure</BrowseName>
+            <UAVariable NodeId="ns=2;i=3" BrowseName="Pressure">
+                <DisplayName>Pressure</DisplayName>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"TestDevice"."Pressure"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
             </UAVariable>
         </UANodeSet>"#;
 
@@ -150,10 +160,10 @@ mod tests {
         assert!(parse_result.config_string.contains("interval = \"1000ms\""));
         assert!(parse_result
             .config_string
-            .contains("name=\"Temperature\", identifier=\"2\""));
+            .contains("name=\"TestDevice.Temperature\", identifier=\"2\""));
         assert!(parse_result
             .config_string
-            .contains("name=\"Pressure\", identifier=\"3\""));
+            .contains("name=\"TestDevice.Pressure\", identifier=\"3\""));
 
         // Check measurement name was extracted
         assert_eq!(parse_result.measurement_name, "TestDevice");
@@ -171,15 +181,25 @@ mod tests {
 
         // Create an XML file with duplicate node names for testing
         let xml_content = r#"<?xml version="1.0" encoding="UTF-8"?>
-        <UANodeSet>
+        <UANodeSet xmlns:si="http://www.siemens.com/OPCUA/2017/SimaticNodeSetExtensions">
             <UAObject NodeId="ns=2;i=1">
                 <DisplayName>TestDevice</DisplayName>
             </UAObject>
-            <UAVariable NodeId="ns=2;i=2">
-                <BrowseName>DuplicateName</BrowseName>
+            <UAVariable NodeId="ns=2;i=2" BrowseName="DuplicateName">
+                <DisplayName>DuplicateName</DisplayName>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"TestDevice"."DuplicateVar"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
             </UAVariable>
-            <UAVariable NodeId="ns=2;i=3">
-                <BrowseName>DuplicateName</BrowseName>
+            <UAVariable NodeId="ns=2;i=3" BrowseName="DuplicateName2">
+                <DisplayName>DuplicateName2</DisplayName>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"TestDevice"."DuplicateVar"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
             </UAVariable>
         </UANodeSet>"#;
 
@@ -204,7 +224,7 @@ mod tests {
         assert!(result.is_err());
         if let Err(TelegrafError::DuplicateNodeError(msg)) = result {
             assert!(msg.contains("Duplicate node name"));
-            assert!(msg.contains("DuplicateName"));
+            assert!(msg.contains("TestDevice.DuplicateVar"));
         } else {
             panic!("Expected DuplicateNodeError but got a different error or success");
         }
@@ -260,6 +280,80 @@ mod tests {
 
         // Check measurement name
         assert_eq!(parse_result.measurement_name, "TestDevice");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_xml_with_browse_name_attribute() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_browse_name_attr.xml");
+
+        let xml_content = r#"<?xml version="1.0" encoding="utf-8"?>
+        <UANodeSet xmlns:si="http://www.siemens.com/OPCUA/2017/SimaticNodeSetExtensions">
+            <UAObject NodeId="ns=2;i=1" BrowseName="2:Motor">
+                <DisplayName>Motor</DisplayName>
+            </UAObject>
+            <UAVariable NodeId="ns=2;i=12" BrowseName="2:Speed" DataType="REAL" AccessLevel="3">
+                <DisplayName>Speed</DisplayName>
+                <References>
+                    <Reference ReferenceType="HasTypeDefinition" IsForward="true">i=63</Reference>
+                </References>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"Motor"."Drive"."Speed"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
+            </UAVariable>
+            <UAVariable NodeId="ns=2;i=23" BrowseName="2:Torque" DataType="REAL" AccessLevel="3">
+                <DisplayName>Torque</DisplayName>
+                <References>
+                    <Reference ReferenceType="HasTypeDefinition" IsForward="true">i=63</Reference>
+                </References>
+                <Extensions>
+                    <Extension>
+                        <si:VariableMapping>"Motor"."Drive"."Torque"</si:VariableMapping>
+                    </Extension>
+                </Extensions>
+            </UAVariable>
+            <UAVariable NodeId="ns=2;i=99" BrowseName="NamespaceUri" ParentNodeId="ns=2;i=211" DataType="i=12" AccessLevel="1">
+                <DisplayName>NamespaceUri</DisplayName>
+                <References>
+                    <Reference ReferenceType="HasTypeDefinition" IsForward="true">i=68</Reference>
+                </References>
+            </UAVariable>
+        </UANodeSet>"#;
+
+        let mut file = File::create(&file_path)?;
+        file.write_all(xml_content.as_bytes())?;
+
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "user",
+            password: "pass",
+            is_listener: false,
+            group_name: "",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 1000,
+            use_source_timestamp: false,
+        };
+
+        let mut namespace_infos = Vec::new();
+        let result = parse_xml(&config, file_path.to_str().unwrap(), &mut namespace_infos);
+
+        assert!(result.is_ok());
+        let parse_result = result.unwrap();
+        assert!(parse_result
+            .config_string
+            .contains("name=\"Motor.Drive.Speed\", identifier=\"12\""));
+        assert!(parse_result
+            .config_string
+            .contains("name=\"Motor.Drive.Torque\", identifier=\"23\""));
+        assert!(!parse_result
+            .config_string
+            .contains("NamespaceUri"));
+        assert_eq!(parse_result.measurement_name, "Motor");
 
         Ok(())
     }
