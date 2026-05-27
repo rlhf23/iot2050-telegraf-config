@@ -79,8 +79,8 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: tests_dir.clone(),
         use_source_timestamp: false,
-            ship_display_name: None,
-            ship_hostname: None,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Create a ConfigGenerator
@@ -234,8 +234,8 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
         use_source_timestamp: false,
-            ship_display_name: None,
-            ship_hostname: None,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
@@ -388,8 +388,8 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         selected_opcua_nodes: vec![],
         folder: std::env::current_dir().unwrap(),
         use_source_timestamp: false,
-            ship_display_name: None,
-            ship_hostname: None,
+        ship_display_name: None,
+        ship_hostname: None,
     };
 
     // Create a new OpcUaPoller instance
@@ -728,8 +728,7 @@ fn test_opcua_read_current_time() -> Result<(), Box<dyn std::error::Error>> {
         plc_time, offset_ms, diff_from_now
     );
 
-
-     Ok(())
+    Ok(())
 }
 #[test]
 fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
@@ -749,7 +748,7 @@ fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
         password: String::new(),
     };
     let poller = OpcUaPoller::new(config)?;
-    
+
     let xml_files = vec!["sample_db.xml".to_string()];
 
     let namespace_map = poller.get_namespace_info(&xml_files)?;
@@ -919,7 +918,14 @@ fn trust_server_cert() {
 
     // Use openssl to get the common name and thumbprint
     let openssl_output = std::process::Command::new("openssl")
-        .args(["x509", "-inform", "DER", "-noout", "-subject", "-fingerprint"])
+        .args([
+            "x509",
+            "-inform",
+            "DER",
+            "-noout",
+            "-subject",
+            "-fingerprint",
+        ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())

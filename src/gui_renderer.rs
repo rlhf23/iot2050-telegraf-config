@@ -459,23 +459,24 @@ impl GuiRenderer {
 
                 if (node.node_class == opcua::types::NodeClass::Variable || is_folder)
                     && indent_level > 0
-                    && ui.checkbox(&mut node.selected, "").changed() {
-                        if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
-                            node.deselect_children();
-                        }
+                    && ui.checkbox(&mut node.selected, "").changed()
+                {
+                    if !node.selected && node.node_class == opcua::types::NodeClass::Variable {
+                        node.deselect_children();
+                    }
 
-                        if node.selected && is_folder && !node.children_loaded {
-                            let node_clone = node.clone();
+                    if node.selected && is_folder && !node.children_loaded {
+                        let node_clone = node.clone();
 
-                            if let Ok(children) =
-                                controller.load_node_children(&node_clone, indent_level)
-                            {
-                                node.children = children;
-                                node.children_loaded = true;
-                                ui.ctx().request_repaint();
-                            }
+                        if let Ok(children) =
+                            controller.load_node_children(&node_clone, indent_level)
+                        {
+                            node.children = children;
+                            node.children_loaded = true;
+                            ui.ctx().request_repaint();
                         }
                     }
+                }
 
                 let node_icon = match node.node_class {
                     opcua::types::NodeClass::Object => "[O] ",

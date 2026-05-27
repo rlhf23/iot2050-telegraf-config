@@ -40,7 +40,9 @@ fn handle_device_command(matches: &clap::ArgMatches) {
     match matches.subcommand() {
         Some(("provision", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
-            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+            if let (Some(display_name), Some(hostname)) =
+                (&config.ship_display_name, &config.ship_hostname)
+            {
                 if !confirm_device_name(display_name, hostname) {
                     println!("Aborted.");
                     wrap_up(1);
@@ -48,11 +50,16 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             }
             let deployer = IoTDeployer::new(config);
             let local_transfer = sub_matches.get_flag("local_transfer");
-            let save_dir = sub_matches.get_one::<String>("save_dir").map(std::path::PathBuf::from);
-            let load_dir = sub_matches.get_one::<String>("load_dir").map(std::path::PathBuf::from);
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
 
             if save_dir.is_some() {
-                if let Err(e) = deployer.provision_with_options(local_transfer, save_dir, load_dir) {
+                if let Err(e) = deployer.provision_with_options(local_transfer, save_dir, load_dir)
+                {
                     exit_with_error(format!("Provisioning failed: {}", e));
                 }
             } else {
@@ -70,8 +77,12 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let config = create_deployment_config(sub_matches);
             let deployer = IoTDeployer::new(config);
             let use_local = sub_matches.get_flag("local");
-            let save_dir = sub_matches.get_one::<String>("save_dir").map(std::path::PathBuf::from);
-            let load_dir = sub_matches.get_one::<String>("load_dir").map(std::path::PathBuf::from);
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
 
             if save_dir.is_none() {
                 if let Err(e) = deployer.test_connection() {
@@ -87,7 +98,9 @@ fn handle_device_command(matches: &clap::ArgMatches) {
         }
         Some(("setup", sub_matches)) => {
             let config = create_deployment_config(sub_matches);
-            if let (Some(display_name), Some(hostname)) = (&config.ship_display_name, &config.ship_hostname) {
+            if let (Some(display_name), Some(hostname)) =
+                (&config.ship_display_name, &config.ship_hostname)
+            {
                 if !confirm_device_name(display_name, hostname) {
                     println!("Aborted.");
                     wrap_up(1);
@@ -145,15 +158,33 @@ fn handle_device_command(matches: &clap::ArgMatches) {
             let minimal = sub_matches.get_flag("minimal");
             let skip_custom = sub_matches.get_flag("skip_custom");
             let arch_arg = sub_matches.get_one::<String>("architecture").unwrap();
-            let architecture = if arch_arg == "auto" { None } else { Some(arch_arg.clone()) };
+            let architecture = if arch_arg == "auto" {
+                None
+            } else {
+                Some(arch_arg.clone())
+            };
             let image_filter = sub_matches.get_one::<String>("images").map(|s| {
-                s.split(',').map(|i| i.trim().to_string()).filter(|i| !i.is_empty()).collect()
+                s.split(',')
+                    .map(|i| i.trim().to_string())
+                    .filter(|i| !i.is_empty())
+                    .collect()
             });
-            let save_dir = sub_matches.get_one::<String>("save_dir").map(std::path::PathBuf::from);
-            let load_dir = sub_matches.get_one::<String>("load_dir").map(std::path::PathBuf::from);
+            let save_dir = sub_matches
+                .get_one::<String>("save_dir")
+                .map(std::path::PathBuf::from);
+            let load_dir = sub_matches
+                .get_one::<String>("load_dir")
+                .map(std::path::PathBuf::from);
             let deployer = IoTDeployer::new(config).with_minimal(minimal);
 
-            if let Err(e) = deployer.push_images(architecture, minimal, skip_custom, image_filter, save_dir, load_dir) {
+            if let Err(e) = deployer.push_images(
+                architecture,
+                minimal,
+                skip_custom,
+                image_filter,
+                save_dir,
+                load_dir,
+            ) {
                 exit_with_error(format!("Push images failed: {}", e));
             }
 

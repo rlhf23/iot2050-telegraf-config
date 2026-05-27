@@ -85,12 +85,10 @@ fn validate_host_format(host: &str) -> Result<(), TelegrafError> {
                 let port_part = &host[end_bracket + 2..];
                 match port_part.parse::<u16>() {
                     Ok(port) if port > 0 => Ok(()),
-                    _ => {
-                        Err(TelegrafError::HostFormatError(format!(
-                            "Invalid port in host: '{}'. Port must be a number between 1-65535",
-                            host
-                        )))
-                    }
+                    _ => Err(TelegrafError::HostFormatError(format!(
+                        "Invalid port in host: '{}'. Port must be a number between 1-65535",
+                        host
+                    ))),
                 }
             } else {
                 Err(TelegrafError::HostFormatError(format!(
