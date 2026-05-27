@@ -255,6 +255,9 @@
     </style>
 </head>
 <body>
+    <div id="demo-banner" style="display:none;background:linear-gradient(135deg,#ef4444,#dc2626);color:white;text-align:center;padding:10px 16px;font-size:14px;font-weight:500;position:fixed;top:0;left:0;right:0;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+        Demo Mode &#8212; PLC Control requires a live connection to a real PLC. This page is not functional in demo mode.
+    </div>
     <div class="container">
         <header>
             <a href="/" class="back-link">← Back to Dashboard</a>
@@ -277,6 +280,33 @@
         </div>
     </div>
 
+    <script>
+        (function() {
+            function showDemoBanner() {
+                var banner = document.getElementById('demo-banner');
+                if (banner) {
+                    banner.style.display = 'block';
+                    document.body.style.paddingTop = '50px';
+                }
+            }
+
+            function detectDemo() {
+                try {
+                    var params = new URLSearchParams(window.location.search);
+                    if (params.get('demo') === '1' || window.DEMO_MODE === true || window.location.protocol === 'file:') {
+                        showDemoBanner();
+                        return;
+                    }
+                } catch(e) {}
+
+                fetch('/api/health', {cache: 'no-cache'}).catch(function() {
+                    showDemoBanner();
+                });
+            }
+
+            detectDemo();
+        })();
+    </script>
     <script>
         let buttons = [];
 
