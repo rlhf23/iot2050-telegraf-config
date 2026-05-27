@@ -40,7 +40,7 @@ fn ssh_test_user() -> String {
 }
 
 fn ssh_test_pass() -> String {
-    std::env::var("SSH_TEST_PASS").unwrap_or_else(|_| "testpass123".to_string())
+    std::env::var("SSH_TEST_PASS").unwrap_or_else(|_| "SshTest@Pass42".to_string())
 }
 
 fn ssh_server_reachable() -> bool {

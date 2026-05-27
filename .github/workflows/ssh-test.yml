@@ -8,8 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SSH_TEST_USER: "ssh_test_user"
-  SSH_TEST_PASS: "testpass123"
+  SSH_TEST_USER: "test_ssh"
+  SSH_TEST_PASS: "SshTest@Pass42"
   SSH_TEST_HOST: "127.0.0.1:22"
 
 jobs:
@@ -40,8 +40,8 @@ jobs:
           sudo ssh-keygen -A
 
           # Create test user with a home directory and bash shell
-          sudo useradd -m -s /bin/bash ssh_test_user
-          echo "ssh_test_user:testpass123" | sudo chpasswd
+          sudo useradd -m -s /bin/bash test_ssh
+          echo "test_ssh:SshTest@Pass42" | sudo chpasswd
 
           # Restrict key exchange algorithms to mimic modern OpenSSH defaults
           # (OpenSSH 8.8+ prefers curve25519 and deprecates older DH groups).
@@ -88,14 +88,14 @@ jobs:
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
           CI: "true"
-          SSH_TEST_USER: "ssh_test_user"
-          SSH_TEST_PASS: "testpass123"
+          SSH_TEST_USER: "test_ssh"
+          SSH_TEST_PASS: "SshTest@Pass42"
           SSH_TEST_HOST: "127.0.0.1:22"
 
       - name: Cleanup test user
         if: always()
         run: |
-          sudo userdel -r ssh_test_user 2>/dev/null || true
+          sudo userdel -r test_ssh 2>/dev/null || true
 
   ssh-test-windows:
     name: SSH Test (Windows)
@@ -146,9 +146,10 @@ jobs:
           # Set service to start automatically
           Set-Service -Name sshd -StartupType Automatic
 
-          # Create test user
-          net user ssh_test_user testpass123 /add
-          net localgroup Administrators ssh_test_user /add
+          # Create test user with a password that meets Windows complexity requirements
+          # (uppercase, lowercase, digit, special char, 12+ chars)
+          net user CiTestUser "SshTest@Pass42" /add
+          net localgroup Administrators CiTestUser /add
 
           # Configure sshd to restrict kex algorithms (mimics modern OpenSSH defaults)
           $sshdConfig = "C:\ProgramData\ssh\sshd_config"
@@ -211,12 +212,12 @@ jobs:
           DEFAULT_IOT_IP: "192.168.1.2:22"
           DEFAULT_IOT_USERNAME: "iotuser"
           DEFAULT_IOT_PASSWORD: "iotpass"
-          SSH_TEST_USER: "ssh_test_user"
-          SSH_TEST_PASS: "testpass123"
+          SSH_TEST_USER: "CiTestUser"
+          SSH_TEST_PASS: "SshTest@Pass42"
           SSH_TEST_HOST: "127.0.0.1:22"
 
       - name: Cleanup test user
         if: always()
         shell: pwsh
         run: |
-          net user ssh_test_user /delete 2>$null; if ($LASTEXITCODE -ne 0) { exit 0 }
+          net user CiTestUser /delete 2>$null; if ($LASTEXITCODE -ne 0) { exit 0 }
