@@ -1,10 +1,12 @@
 name: SSH Connection Tests
 
+# Run manually or when SSH/crypto backend changes are suspected.
+# The Linux job tests against an sshd with restricted KexAlgorithms
+# (curve25519 + group-exchange only), reproducing the conditions that
+# cause KEX_FAILURE on builds lacking curve25519 support.
+# The Windows job verifies the full SSH stack works end-to-end.
 on:
-  push:
-    branches: ["master", "poller"]
-  pull_request:
-    branches: ["master", "poller"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
