@@ -1,0 +1,220 @@
+name: SSH Connection Tests
+
+# Run manually or when SSH/crypto backend changes are suspected.
+# The Linux job tests against an sshd with restricted KexAlgorithms
+# (curve25519 + group-exchange only), reproducing the conditions that
+# cause KEX_FAILURE on builds lacking curve25519 support.
+# The Windows job verifies the full SSH stack works end-to-end.
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  SSH_TEST_USER: "test_ssh"
+  SSH_TEST_PASS: "SshTest@Pass42"
+  SSH_TEST_HOST: "127.0.0.1:22"
+
+jobs:
+  ssh-test-linux:
+    name: SSH Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libssl-dev openssh-server
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Configure SSH server
+        run: |
+          # Generate host keys
+          sudo ssh-keygen -A
+
+          # Create test user with a home directory and bash shell
+          sudo useradd -m -s /bin/bash test_ssh
+          echo "test_ssh:SshTest@Pass42" | sudo chpasswd
+
+          # Restrict key exchange algorithms to mimic modern OpenSSH defaults
+          # (OpenSSH 8.8+ prefers curve25519 and deprecates older DH groups).
+          # This is the exact configuration that triggers KEX_FAILURE on a
+          # Windows build lacking curve25519 or group-exchange support.
+          sudo tee -a /etc/ssh/sshd_config > /dev/null << 'KEXCONF'
+
+          # SSH connection test: restrict kex to modern algorithms
+          KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+          PasswordAuthentication yes
+          KEXCONF
+
+          # Start ssh (service is called "ssh" on Ubuntu, not "sshd")
+          sudo systemctl start ssh || sudo systemctl start sshd
+
+          # Wait for sshd to accept connections
+          for i in $(seq 1 30); do
+            if nc -z 127.0.0.1 22 2>/dev/null; then
+              echo "sshd is listening on port 22"
+              break
+            fi
+            echo "Waiting for sshd... ($i)"
+            sleep 1
+          done
+
+      - name: Build
+        run: cargo build --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+          CI: "true"
+
+      - name: Run SSH connection tests
+        run: cargo test --test ssh_connection_test --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+          CI: "true"
+          SSH_TEST_USER: "test_ssh"
+          SSH_TEST_PASS: "SshTest@Pass42"
+          SSH_TEST_HOST: "127.0.0.1:22"
+
+      - name: Cleanup test user
+        if: always()
+        run: |
+          sudo userdel -r test_ssh 2>/dev/null || true
+
+  ssh-test-windows:
+    name: SSH Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install vcpkg and OpenSSL
+        shell: pwsh
+        run: |
+          # Clone vcpkg
+          git clone https://github.com/microsoft/vcpkg.git
+          cd vcpkg
+
+          # Bootstrap vcpkg
+          ./bootstrap-vcpkg.bat -disableMetrics
+
+          # Install static OpenSSL (same as binary-release.yml)
+          ./vcpkg install openssl:x64-windows-static-md
+
+          # Set environment variables
+          echo "OPENSSL_DIR=$PWD/installed/x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "VCPKG_ROOT=$PWD" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # Prevent libssh2-sys from using vcpkg's pre-built libssh2
+          # (which may lack curve25519 support). Instead, compile from
+          # the bundled libssh2 1.11 source with OpenSSL backend.
+          echo "VCPKGRS_DISABLE=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Configure SSH server
+        shell: pwsh
+        run: |
+          # Install OpenSSH Server (may already be present on windows-latest)
+          $cap = Get-WindowsCapability -Online | Where-Object Name -like "OpenSSH.Server*"
+          if ($cap.State -ne "Installed") {
+            Add-WindowsCapability -Online -Name $cap.Name
+          }
+
+          # Create test user with a password that meets Windows complexity requirements
+          # (uppercase, lowercase, digit, special char, 12+ chars)
+          net user CiTestUser "SshTest@Pass42" /add
+          net localgroup Administrators CiTestUser /add
+
+          # Ensure sshd config directory exists
+          if (-Not (Test-Path "C:\ProgramData\ssh")) {
+            New-Item -ItemType Directory -Path "C:\ProgramData\ssh" -Force
+          }
+
+          # Write a minimal sshd_config that enables password auth.
+          # We do NOT restrict KexAlgorithms on Windows because Windows OpenSSH
+          # may not support the same algorithm names as Linux OpenSSH.
+          # The Linux test job with restricted kex is what reproduces the
+          # NanoPi KEX_FAILURE bug. The Windows job verifies that the SSH
+          # client stack works end-to-end on the Windows build.
+          $config = "PasswordAuthentication yes`r`n"
+          $config += "PubkeyAuthentication no`r`n"
+          Set-Content -Path "C:\ProgramData\ssh\sshd_config" -Value $config -NoNewline
+
+          # Start the SSH service
+          Start-Service sshd
+          Set-Service -Name sshd -StartupType Automatic
+
+          # Wait for sshd to accept connections
+          $ready = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            try {
+              $tcp = New-Object System.Net.Sockets.TcpClient("127.0.0.1", 22)
+              $tcp.Close()
+              $ready = $true
+              Write-Host "sshd is listening on port 22"
+              break
+            } catch {
+              Write-Host "Waiting for sshd... ($i)"
+              Start-Sleep -Seconds 1
+            }
+          }
+          if (-not $ready) {
+            Write-Error "sshd did not start within 30 seconds"
+            Get-Service sshd | Format-List *
+            exit 1
+          }
+
+      - name: Build
+        run: cargo build --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+
+      - name: Run SSH connection tests
+        run: cargo test --test ssh_connection_test --verbose
+        env:
+          DEFAULT_IP: "192.168.1.1"
+          DEFAULT_USERNAME: "testuser"
+          DEFAULT_PASSWORD: "testpass"
+          DEFAULT_IOT_IP: "192.168.1.2:22"
+          DEFAULT_IOT_USERNAME: "iotuser"
+          DEFAULT_IOT_PASSWORD: "iotpass"
+          SSH_TEST_USER: "CiTestUser"
+          SSH_TEST_PASS: "SshTest@Pass42"
+          SSH_TEST_HOST: "127.0.0.1:22"
+
+      - name: Cleanup test user
+        if: always()
+        shell: pwsh
+        run: |
+          net user CiTestUser /delete 2>$null; if ($LASTEXITCODE -ne 0) { exit 0 }
