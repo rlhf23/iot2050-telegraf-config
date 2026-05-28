@@ -448,21 +448,35 @@ pub fn parse_xml(
             if node_id.starts_with("ns=2;i=") {
                 let identifier = node_id.split('=').nth(2).unwrap().to_string();
 
-                let mut name = variable
-                    .descendants()
-                    .find(|n| n.has_tag_name("BrowseName"))
-                    .and_then(|n| n.text())
-                    .unwrap_or_default()
-                    .to_string();
+                let browse_name_attr = variable
+                    .attribute("BrowseName")
+                    .map(|s| {
+                        let name = s
+                            .strip_prefix(|c: char| c.is_ascii_digit() || c == ':')
+                            .unwrap_or(s);
+                        name.strip_prefix(':').unwrap_or(name).to_string()
+                    })
+                    .or_else(|| {
+                        variable
+                            .descendants()
+                            .find(|n| n.has_tag_name("BrowseName"))
+                            .and_then(|n| n.text())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or_default();
 
-                if let Some(var_mapping) = variable
+                let var_mapping = variable
                     .descendants()
                     .find(|n| n.has_tag_name("VariableMapping"))
-                    .and_then(|n| n.text())
-                {
-                    let var_mapping = var_mapping.replace('"', "");
-                    name = var_mapping;
+                    .and_then(|n| n.text());
+
+                if var_mapping.is_none() {
+                    continue;
                 }
+
+                let name = var_mapping
+                    .map(|v| v.replace('"', ""))
+                    .unwrap_or(browse_name_attr);
 
                 // Check for duplicate names
                 if !node_names.insert(name.clone()) {
