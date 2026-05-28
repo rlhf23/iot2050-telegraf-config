@@ -305,6 +305,7 @@ impl App {
                 use_source_timestamp: false,
                 ship_display_name: None,
                 ship_hostname: None,
+                anonymous: false,
             },
             xml_files: Vec::new(),
             selected_files: Vec::new(),
@@ -531,7 +532,10 @@ impl App {
 
     fn toggle_anonymous_mode(&mut self) {
         self.anonymous_mode = !self.anonymous_mode;
+        self.config.anonymous = self.anonymous_mode;
         if self.anonymous_mode {
+            self.config.username = String::new();
+            self.config.password = String::new();
             self.add_status_message("Anonymous mode enabled".to_string());
         } else {
             self.add_status_message("Anonymous mode disabled".to_string());

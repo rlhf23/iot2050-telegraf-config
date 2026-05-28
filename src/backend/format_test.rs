@@ -135,6 +135,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: false,
             group_name: "",
             namespace_number: "2",
@@ -210,6 +211,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: false,
             group_name: "",
             namespace_number: "2",
@@ -256,6 +258,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: false,
             group_name: "",
             namespace_number: "2",
@@ -331,6 +334,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: false,
             group_name: "",
             namespace_number: "2",
@@ -350,9 +354,7 @@ mod tests {
         assert!(parse_result
             .config_string
             .contains("name=\"Motor.Drive.Torque\", identifier=\"23\""));
-        assert!(!parse_result
-            .config_string
-            .contains("NamespaceUri"));
+        assert!(!parse_result.config_string.contains("NamespaceUri"));
         assert_eq!(parse_result.measurement_name, "Motor");
 
         Ok(())
@@ -364,6 +366,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: false,
             group_name: "test_group",
             namespace_number: "2",
@@ -390,6 +393,7 @@ mod tests {
             ip: "192.168.1.100:4840",
             username: "user",
             password: "pass",
+            anonymous: false,
             is_listener: true,
             group_name: "test_group",
             namespace_number: "2",
@@ -408,6 +412,77 @@ mod tests {
         assert!(result.contains("namespace = \"2\""));
         assert!(result.contains("interval = \"1000ms\""));
         assert!(result.contains("test_node"));
+        assert!(result.contains("[[inputs.opcua_listener]]"));
+    }
+
+    #[test]
+    fn test_format_config_anonymous_auth() {
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "",
+            password: "",
+            anonymous: true,
+            is_listener: false,
+            group_name: "test_group",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 1000,
+            use_source_timestamp: false,
+        };
+
+        let nodes_str = "test_node";
+        let result = format_config(&config, nodes_str);
+
+        assert!(result.contains("auth_method = \"Anonymous\""));
+        assert!(!result.contains("auth_method = \"UserName\""));
+        assert!(result.contains("username = \"\""));
+        assert!(result.contains("password = \"\""));
+        assert!(result.contains("endpoint = \"opc.tcp://192.168.1.100:4840\""));
+    }
+
+    #[test]
+    fn test_format_config_username_auth() {
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "admin",
+            password: "secret",
+            anonymous: false,
+            is_listener: false,
+            group_name: "test_group",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 1000,
+            use_source_timestamp: false,
+        };
+
+        let nodes_str = "test_node";
+        let result = format_config(&config, nodes_str);
+
+        assert!(result.contains("auth_method = \"UserName\""));
+        assert!(!result.contains("auth_method = \"Anonymous\""));
+        assert!(result.contains("username = \"admin\""));
+        assert!(result.contains("password = \"secret\""));
+    }
+
+    #[test]
+    fn test_format_listener_anonymous_auth() {
+        let config = OpcuaConfig {
+            ip: "192.168.1.100:4840",
+            username: "",
+            password: "",
+            anonymous: true,
+            is_listener: true,
+            group_name: "test_group",
+            namespace_number: "2",
+            identifier_type: "i",
+            interval_ms: 500,
+            use_source_timestamp: false,
+        };
+
+        let nodes_str = "test_node";
+        let result = format_config(&config, nodes_str);
+
+        assert!(result.contains("auth_method = \"Anonymous\""));
         assert!(result.contains("[[inputs.opcua_listener]]"));
     }
 }

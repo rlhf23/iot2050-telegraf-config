@@ -311,6 +311,7 @@ fn handle_config_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::
         use_source_timestamp: false,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous,
     };
 
     // Discover XML files
@@ -551,6 +552,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 use_source_timestamp: false,
                 ship_display_name: None,
                 ship_hostname: None,
+                anonymous: false,
             };
 
             let _generator = ConfigGenerator::new(config)?;
@@ -596,6 +598,7 @@ fn handle_check_command(matches: &clap::ArgMatches) -> Result<(), Box<dyn std::e
                 use_source_timestamp: false,
                 ship_display_name: None,
                 ship_hostname: None,
+                anonymous: false,
             };
 
             let generator = ConfigGenerator::new(config)?;

@@ -157,8 +157,9 @@ pub async fn plc_time_stored() -> Result<Json<PlcTimeResponse>, (StatusCode, Jso
 
     let config = OpcUaConnectionConfig {
         ip: creds.endpoint.clone(),
-        username: if creds.anonymous { String::new() } else { creds.username },
-        password: if creds.anonymous { String::new() } else { creds.password },
+        username: if creds.anonymous { String::new() } else { creds.username.clone() },
+        password: if creds.anonymous { String::new() } else { creds.password.clone() },
+        anonymous: creds.anonymous,
     };
 
     match tokio::task::spawn_blocking(move || {
@@ -233,6 +234,7 @@ pub async fn plc_time(
         } else {
             request.opcua_password.unwrap_or_default()
         },
+        anonymous: request.anonymous.unwrap_or(false),
     };
 
     match tokio::task::spawn_blocking(move || {
@@ -318,6 +320,7 @@ pub async fn poll_namespaces(
         } else {
             request.opcua_password.unwrap_or_default()
         },
+        anonymous: request.anonymous,
     };
 
     // Run OpcUaPoller in a blocking task to avoid runtime-in-runtime issues

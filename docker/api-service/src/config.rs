@@ -544,6 +544,7 @@ pub async fn generate_config(
         use_source_timestamp: request.use_source_timestamp,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous: request.anonymous,
     };
 
     // Create ConfigGenerator

@@ -28,6 +28,7 @@ pub struct OpcuaConfig<'a> {
     pub ip: &'a str,
     pub username: &'a str,
     pub password: &'a str,
+    pub anonymous: bool,
     pub is_listener: bool,
 
     // Group settings
@@ -48,6 +49,14 @@ impl OpcuaConfig<'_> {
             "source"
         } else {
             "gather"
+        }
+    }
+
+    fn get_auth_method(&self) -> &str {
+        if self.anonymous {
+            "Anonymous"
+        } else {
+            "UserName"
         }
     }
 }
@@ -191,7 +200,7 @@ pub fn format_config_header(
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "gather"
@@ -216,7 +225,10 @@ pub fn format_config_header(
     ]
 
 "#,
-                config.ip, config.username, config.password
+                config.ip,
+                config.get_auth_method(),
+                config.username,
+                config.password
             ));
         }
 
@@ -307,7 +319,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "{}"
@@ -322,6 +334,7 @@ pub fn format_regular_config(config: &OpcuaConfig, nodes_str: &str) -> String {
       ]
     "#,
         config.ip,
+        config.get_auth_method(),
         config.username,
         config.password,
         timestamp_mode,
@@ -349,7 +362,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "{}"
@@ -364,6 +377,7 @@ fn format_listener_config(config: &OpcuaConfig, nodes_str: &str) -> String {
       ]
     "#,
         config.ip,
+        config.get_auth_method(),
         config.username,
         config.password,
         timestamp_mode,
@@ -390,7 +404,7 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   security_mode = "SignAndEncrypt"
   certificate = ""
   private_key = ""
-  auth_method = "UserName"
+  auth_method = "{}"
   username = "{}"
   password = "{}"
   timestamp = "{}"
@@ -398,7 +412,13 @@ pub fn format_browsed_config(config: &OpcuaConfig, nodes_str: &str) -> String {
   interval = "{}" 
 {}
     "#,
-        config.ip, config.username, config.password, timestamp_mode, interval, nodes_str
+        config.ip,
+        config.get_auth_method(),
+        config.username,
+        config.password,
+        timestamp_mode,
+        interval,
+        nodes_str
     )
 }
 

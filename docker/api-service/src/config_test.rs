@@ -173,6 +173,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // This should NOT panic - localhost:22 is valid
@@ -205,6 +206,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // This should pass - verifies our defaults are valid
@@ -238,6 +240,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // This should FAIL - localhost is not a valid IP format
@@ -294,6 +297,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // Create ConfigGenerator
@@ -360,6 +364,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         let mut generator = ConfigGenerator::new(config).unwrap();

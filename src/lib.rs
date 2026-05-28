@@ -19,6 +19,7 @@ pub struct OpcUaConnectionConfig {
     pub ip: String,
     pub username: String,
     pub password: String,
+    pub anonymous: bool,
 }
 
 /// Configuration for IoT device deployment
@@ -48,6 +49,7 @@ pub struct TelegrafConfig {
     pub use_source_timestamp: bool,    // Use "source" instead of "gather" for timestamp
     pub ship_display_name: Option<String>, // Full Culture ship name (e.g. "ROU Killing Time")
     pub ship_hostname: Option<String>, // Short hostname slug (e.g. "killing-time")
+    pub anonymous: bool,               // Use anonymous authentication (no username/password)
 }
 
 impl OpcUaConnectionConfig {
@@ -57,6 +59,7 @@ impl OpcUaConnectionConfig {
             ip: config.ip.clone(),
             username: config.username.clone(),
             password: config.password.clone(),
+            anonymous: config.anonymous,
         }
     }
 }
