@@ -42,6 +42,7 @@ fn create_test_config() -> TelegrafConfig {
         use_source_timestamp: false,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous: false,
     }
 }
 

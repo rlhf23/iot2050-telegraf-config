@@ -273,7 +273,10 @@ impl OpcUaPoller {
 
         // Use block_in_place for connections since they are blocking
         let session = {
-            if !self.config.username.is_empty() && !self.config.password.is_empty() {
+            if !self.config.anonymous
+                && !self.config.username.is_empty()
+                && !self.config.password.is_empty()
+            {
                 client.connect_to_endpoint(
                     endpoint,
                     IdentityToken::UserName(
@@ -424,7 +427,10 @@ impl OpcUaPoller {
 
         // Connect to server with appropriate credentials
         let session = {
-            if !self.config.username.is_empty() && !self.config.password.is_empty() {
+            if !self.config.anonymous
+                && !self.config.username.is_empty()
+                && !self.config.password.is_empty()
+            {
                 let endpoint: EndpointDescription = (
                     discovery_url,
                     "Basic256Sha256",

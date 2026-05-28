@@ -25,6 +25,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // Valid IP addresses
@@ -97,6 +98,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         // Test valid hostname formats
@@ -168,6 +170,7 @@ mod tests {
             ship_display_name: None,
             ship_hostname: None,
             selected_opcua_nodes: Vec::new(),
+            anonymous: false,
         };
 
         let generator_result = ConfigGenerator::new(config);
@@ -190,6 +193,7 @@ mod tests {
             use_source_timestamp: false,
             ship_display_name: None,
             ship_hostname: None,
+            anonymous: false,
         };
 
         let invalid_result = ConfigGenerator::new(invalid_config);
@@ -590,6 +594,7 @@ mod tests {
             ship_display_name: None,
             ship_hostname: None,
             selected_opcua_nodes: Vec::new(),
+            anonymous: false,
         }
     }
 }

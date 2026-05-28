@@ -81,6 +81,7 @@ fn test_cli_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         use_source_timestamp: false,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous: true,
     };
 
     // Create a ConfigGenerator
@@ -236,6 +237,7 @@ fn test_opcua_server_interaction() -> Result<(), Box<dyn std::error::Error>> {
         use_source_timestamp: false,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous: true,
     };
 
     // Create a new OpcUaPoller instance - this will also test server connectivity
@@ -390,6 +392,7 @@ fn test_opcua_config_generation() -> Result<(), Box<dyn std::error::Error>> {
         use_source_timestamp: false,
         ship_display_name: None,
         ship_hostname: None,
+        anonymous: true,
     };
 
     // Create a new OpcUaPoller instance
@@ -702,6 +705,7 @@ fn test_opcua_read_current_time() -> Result<(), Box<dyn std::error::Error>> {
         ip: format!("127.0.0.1:{}", port),
         username: String::new(),
         password: String::new(),
+        anonymous: true,
     };
 
     let poller = OpcUaPoller::new(config)?;
@@ -746,6 +750,7 @@ fn test_opcua_get_namespace_info() -> Result<(), Box<dyn std::error::Error>> {
         ip: format!("127.0.0.1:{}", port),
         username: String::new(),
         password: String::new(),
+        anonymous: true,
     };
     let poller = OpcUaPoller::new(config)?;
 

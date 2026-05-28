@@ -75,6 +75,7 @@ impl GuiController {
                 use_source_timestamp: false,
                 ship_display_name: None,
                 ship_hostname: None,
+                anonymous: false,
             },
             xml_files: Vec::new(),
             selected_listener_files: Vec::new(),

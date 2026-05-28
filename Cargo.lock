@@ -3439,7 +3439,7 @@ dependencies = [
 
 [[package]]
 name = "sie_generate_config"
-version = "0.10.8"
+version = "0.10.9"
 dependencies = [
  "chrono",
  "clap",
