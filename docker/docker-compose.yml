@@ -301,6 +301,7 @@ services:
     environment:
       - DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
       - DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
+      - THEME=${THEME:-indigo-purple}
     depends_on:
       - chronograf
       - influxdb

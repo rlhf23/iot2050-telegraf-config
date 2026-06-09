@@ -290,6 +290,8 @@
         }
     };
 
+    var serverTheme = null;
+
     function applyTheme(themeKey) {
         var theme = THEMES[themeKey];
         if (!theme) return;
@@ -305,6 +307,29 @@
         } catch(e) {}
         var select = document.getElementById('theme-picker');
         if (select) select.value = themeKey;
+    }
+
+    function populateDropdown(select, themesList) {
+        var currentVal = select.value;
+        select.innerHTML = '';
+        for (var i = 0; i < themesList.length; i++) {
+            var t = themesList[i];
+            var opt = document.createElement('option');
+            opt.value = t.key;
+            opt.textContent = t.name + (serverTheme && t.key === serverTheme ? ' (device default)' : '');
+            select.appendChild(opt);
+        }
+        select.value = currentVal;
+    }
+
+    function builtInList() {
+        var list = [];
+        for (var key in THEMES) {
+            if (THEMES.hasOwnProperty(key)) {
+                list.push({ key: key, name: THEMES[key].name });
+            }
+        }
+        return list;
     }
 
     function initThemePicker() {
@@ -348,14 +373,8 @@
         document.body.appendChild(container);
 
         var select = document.getElementById('theme-picker');
-        for (var key in THEMES) {
-            if (THEMES.hasOwnProperty(key)) {
-                var opt = document.createElement('option');
-                opt.value = key;
-                opt.textContent = THEMES[key].name;
-                select.appendChild(opt);
-            }
-        }
+
+        populateDropdown(select, builtInList());
 
         var saved = null;
         try { saved = localStorage.getItem('monitoring-theme'); } catch(e) {}
@@ -366,6 +385,34 @@
         select.addEventListener('change', function() {
             applyTheme(select.value);
         });
+
+        fetch('/theme.json')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data && data.theme && THEMES[data.theme]) {
+                    serverTheme = data.theme;
+
+                    var saved = null;
+                    try { saved = localStorage.getItem('monitoring-theme'); } catch(e) {}
+
+                    if (!saved) {
+                        select.value = serverTheme;
+                        applyTheme(serverTheme);
+                    }
+
+                    populateDropdown(select, builtInList());
+
+                    fetch('/themes.json')
+                        .then(function(r) { return r.json(); })
+                        .then(function(registry) {
+                            if (registry && registry.themes && registry.themes.length > 0) {
+                                populateDropdown(select, registry.themes);
+                            }
+                        })
+                        .catch(function() {});
+                }
+            })
+            .catch(function() {});
     }
 
     function domReady(fn) {

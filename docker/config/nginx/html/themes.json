@@ -1,0 +1,11 @@
+{
+  "default": "indigo-purple",
+  "themes": [
+    { "key": "indigo-purple", "name": "Indigo Purple" },
+    { "key": "ocean-teal", "name": "Ocean Teal" },
+    { "key": "industrial-orange", "name": "Industrial Orange" },
+    { "key": "slate-steel", "name": "Slate Steel" },
+    { "key": "dark-mode", "name": "Dark Mode" },
+    { "key": "aquatic-sci-fi", "name": "Aquatic Sci-Fi" }
+  ]
+}

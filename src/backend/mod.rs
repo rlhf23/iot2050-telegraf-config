@@ -24,6 +24,7 @@ pub mod ships;
 pub mod ssh_utils;
 #[cfg(test)]
 mod ssh_utils_test;
+pub mod themes;
 
 pub use chronograf_dashboard::{
     extract_deploy_format, generate_chronograf_dashboard, ChronografDashboardConfig,
@@ -33,6 +34,7 @@ pub use format::OutputFormat;
 pub use format::XmlParseResult;
 pub use ships::{derive_hostname, random_ship_name, ShipName};
 pub use ssh_utils::{check_service_status, ServiceType};
+pub use themes::{random_theme, resolve_theme, DEFAULT_THEME, THEME_KEYS};
 
 #[derive(Default)]
 pub struct FileConfig {

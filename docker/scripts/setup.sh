@@ -44,12 +44,19 @@ fi
 if [ -f .env ]; then
     echo "ℹ️  .env file already exists"
     # Update device identity if provided
-    if [ -n "$DEVICE_DISPLAY_NAME" ] || [ -n "$DEVICE_HOSTNAME" ]; then
+    if [ -n "$DEVICE_DISPLAY_NAME" ] || [ -n "$DEVICE_HOSTNAME" ] || [ -n "$THEME" ]; then
         if [ -n "$DEVICE_DISPLAY_NAME" ]; then
             sed -i "s|^DEVICE_DISPLAY_NAME=.*|DEVICE_DISPLAY_NAME=\"${DEVICE_DISPLAY_NAME}\"|" .env
         fi
         if [ -n "$DEVICE_HOSTNAME" ]; then
             sed -i "s|^DEVICE_HOSTNAME=.*|DEVICE_HOSTNAME=${DEVICE_HOSTNAME}|" .env
+        fi
+        if [ -n "$THEME" ]; then
+            if grep -q "^THEME=" .env; then
+                sed -i "s|^THEME=.*|THEME=${THEME}|" .env
+            else
+                echo "THEME=${THEME}" >> .env
+            fi
         fi
         echo "✅ Updated device identity in .env"
     fi
@@ -67,6 +74,7 @@ else
     # Device name: use provided values, or generate from CLI, or fall back to defaults
     DEVICE_DISPLAY_NAME=${DEVICE_DISPLAY_NAME:-}
     DEVICE_HOSTNAME=${DEVICE_HOSTNAME:-}
+    THEME=${THEME:-indigo-purple}
 
     # Derive bucket names from device hostname, or fall back to defaults
     INFLUXDB_BUCKET=${DEVICE_HOSTNAME:-telegraf}
@@ -76,6 +84,7 @@ else
 # Device identity
 DEVICE_DISPLAY_NAME="${DEVICE_DISPLAY_NAME}"
 DEVICE_HOSTNAME=${DEVICE_HOSTNAME}
+THEME=${THEME}
 
 # InfluxDB
 INFLUXDB_USER=admin
@@ -118,9 +127,11 @@ fi
 
 PROFILE_DISPLAY="${PROFILE:-full}"
 DEVICE_DISPLAY="${DEVICE_DISPLAY_NAME:-unnamed}"
+THEME_DISPLAY="${THEME:-indigo-purple}"
 echo "✅ Setup complete!"
 echo "   Architecture: $TARGETARCH"
 echo "   Profile: $PROFILE_DISPLAY"
 echo "   Device: $DEVICE_DISPLAY"
+echo "   Theme: $THEME_DISPLAY"
 echo ""
 echo "   Start the stack: ./scripts/start.sh"
