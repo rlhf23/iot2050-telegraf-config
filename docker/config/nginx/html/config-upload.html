@@ -5,6 +5,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegraf Configuration Generator</title>
     <style>
+        :root {
+            --t-gradient-start: #667eea;
+            --t-gradient-end: #764ba2;
+            --t-accent: #667eea;
+            --t-accent-hover: #5568d3;
+            --t-card-bg: #ffffff;
+            --t-text: #333333;
+            --t-text-muted: #666666;
+            --t-text-label: #888888;
+            --t-header-text: #ffffff;
+            --t-border: #eeeeee;
+            --t-border-dark: #dee2e6;
+            --t-step-bg: #f8f9fa;
+            --t-code-bg: #f5f5f5;
+            --t-input-border: #ced4da;
+            --t-input-focus: #667eea;
+            --t-input-focus-ring: rgba(102,126,234,0.1);
+            --t-btn-primary: #667eea;
+            --t-btn-primary-hover: #5568d3;
+            --t-btn-cancel: #6b7280;
+            --t-btn-cancel-hover: #4b5563;
+            --t-btn-disabled: #cccccc;
+            --t-upload-border: #667eea;
+            --t-upload-border-hover: #764ba2;
+            --t-upload-hover-bg: #f8f9fa;
+            --t-upload-dragover-bg: #e9ecef;
+            --t-session-bg: #e7f3ff;
+            --t-session-text: #004085;
+            --t-badge-toggle-bg: #dbeafe;
+            --t-badge-toggle-text: #1d4ed8;
+            --t-badge-momentary-bg: #fce7f3;
+            --t-badge-momentary-text: #be185d;
+            --t-card-shadow: rgba(0,0,0,0.1);
+            --t-card-shadow-hover: rgba(0,0,0,0.15);
+            --t-modal-shadow: rgba(0,0,0,0.3);
+            --t-file-border: #dee2e6;
+            --t-spinner-track: #f3f3f3;
+            --t-notif-success-bg: #10b981;
+            --t-notif-success-text: #ffffff;
+            --t-notif-error-bg: #ef4444;
+            --t-notif-error-text: #ffffff;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,7 +56,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--t-gradient-start) 0%, var(--t-gradient-end) 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -21,15 +64,15 @@
         .container {
             max-width: 900px;
             margin: 0 auto;
-            background: white;
+            background: var(--t-card-bg);
             border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            box-shadow: 0 20px 60px var(--t-modal-shadow);
             overflow: hidden;
         }
 
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, var(--t-gradient-start) 0%, var(--t-gradient-end) 100%);
+            color: var(--t-header-text);
             padding: 30px;
             text-align: center;
         }
@@ -51,35 +94,35 @@
         .step {
             margin-bottom: 30px;
             padding: 25px;
-            background: #f8f9fa;
+            background: var(--t-step-bg);
             border-radius: 8px;
-            border-left: 4px solid #667eea;
+            border-left: 4px solid var(--t-accent);
         }
 
         .step h2 {
             font-size: 18px;
             margin-bottom: 15px;
-            color: #333;
+            color: var(--t-text);
         }
 
         .upload-area {
-            border: 2px dashed #667eea;
+            border: 2px dashed var(--t-upload-border);
             border-radius: 8px;
             padding: 40px;
             text-align: center;
-            background: white;
+            background: var(--t-card-bg);
             cursor: pointer;
             transition: all 0.3s;
         }
 
         .upload-area:hover {
-            border-color: #764ba2;
-            background: #f8f9fa;
+            border-color: var(--t-upload-border-hover);
+            background: var(--t-upload-hover-bg);
         }
 
         .upload-area.dragover {
-            border-color: #764ba2;
-            background: #e9ecef;
+            border-color: var(--t-upload-border-hover);
+            background: var(--t-upload-dragover-bg);
             transform: scale(1.02);
         }
 
@@ -94,10 +137,10 @@
 
         .file-item {
             padding: 15px;
-            background: white;
+            background: var(--t-card-bg);
             border-radius: 6px;
             margin-bottom: 12px;
-            border: 1px solid #dee2e6;
+            border: 1px solid var(--t-file-border);
         }
 
         .file-header {
@@ -115,11 +158,11 @@
 
         .file-name {
             font-weight: 500;
-            color: #333;
+            color: var(--t-text);
         }
 
         .file-size {
-            color: #6c757d;
+            color: var(--t-text-muted);
             font-size: 14px;
         }
 
@@ -129,7 +172,7 @@
             gap: 10px;
             margin-top: 10px;
             padding-top: 10px;
-            border-top: 1px solid #e9ecef;
+            border-top: 1px solid var(--t-border);
         }
 
         .file-config-field {
@@ -139,21 +182,23 @@
 
         .file-config-field label {
             font-size: 12px;
-            color: #6c757d;
+            color: var(--t-text-muted);
             margin-bottom: 4px;
         }
 
         .file-config-field input {
             padding: 6px 8px;
-            border: 1px solid #ced4da;
+            border: 1px solid var(--t-input-border);
             border-radius: 4px;
             font-size: 14px;
+            background: var(--t-card-bg);
+            color: var(--t-text);
         }
 
         .file-config-field input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+            border-color: var(--t-input-focus);
+            box-shadow: 0 0 0 2px var(--t-input-focus-ring);
         }
 
         .file-config-field input[type="checkbox"] {
@@ -172,12 +217,12 @@
         }
 
         .btn-primary {
-            background: #667eea;
+            background: var(--t-btn-primary);
             color: white;
         }
 
         .btn-primary:hover {
-            background: #5568d3;
+            background: var(--t-btn-primary-hover);
         }
 
         .btn-danger {
@@ -228,15 +273,17 @@
         }
 
         .notification.success {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
+            background: var(--t-notif-success-bg);
+            border: none;
+            color: var(--t-notif-success-text);
+            border-radius: 8px;
         }
 
         .notification.error {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
+            background: var(--t-notif-error-bg);
+            border: none;
+            color: var(--t-notif-error-text);
+            border-radius: 8px;
         }
 
         .notification.show {
@@ -251,23 +298,25 @@
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: #333;
+            color: var(--t-text);
         }
 
         .form-group input,
         .form-group select {
             width: 100%;
             padding: 10px;
-            border: 1px solid #ced4da;
+            border: 1px solid var(--t-input-border);
             border-radius: 6px;
             font-size: 14px;
+            background: var(--t-card-bg);
+            color: var(--t-text);
         }
 
         .form-group input:focus,
         .form-group select:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: var(--t-input-focus);
+            box-shadow: 0 0 0 3px var(--t-input-focus-ring);
         }
 
         .checkbox-group {
@@ -291,8 +340,8 @@
         }
 
         .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
+            border: 3px solid var(--t-spinner-track);
+            border-top: 3px solid var(--t-accent);
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -306,15 +355,14 @@
         }
 
         .session-info {
-            background: #e7f3ff;
+            background: var(--t-session-bg);
             padding: 10px 15px;
             border-radius: 6px;
             margin-bottom: 20px;
             font-size: 14px;
-            color: #004085;
+            color: var(--t-session-text);
         }
 
-        /* Modal styles */
         .modal {
             display: none;
             position: fixed;
@@ -333,7 +381,7 @@
         }
 
         .modal-content {
-            background: white;
+            background: var(--t-card-bg);
             border-radius: 12px;
             max-width: 800px;
             width: 90%;
@@ -344,7 +392,7 @@
 
         .modal-header {
             padding: 20px;
-            border-bottom: 1px solid #dee2e6;
+            border-bottom: 1px solid var(--t-border-dark);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -353,6 +401,7 @@
         .modal-header h2 {
             margin: 0;
             font-size: 20px;
+            color: var(--t-text);
         }
 
         .modal-close {
@@ -360,11 +409,11 @@
             border: none;
             font-size: 24px;
             cursor: pointer;
-            color: #6c757d;
+            color: var(--t-text-muted);
         }
 
         .modal-close:hover {
-            color: #333;
+            color: var(--t-text);
         }
 
         .modal-body {
@@ -374,7 +423,7 @@
         }
 
         .modal-body pre {
-            background: #f8f9fa;
+            background: var(--t-code-bg);
             padding: 15px;
             border-radius: 6px;
             overflow-x: auto;
@@ -385,7 +434,7 @@
 
         .modal-footer {
             padding: 20px;
-            border-top: 1px solid #dee2e6;
+            border-top: 1px solid var(--t-border-dark);
             display: flex;
             justify-content: flex-end;
             gap: 10px;
@@ -414,7 +463,7 @@
                 <div class="upload-area" id="upload-area">
                     <div class="upload-icon">📁</div>
                     <p><strong>Drag & drop XML files here</strong></p>
-                    <p style="color: #6c757d; font-size: 14px; margin-top: 8px;">or click to browse</p>
+                    <p style="color: var(--t-text-muted); font-size: 14px; margin-top: 8px;">or click to browse</p>
                     <input type="file" id="file-input" multiple accept=".xml" style="display: none;">
                 </div>
 
@@ -424,7 +473,7 @@
                     <button class="btn btn-primary" id="poll-namespaces-btn" onclick="pollNamespaces()" disabled>
                         Poll Namespaces from OPC-UA Server
                     </button>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                    <p style="font-size: 12px; color: var(--t-text-muted); margin-top: 5px;">
                         Automatically populate namespace fields by connecting to the OPC-UA server
                     </p>
                 </div>
@@ -481,7 +530,7 @@
                         <input type="checkbox" id="use-source-timestamp">
                         <label for="use-source-timestamp" style="margin-bottom: 0;">Use Source Timestamp</label>
                     </div>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                    <p style="font-size: 12px; color: var(--t-text-muted); margin-top: 5px;">
                         Use "source" instead of "gather" for timestamp mode (default: gather)
                     </p>
                 </div>
@@ -491,7 +540,7 @@
                         <input type="checkbox" id="include-test-inputs">
                         <label for="include-test-inputs" style="margin-bottom: 0;">Include System Inputs</label>
                     </div>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                    <p style="font-size: 12px; color: var(--t-text-muted); margin-top: 5px;">
                         CPU, Disk, Memory metrics from the IoT device
                     </p>
                 </div>
@@ -501,7 +550,7 @@
                         <input type="checkbox" id="include-opcua-diagnostics">
                         <label for="include-opcua-diagnostics" style="margin-bottom: 0;">OPC-UA Diagnostics</label>
                     </div>
-                    <p style="font-size: 12px; color: #6c757d; margin-top: 5px;">
+                    <p style="font-size: 12px; color: var(--t-text-muted); margin-top: 5px;">
                         Monitor OPC-UA server health (sessions, subscriptions, errors)
                     </p>
                 </div>
@@ -520,13 +569,13 @@
                     <button class="btn btn-success" id="deploy-btn" disabled>
                         Deploy to Telegraf
                     </button>
-                    <button class="btn" onclick="viewCurrentConfig()" style="background: #6c757d;">
+                    <button class="btn" onclick="viewCurrentConfig()" style="background: var(--t-btn-cancel);">
                         📄 View Current Config
                     </button>
                 </div>
 
                 <!-- Dashboard section -->
-                <div id="dashboard-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <div id="dashboard-section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--t-border-dark);">
                     <h3 style="font-size: 16px; margin-bottom: 15px;">Grafana Dashboard</h3>
                     <button class="btn btn-primary" id="generate-dashboard-btn" disabled>
                         Generate Dashboard
@@ -534,13 +583,13 @@
                     <button class="btn btn-success" id="deploy-dashboard-btn" disabled style="margin-left: 10px;">
                         Deploy Dashboard
                     </button>
-                    <button class="btn" onclick="viewDashboard()" style="background: #6c757d; margin-left: 10px;" id="view-dashboard-btn" disabled>
+                    <button class="btn" onclick="viewDashboard()" style="background: var(--t-btn-cancel); margin-left: 10px;" id="view-dashboard-btn" disabled>
                         📊 View Dashboard JSON
                     </button>
                 </div>
 
                 <!-- Chronograf Dashboard section -->
-                <div id="chronograf-dashboard-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <div id="chronograf-dashboard-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--t-border-dark);">
                     <h3 style="font-size: 16px; margin-bottom: 15px;">Chronograf Dashboard</h3>
                     <button class="btn btn-primary" id="generate-chronograf-btn" disabled>
                         Generate Dashboard
@@ -548,7 +597,7 @@
                     <button class="btn btn-success" id="deploy-chronograf-btn" disabled style="margin-left: 10px;">
                         Deploy Dashboard
                     </button>
-                    <button class="btn" onclick="viewChronografDashboard()" style="background: #6c757d; margin-left: 10px;" id="view-chronograf-btn" disabled>
+                    <button class="btn" onclick="viewChronografDashboard()" style="background: var(--t-btn-cancel); margin-left: 10px;" id="view-chronograf-btn" disabled>
                         📊 View Dashboard JSON
                     </button>
                 </div>
@@ -580,6 +629,7 @@
     <!-- Fixed notification toast -->
     <div id="notification" class="notification"></div>
 
+    <script src="theme.js"></script>
     <script>
         (function() {
             function showDemoBanner() {

@@ -122,6 +122,7 @@ pub struct DeploymentConfig {
     pub git_branch: Option<String>,
     pub ship_display_name: Option<String>,
     pub ship_hostname: Option<String>,
+    pub theme: Option<String>,
 }
 
 impl DeploymentConfig {
@@ -135,6 +136,7 @@ impl DeploymentConfig {
             git_branch: None,
             ship_display_name: None,
             ship_hostname: None,
+            theme: None,
         }
     }
 
@@ -163,6 +165,11 @@ impl DeploymentConfig {
     pub fn with_ship_name(mut self, display_name: String, hostname: String) -> Self {
         self.ship_display_name = Some(display_name);
         self.ship_hostname = Some(hostname);
+        self
+    }
+
+    pub fn with_theme(mut self, theme: String) -> Self {
+        self.theme = Some(theme);
         self
     }
 }
@@ -651,6 +658,9 @@ impl IoTDeployer {
         }
         if let Some(ref host) = self.config.ship_hostname {
             env_vars.push_str(&format!(" DEVICE_HOSTNAME='{}'", host));
+        }
+        if let Some(ref theme) = self.config.theme {
+            env_vars.push_str(&format!(" THEME='{}'", theme));
         }
 
         let setup_cmd = if self.minimal {

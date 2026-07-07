@@ -5,6 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PLC Control</title>
     <style>
+        :root {
+            --t-gradient-start: #667eea;
+            --t-gradient-end: #764ba2;
+            --t-accent: #667eea;
+            --t-accent-hover: #5568d3;
+            --t-card-bg: #ffffff;
+            --t-text: #333333;
+            --t-text-muted: #666666;
+            --t-text-label: #888888;
+            --t-header-text: #ffffff;
+            --t-border: #eeeeee;
+            --t-border-dark: #dee2e6;
+            --t-step-bg: #f8f9fa;
+            --t-code-bg: #f5f5f5;
+            --t-input-border: #ced4da;
+            --t-input-focus: #667eea;
+            --t-input-focus-ring: rgba(102,126,234,0.1);
+            --t-btn-primary: #667eea;
+            --t-btn-primary-hover: #5568d3;
+            --t-btn-cancel: #6b7280;
+            --t-btn-cancel-hover: #4b5563;
+            --t-btn-disabled: #cccccc;
+            --t-badge-toggle-bg: #dbeafe;
+            --t-badge-toggle-text: #1d4ed8;
+            --t-badge-momentary-bg: #fce7f3;
+            --t-badge-momentary-text: #be185d;
+            --t-toggle-off-bg: #e5e7eb;
+            --t-toggle-off-text: #374151;
+            --t-toggle-off-hover: #d1d5db;
+            --t-card-shadow: rgba(0,0,0,0.1);
+            --t-card-shadow-hover: rgba(0,0,0,0.15);
+            --t-modal-shadow: rgba(0,0,0,0.3);
+            --t-notif-success-bg: #10b981;
+            --t-notif-success-text: #ffffff;
+            --t-notif-error-bg: #ef4444;
+            --t-notif-error-text: #ffffff;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,10 +51,10 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--t-gradient-start) 0%, var(--t-gradient-end) 100%);
             min-height: 100vh;
             padding: 20px;
-            color: #333;
+            color: var(--t-text);
         }
 
         .container {
@@ -26,7 +64,7 @@
 
         header {
             text-align: center;
-            color: white;
+            color: var(--t-header-text);
             margin-bottom: 30px;
         }
 
@@ -37,7 +75,7 @@
         }
 
         .back-link {
-            color: white;
+            color: var(--t-header-text);
             text-decoration: none;
             font-size: 0.9em;
         }
@@ -47,11 +85,11 @@
         }
 
         .status-bar {
-            background: white;
+            background: var(--t-card-bg);
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--t-card-shadow);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -68,7 +106,7 @@
 
         .status-label {
             font-size: 0.8em;
-            color: #666;
+            color: var(--t-text-muted);
             margin-bottom: 5px;
         }
 
@@ -92,29 +130,29 @@
         }
 
         .button-card {
-            background: white;
+            background: var(--t-card-bg);
             border-radius: 12px;
             padding: 15px;
             text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px var(--t-card-shadow);
             transition: transform 0.2s, box-shadow 0.2s;
         }
 
         .button-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 6px 12px var(--t-card-shadow-hover);
         }
 
         .button-name {
             font-weight: 600;
             margin-bottom: 5px;
-            color: #333;
+            color: var(--t-text);
             font-size: 0.95em;
         }
 
         .button-address {
             font-size: 0.75em;
-            color: #888;
+            color: var(--t-text-label);
             margin-bottom: 8px;
         }
 
@@ -128,13 +166,13 @@
         }
 
         .mode-badge.toggle {
-            background: #dbeafe;
-            color: #1d4ed8;
+            background: var(--t-badge-toggle-bg);
+            color: var(--t-badge-toggle-text);
         }
 
         .mode-badge.momentary {
-            background: #fce7f3;
-            color: #be185d;
+            background: var(--t-badge-momentary-bg);
+            color: var(--t-badge-momentary-text);
         }
 
         .control-btn {
@@ -149,12 +187,12 @@
         }
 
         .control-btn.toggle-off {
-            background: #e5e7eb;
-            color: #374151;
+            background: var(--t-toggle-off-bg);
+            color: var(--t-toggle-off-text);
         }
 
         .control-btn.toggle-off:hover {
-            background: #d1d5db;
+            background: var(--t-toggle-off-hover);
         }
 
         .control-btn.toggle-on {
@@ -167,7 +205,7 @@
         }
 
         .control-btn.momentary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, var(--t-gradient-start) 0%, var(--t-gradient-end) 100%);
             color: white;
         }
 
@@ -176,11 +214,11 @@
         }
 
         .control-btn.momentary:active {
-            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+            background: linear-gradient(135deg, var(--t-accent-hover) 0%, var(--t-gradient-end) 100%);
         }
 
         .control-btn:disabled {
-            background: #ccc;
+            background: var(--t-btn-disabled);
             cursor: not-allowed;
             opacity: 0.6;
         }
@@ -192,7 +230,7 @@
 
         .loading {
             text-align: center;
-            color: #666;
+            color: var(--t-text-muted);
             padding: 40px;
         }
 
@@ -227,11 +265,13 @@
         }
 
         .notification.success {
-            background: #10b981;
+            background: var(--t-notif-success-bg);
+            color: var(--t-notif-success-text);
         }
 
         .notification.error {
-            background: #ef4444;
+            background: var(--t-notif-error-bg);
+            color: var(--t-notif-error-text);
         }
 
         @media (max-width: 600px) {
@@ -307,6 +347,7 @@
             detectDemo();
         })();
     </script>
+    <script src="theme.js"></script>
     <script>
         let buttons = [];
 

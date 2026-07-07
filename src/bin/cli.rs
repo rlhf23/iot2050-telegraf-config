@@ -664,7 +664,15 @@ fn create_deployment_config(matches: &clap::ArgMatches) -> DeploymentConfig {
             (ship.display_name, ship.hostname)
         }
     };
-    config = config.with_ship_name(display_name, hostname_slug);
+    config = config.with_ship_name(display_name, hostname_slug.clone());
+
+    if let Some(theme_input) = matches.try_get_one::<String>("theme").ok().flatten() {
+        let resolved = sie_generate_config::backend::themes::resolve_theme(
+            &Some(theme_input.clone()),
+            Some(&hostname_slug),
+        );
+        config = config.with_theme(resolved);
+    }
 
     config
 }
@@ -731,6 +739,7 @@ fn main() {
                         .arg(clap::Arg::new("key_file").short('k').long("key-file").help("SSH private key file path"))
                         .arg(clap::Arg::new("minimal").short('m').long("minimal").action(clap::ArgAction::SetTrue).help("Use minimal profile (InfluxDB + Telegraf + Chronograf only, no Grafana/Prometheus)"))
                         .arg(clap::Arg::new("device_name").long("device-name").help("Device name for identity (defaults to random Culture ship name)"))
+                        .arg(clap::Arg::new("theme").long("theme").help("UI theme key (indigo-purple, ocean-teal, industrial-orange, slate-steel, dark-mode, aquatic-sci-fi, or random)"))
                 )
                 .subcommand(
                     Command::new("start")

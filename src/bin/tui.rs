@@ -53,6 +53,7 @@ enum EditField {
     IoTUsername,
     IoTPassword,
     DeviceName,
+    Theme,
     KeyFile,
     GitBranch,
     FileNamespace(usize),
@@ -136,6 +137,7 @@ impl DeviceActionField {
 #[derive(Debug, Clone, PartialEq)]
 enum DeviceConfigField {
     DeviceName,
+    Theme,
     KeyFile,
     GitBranch,
     Minimal,
@@ -146,18 +148,19 @@ enum DeviceConfigField {
 
 impl DeviceConfigField {
     fn count() -> usize {
-        7
+        8
     }
 
     fn from_index(index: usize) -> Self {
         match index {
             0 => Self::DeviceName,
-            1 => Self::KeyFile,
-            2 => Self::GitBranch,
-            3 => Self::Minimal,
-            4 => Self::DeployMode,
-            5 => Self::Architecture,
-            6 => Self::SkipCustom,
+            1 => Self::Theme,
+            2 => Self::KeyFile,
+            3 => Self::GitBranch,
+            4 => Self::Minimal,
+            5 => Self::DeployMode,
+            6 => Self::Architecture,
+            7 => Self::SkipCustom,
             _ => Self::DeviceName,
         }
     }
@@ -272,6 +275,7 @@ struct App {
 
     // Device deployment fields
     device_name: String,
+    theme: String,
     key_file: String,
     git_branch: String,
     minimal: bool,
@@ -333,6 +337,7 @@ impl App {
             device_config_selection: 0,
             device_focus_right: false,
             device_name: String::new(),
+            theme: String::new(),
             key_file: String::new(),
             git_branch: "master".to_string(),
             minimal: false,
@@ -687,6 +692,7 @@ impl App {
             EditField::IoTUsername => self.config.iot_username.clone(),
             EditField::IoTPassword => self.config.iot_password.clone(),
             EditField::DeviceName => self.device_name.clone(),
+            EditField::Theme => self.theme.clone(),
             EditField::KeyFile => self.key_file.clone(),
             EditField::GitBranch => self.git_branch.clone(),
             EditField::FileNamespace(idx) => {
@@ -787,6 +793,7 @@ impl App {
                 EditField::IoTUsername => self.config.iot_username = self.input_buffer.clone(),
                 EditField::IoTPassword => self.config.iot_password = self.input_buffer.clone(),
                 EditField::DeviceName => self.device_name = self.input_buffer.clone(),
+                EditField::Theme => self.theme = self.input_buffer.clone(),
                 EditField::KeyFile => self.key_file = self.input_buffer.clone(),
                 EditField::GitBranch => self.git_branch = self.input_buffer.clone(),
                 EditField::FileNamespace(idx) => {
@@ -1271,7 +1278,15 @@ impl App {
         if !self.device_name.is_empty() {
             let hostname_slug =
                 sie_generate_config::backend::ships::derive_hostname(&self.device_name);
-            config = config.with_ship_name(self.device_name.clone(), hostname_slug);
+            config = config.with_ship_name(self.device_name.clone(), hostname_slug.clone());
+
+            if !self.theme.is_empty() {
+                let resolved = sie_generate_config::backend::themes::resolve_theme(
+                    &Some(self.theme.clone()),
+                    Some(&hostname_slug),
+                );
+                config = config.with_theme(resolved);
+            }
         }
 
         config
@@ -1710,6 +1725,7 @@ fn handle_device_input(app: &mut App, key: KeyCode) {
                 let selected = DeviceConfigField::from_index(app.device_config_selection);
                 match selected {
                     DeviceConfigField::DeviceName => app.start_editing(EditField::DeviceName),
+                    DeviceConfigField::Theme => app.start_editing(EditField::Theme),
                     DeviceConfigField::KeyFile => app.start_editing(EditField::KeyFile),
                     DeviceConfigField::GitBranch => app.start_editing(EditField::GitBranch),
                     DeviceConfigField::Minimal => {
@@ -2491,6 +2507,11 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         &app.device_name
     };
+    let theme_display = if app.theme.is_empty() {
+        "(default)"
+    } else {
+        &app.theme
+    };
     let key_file_display = if app.key_file.is_empty() {
         "(default)"
     } else {
@@ -2515,6 +2536,15 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
                 " "
             },
             device_name_display
+        )),
+        Line::from(format!(
+            "{} Theme: {}",
+            if config_highlight && matches!(selected_config, DeviceConfigField::Theme) {
+                "►"
+            } else {
+                " "
+            },
+            theme_display
         )),
         Line::from(format!(
             "{} Key File: {}",
@@ -2596,6 +2626,7 @@ fn render_device_tab(f: &mut Frame, app: &mut App, area: Rect) {
         let edit_title = if let Some(ref field) = app.current_edit_field {
             match field {
                 EditField::DeviceName => "Edit Device Name",
+                EditField::Theme => "Edit Theme (indigo-purple, ocean-teal, industrial-orange, slate-steel, dark-mode, aquatic-sci-fi, random)",
                 EditField::KeyFile => "Edit Key File",
                 EditField::GitBranch => "Edit Git Branch",
                 _ => "Edit Field",
